@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Navigate } from 'react-router-dom';
 import { Loader2, LogOut, AlertCircle } from 'lucide-react';
 import { supabase } from '../lib/supabase';
+import { isStandaloneApp } from '../lib/appContext';
 
 type GuestGuardProps = {
   children: React.ReactNode;
@@ -86,7 +87,9 @@ export function GuestGuard({ children }: GuestGuardProps) {
 
   const handleSignOut = async () => {
     await supabase.auth.signOut();
-    window.location.href = '/';
+    // Phase 3B: In installed app, redirect to login after logout
+    const redirectTo = isStandaloneApp() ? '/auth/login' : '/';
+    window.location.href = redirectTo;
   };
 
   const handleGoToLogin = () => {
@@ -94,7 +97,9 @@ export function GuestGuard({ children }: GuestGuardProps) {
   };
 
   const handleGoHome = () => {
-    window.location.href = '/';
+    // Phase 3B: In installed app, redirect to login instead of landing
+    const redirectTo = isStandaloneApp() ? '/auth/login' : '/';
+    window.location.href = redirectTo;
   };
 
   if (timedOut && errorMessage) {

@@ -22,10 +22,22 @@ export function TaskActionLists() {
   const [filterContext, setFilterContext] = useState<string>('all');
   const [filterPriority, setFilterPriority] = useState<string>('all');
   const [showForm, setShowForm] = useState(false);
-  const [newTask, setNewTask] = useState({
-    title: '',
-    context: 'general',
-    priority: 'medium' as const
+  // Phase 4A: Remember last used context and priority for faster task entry
+  const [newTask, setNewTask] = useState(() => {
+    if (typeof window !== 'undefined') {
+      const lastContext = localStorage.getItem('last_task_context') || 'general';
+      const lastPriority = (localStorage.getItem('last_task_priority') || 'medium') as 'low' | 'medium' | 'high' | 'urgent';
+      return {
+        title: '',
+        context: lastContext,
+        priority: lastPriority
+      };
+    }
+    return {
+      title: '',
+      context: 'general',
+      priority: 'medium' as const
+    };
   });
 
   const contexts = ['general', 'meetings', 'emails', 'calls', 'admin', 'creative', 'technical'];
@@ -69,6 +81,12 @@ export function TaskActionLists() {
   const addTask = async () => {
     if (!user || !newTask.title.trim()) return;
 
+    // Phase 4A: Save context and priority for next time
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('last_task_context', newTask.context);
+      localStorage.setItem('last_task_priority', newTask.priority);
+    }
+
     await supabase
       .from('daily_planner_entries')
       .insert({
@@ -83,9 +101,11 @@ export function TaskActionLists() {
         }
       });
 
-    setNewTask({ title: '', context: 'general', priority: 'medium' });
+    // Phase 4A: Keep last context/priority, only clear title
+    setNewTask({ ...newTask, title: '' });
     setShowForm(false);
     loadTasks();
+    // Phase 4A: No success toast for frequent actions - silent success
   };
 
   const getPriorityColor = (priority: string) => {
@@ -148,6 +168,8 @@ export function TaskActionLists() {
                     onChange={(e) => setNewTask({ ...newTask, title: e.target.value })}
                     className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent"
                     placeholder="What needs to be done?"
+                    autoFocus
+                    // Phase 4A: Auto-focus for faster entry on mobile
                   />
                 </div>
                 <div className="grid grid-cols-2 gap-4">
@@ -186,7 +208,8 @@ export function TaskActionLists() {
                   <button
                     onClick={() => {
                       setShowForm(false);
-                      setNewTask({ title: '', context: 'general', priority: 'medium' });
+                      // Phase 4A: Keep context/priority, only clear title for faster re-entry
+                      setNewTask({ ...newTask, title: '' });
                     }}
                     className="px-6 py-2 bg-slate-100 text-slate-700 rounded-lg hover:bg-slate-200 transition-colors"
                   >

@@ -52,11 +52,22 @@ export function CanvasWidget({
   const [isDragging, setIsDragging] = useState(false);
   const [isResizing, setIsResizing] = useState(false);
   const [isHovered, setIsHovered] = useState(false);
+  // Phase 6A: Mobile controls visibility - tap-to-toggle on mobile
+  const [showControlsMobile, setShowControlsMobile] = useState(false);
+  const [isMobile, setIsMobile] = useState(false);
 
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
   const [resizeStart, setResizeStart] = useState({ x: 0, y: 0 });
   const [mouseDownPos, setMouseDownPos] = useState({ x: 0, y: 0 });
   const [hasMoved, setHasMoved] = useState(false);
+
+  // Phase 6A: Detect mobile on mount
+  useEffect(() => {
+    const checkMobile = () => setIsMobile(window.innerWidth < 768);
+    checkMobile();
+    window.addEventListener('resize', checkMobile);
+    return () => window.removeEventListener('resize', checkMobile);
+  }, []);
 
   // ---- WIDGET DIMENSIONS (controlled by size_mode or custom dimensions) ----
   const getDefaultWidgetSize = useCallback(() => {
@@ -86,9 +97,45 @@ export function CanvasWidget({
     [gridSize]
   );
 
+  // Phase 6A: Handle mobile tap for controls visibility
+  const handleWidgetTap = useCallback(
+    (e: React.MouseEvent | React.TouchEvent) => {
+      if (!isMobile) return;
+      
+      const target = e.target as HTMLElement;
+      const isInteractive =
+        target.tagName === 'INPUT' ||
+        target.tagName === 'TEXTAREA' ||
+        target.tagName === 'BUTTON' ||
+        target.tagName === 'A' ||
+        target.closest('button') ||
+        target.closest('input') ||
+        target.closest('textarea') ||
+        target.closest('a') ||
+        target.closest('.resize-handle') ||
+        target.closest('.widget-controls');
+
+      if (!isInteractive && target.closest('.widget-content')) {
+        // Toggle controls on mobile tap
+        setShowControlsMobile((prev) => !prev);
+        e.stopPropagation();
+      }
+    },
+    [isMobile]
+  );
+
   // ---- DRAG START ----
   const handleMouseDown = useCallback(
     (e: React.MouseEvent) => {
+      // Phase 6A: Disable drag on mobile
+      if (isMobile) {
+        // Show toast that drag is desktop-only
+        import('../Toast').then(({ showToast }) => {
+          showToast('info', 'This action works best on desktop');
+        });
+        return;
+      }
+
       const target = e.target as HTMLElement;
 
       const isInteractive =
@@ -118,7 +165,7 @@ export function CanvasWidget({
         e.stopPropagation();
       }
     },
-    [layout.position_x, layout.position_y, layout.widget_id, onDragStart]
+    [layout.position_x, layout.position_y, layout.widget_id, onDragStart, isMobile]
   );
 
   // ---- DRAG & RESIZE LISTENERS ----
@@ -206,6 +253,16 @@ export function CanvasWidget({
   // ---- RESIZE START ----
   const handleResizeStart = useCallback(
     (e: React.MouseEvent) => {
+      // Phase 6A: Disable resize on mobile
+      if (isMobile) {
+        import('../Toast').then(({ showToast }) => {
+          showToast('info', 'This action works best on desktop');
+        });
+        e.stopPropagation();
+        e.preventDefault();
+        return;
+      }
+
       setIsResizing(true);
       setResizeStart({
         x: e.clientX,
@@ -214,7 +271,7 @@ export function CanvasWidget({
       e.stopPropagation();
       e.preventDefault();
     },
-    []
+    [isMobile]
   );
 
   // ---- VIEW MODE TOGGLE ----
@@ -297,6 +354,8 @@ export function CanvasWidget({
       onMouseDown={handleMouseDown}
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
+      onClick={handleWidgetTap}
+      onTouchStart={handleWidgetTap}
     >
       <div
         className="relative w-full h-full"
@@ -309,24 +368,34 @@ export function CanvasWidget({
         </div>
 
         {/* Controls */}
-        {isHovered && layout.size_mode !== 'icon' && (
-          <div className={getControlsClasses()}>
+        {/* Phase 6A: Show controls on hover (desktop) OR when tapped (mobile) */}
+        {((isMobile && showControlsMobile) || (!isMobile && isHovered)) && layout.size_mode !== 'icon' && (
+          <div className={`${getControlsClasses()} widget-controls`}>
             <button
-              onClick={() => onLayoutChange({ size_mode: 'icon' })}
+              onClick={() => {
+                onLayoutChange({ size_mode: 'icon' });
+                if (isMobile) setShowControlsMobile(false);
+              }}
               className={getButtonClasses(layout.size_mode === 'icon')}
               title="Icon"
             >
               <Minimize size={14} />
             </button>
             <button
-              onClick={() => onLayoutChange({ size_mode: 'mini' })}
+              onClick={() => {
+                onLayoutChange({ size_mode: 'mini' });
+                if (isMobile) setShowControlsMobile(false);
+              }}
               className={getButtonClasses(layout.size_mode === 'mini')}
               title="Mini"
             >
               <Square size={14} />
             </button>
             <button
-              onClick={() => onLayoutChange({ size_mode: 'large' })}
+              onClick={() => {
+                onLayoutChange({ size_mode: 'large' });
+                if (isMobile) setShowControlsMobile(false);
+              }}
               className={getButtonClasses(layout.size_mode === 'large')}
               title="Large"
             >
@@ -334,7 +403,10 @@ export function CanvasWidget({
             </button>
             {widgetType === 'meal_planner' && (
               <button
-                onClick={() => onLayoutChange({ size_mode: 'xlarge' })}
+                onClick={() => {
+                  onLayoutChange({ size_mode: 'xlarge' });
+                  if (isMobile) setShowControlsMobile(false);
+                }}
                 className={getButtonClasses(layout.size_mode === 'xlarge')}
                 title="Full View"
               >
@@ -343,7 +415,10 @@ export function CanvasWidget({
             )}
             {onDelete && (
               <button
-                onClick={onDelete}
+                onClick={() => {
+                  if (onDelete) onDelete();
+                  if (isMobile) setShowControlsMobile(false);
+                }}
                 className={getDeleteButtonClasses()}
                 title="Delete widget"
               >
@@ -353,8 +428,9 @@ export function CanvasWidget({
           </div>
         )}
 
-        {/* Resize handle (only for mini/full) */}
-        {layout.size_mode !== 'icon' && !isDragging && (
+        {/* Resize handle (only for mini/full, desktop only) */}
+        {/* Phase 6A: Hide resize handle on mobile */}
+        {layout.size_mode !== 'icon' && !isDragging && !isMobile && (
           <div
             className="resize-handle absolute bottom-0 right-0 w-8 h-8 cursor-nwse-resize group"
             onMouseDown={handleResizeStart}
@@ -371,15 +447,19 @@ export function CanvasWidget({
         )}
 
         {/* Overlay for icon mode - click to enlarge, drag to move */}
+        {/* Phase 6A: Make expand button always visible on mobile */}
         {layout.size_mode === 'icon' && (
           <div
             className="absolute inset-0 rounded-2xl flex items-center justify-center pointer-events-none"
+            onClick={handleWidgetTap}
+            onTouchStart={handleWidgetTap}
           >
-            {isHovered && (
+            {((isMobile && showControlsMobile) || (!isMobile && isHovered)) && (
               <button
                 onClick={(e) => {
                   e.stopPropagation();
                   cycleViewMode();
+                  if (isMobile) setShowControlsMobile(false);
                 }}
                 className={`backdrop-blur-sm p-2 rounded-lg shadow-lg pointer-events-auto transition-all duration-150 ${
                   isNeonMode

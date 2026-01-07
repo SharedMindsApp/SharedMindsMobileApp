@@ -49,19 +49,19 @@ export function DraftApplyModal({
   const hasSelection = !showPartialSelector || selectedElements.length > 0;
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[90vh] overflow-hidden flex flex-col">
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4 safe-top safe-bottom">
+      <div className="bg-white rounded-lg shadow-xl max-w-full sm:max-w-2xl w-full max-h-screen-safe overflow-hidden flex flex-col overscroll-contain">
         <div className="flex items-center justify-between p-6 border-b">
           <h2 className="text-xl font-semibold text-gray-900">Apply Draft</h2>
           <button
             onClick={onClose}
-            className="text-gray-400 hover:text-gray-600 transition-colors"
+            className="text-gray-400 hover:text-gray-600 transition-colors p-2 min-w-[44px] min-h-[44px] flex items-center justify-center"
           >
             <X className="w-5 h-5" />
           </button>
         </div>
 
-        <div className="flex-1 overflow-y-auto p-6">
+        <div className="flex-1 overflow-y-auto p-6 overscroll-contain">
           <div className="mb-6">
             <h3 className="font-medium text-gray-900 mb-2">{draft.title}</h3>
             <p className="text-sm text-gray-600">

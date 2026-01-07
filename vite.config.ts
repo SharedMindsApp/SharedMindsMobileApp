@@ -14,6 +14,9 @@ export default defineConfig({
     exclude: ['lucide-react'],
   },
   server: {
+    host: true, // Enable network access for mobile testing (binds to 0.0.0.0)
+    port: 5173,
+    strictPort: true, // Fail if port is already in use
     hmr: {
       timeout: 30000,
       overlay: true,

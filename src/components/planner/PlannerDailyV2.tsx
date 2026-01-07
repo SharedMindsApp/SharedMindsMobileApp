@@ -16,10 +16,14 @@ import { PlannerShell } from './PlannerShell';
 import { useAuth } from '../../contexts/AuthContext';
 import {
   getPersonalEventsForDateRange,
-  createPersonalCalendarEvent,
-  updatePersonalCalendarEvent,
   type PersonalCalendarEvent,
 } from '../../lib/personalSpaces/calendarService';
+// Phase 7A: Use offline-aware wrappers
+import {
+  createPersonalCalendarEvent,
+  updatePersonalCalendarEvent,
+} from '../../lib/personalSpaces/calendarServiceOffline';
+import { showToast } from '../Toast';
 import { updateContextEvent } from '../../lib/contextSovereign/contextEventsService';
 import { enforceVisibility, assertCanEdit, PermissionError } from '../../lib/permissions/enforcement';
 import { EventDetailModal } from '../calendar/EventDetailModal';
@@ -61,6 +65,15 @@ export function PlannerDailyV2() {
   const [quickAddTitle, setQuickAddTitle] = useState('');
   const [currentTime, setCurrentTime] = useState(new Date());
   const gridRef = useRef<HTMLDivElement>(null);
+  // Phase 7A: Mobile detection
+  const [isMobile, setIsMobile] = useState(false);
+
+  useEffect(() => {
+    const checkMobile = () => setIsMobile(window.innerWidth < 768);
+    checkMobile();
+    window.addEventListener('resize', checkMobile);
+    return () => window.removeEventListener('resize', checkMobile);
+  }, []);
 
   useEffect(() => {
     if (user) {
@@ -199,6 +212,12 @@ export function PlannerDailyV2() {
 
   // Handle drag start
   const handleDragStart = (e: React.MouseEvent, event: PersonalCalendarEvent) => {
+    // Phase 7A: Disable drag on mobile
+    if (isMobile) {
+      showToast('info', 'Drag and resize work best on desktop');
+      return;
+    }
+
     const permissions = event.permissions;
     if (!permissions?.can_edit) {
       return;
@@ -275,8 +294,11 @@ export function PlannerDailyV2() {
       await loadDailyData();
     } catch (err) {
       console.error('Error updating event:', err);
+      // Phase 7A: Replace alert with toast
       if (err instanceof PermissionError) {
-        alert('You do not have permission to edit this event');
+        showToast('warning', 'You don\'t have permission to edit this event');
+      } else {
+        showToast('error', 'Couldn\'t update event. It will retry when you\'re online.');
       }
       await loadDailyData();
     } finally {
@@ -287,6 +309,12 @@ export function PlannerDailyV2() {
   // Handle resize start
   const handleResizeStart = (e: React.MouseEvent, event: PersonalCalendarEvent, edge: 'top' | 'bottom') => {
     e.stopPropagation();
+    
+    // Phase 7A: Disable resize on mobile
+    if (isMobile) {
+      showToast('info', 'Drag and resize work best on desktop');
+      return;
+    }
     
     const permissions = event.permissions;
     if (!permissions?.can_edit) {
@@ -375,8 +403,11 @@ export function PlannerDailyV2() {
       await loadDailyData();
     } catch (err) {
       console.error('Error resizing event:', err);
+      // Phase 7A: Replace alert with toast
       if (err instanceof PermissionError) {
-        alert('You do not have permission to edit this event');
+        showToast('warning', 'You don\'t have permission to edit this event');
+      } else {
+        showToast('error', 'Couldn\'t update event. It will retry when you\'re online.');
       }
       await loadDailyData();
     } finally {
@@ -430,11 +461,21 @@ export function PlannerDailyV2() {
         event_type: 'event', // Default to 'event', can be changed when editing
       });
 
+      // Phase 7A: Show success feedback
+      const isOnline = navigator.onLine;
+      if (isOnline) {
+        showToast('success', 'Event added');
+      } else {
+        showToast('info', 'Saved — will sync when online');
+      }
+
       setQuickAddSlot(null);
       setQuickAddTitle('');
       await loadDailyData();
     } catch (err) {
       console.error('Error adding event:', err);
+      // Phase 7A: Show error feedback
+      showToast('error', 'Couldn\'t add event. It will retry when you\'re online.');
     }
   };
 
@@ -515,12 +556,26 @@ export function PlannerDailyV2() {
               <ChevronRight size={20} className="md:w-6 md:h-6" />
             </button>
           </div>
-          <button
-            onClick={goToWeek}
-            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm"
-          >
-            Week View
-          </button>
+          <div className="flex items-center gap-2">
+            {/* Phase 7A: Add "Today" button */}
+            {!isToday && (
+              <button
+                onClick={() => {
+                  const today = new Date();
+                  setSelectedDate(today);
+                }}
+                className="px-3 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg text-sm font-medium transition-colors min-h-[44px]"
+              >
+                Today
+              </button>
+            )}
+            <button
+              onClick={goToWeek}
+              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm min-h-[44px]"
+            >
+              Week View
+            </button>
+          </div>
         </div>
 
         {/* Day Time Grid */}

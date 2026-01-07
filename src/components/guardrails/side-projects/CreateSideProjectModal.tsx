@@ -37,29 +37,31 @@ export function CreateSideProjectModal({ onClose, onSubmit }: Props) {
       onClose();
     } catch (error) {
       console.error('Failed to create side project:', error);
-      alert('Failed to create side project. Please try again.');
+      // Phase 5A: Use toast instead of alert
+      const { showToast } = await import('../../../components/Toast');
+      showToast('error', 'Failed to create side project. Please try again.');
     } finally {
       setIsSubmitting(false);
     }
   }
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-lg shadow-xl max-w-lg w-full max-h-[90vh] overflow-y-auto">
-        <div className="sticky top-0 bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between">
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 safe-top safe-bottom">
+      <div className="bg-white rounded-lg shadow-xl max-w-full sm:max-w-lg w-full max-h-screen-safe overflow-hidden flex flex-col overscroll-contain">
+        <div className="sticky top-0 bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between z-10">
           <div className="flex items-center gap-2">
             <Sparkles size={20} className="text-purple-600" />
             <h2 className="text-xl font-bold text-gray-900">Create Side Project</h2>
           </div>
           <button
             onClick={onClose}
-            className="text-gray-500 hover:text-gray-700 p-1 rounded hover:bg-gray-100"
+            className="text-gray-500 hover:text-gray-700 p-2 rounded hover:bg-gray-100 min-w-[44px] min-h-[44px] flex items-center justify-center"
           >
             <X size={20} />
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="p-6 space-y-6">
+        <form onSubmit={handleSubmit} className="p-6 space-y-6 overflow-y-auto flex-1 min-h-0">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">
               Project Name <span className="text-red-500">*</span>

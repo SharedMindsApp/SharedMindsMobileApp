@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Loader2, LayoutGrid, Smartphone, Home, Users, User, ChevronDown, Target, MessageCircle, Settings } from 'lucide-react';
+import { Loader2, LayoutGrid, Smartphone, Home, Users, User, ChevronDown, Target, MessageCircle, Settings, ArrowLeft } from 'lucide-react';
 import { FridgeCanvas } from './fridge-canvas/FridgeCanvas';
 import { MobileModeContainer } from './mobile/MobileModeContainer';
 import { FloatingAIChatWidget } from './ai-chat/FloatingAIChatWidget';
@@ -86,6 +86,14 @@ export function PersonalSpacePage() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16">
             <div className="flex items-center gap-6">
+              {/* Phase 6A: Mobile navigation safety - show back button on mobile */}
+              <button
+                onClick={() => navigate('/dashboard')}
+                className="md:hidden p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-50 rounded-lg transition-colors min-h-[44px] min-w-[44px] flex items-center justify-center"
+                aria-label="Back to Dashboard"
+              >
+                <ArrowLeft size={20} />
+              </button>
               <div>
                 <h1 className="text-lg font-bold text-gray-900">Personal Space</h1>
                 <p className="text-xs text-gray-500">Your private dashboard</p>

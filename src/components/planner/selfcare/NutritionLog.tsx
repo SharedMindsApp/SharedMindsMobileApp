@@ -3,7 +3,10 @@ import { useState, useEffect } from 'react';
 import { Utensils, Plus, Trash2, ArrowLeft, Calendar, Tag } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import * as selfCareService from '../../../lib/selfCareService';
+import { createNutritionLog } from '../../../lib/selfCareServiceOffline';
 import type { NutritionLog } from '../../../lib/selfCareService';
+import { showToast } from '../../Toast';
+import { ConfirmDialogInline } from '../../ConfirmDialogInline';
 
 const mealTypes = ['breakfast', 'lunch', 'dinner', 'snack', 'other'] as const;
 const commonTags = ['balanced', 'rushed', 'social', 'comfort', 'healthy', 'homemade', 'takeout'];
@@ -14,6 +17,7 @@ export function NutritionLog() {
   const [logs, setLogs] = useState<NutritionLog[]>([]);
   const [householdId, setHouseholdId] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
+  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
 
   const [formData, setFormData] = useState({
     meal_type: '' as typeof mealTypes[number] | '',
@@ -48,7 +52,7 @@ export function NutritionLog() {
     if (!householdId) return;
 
     try {
-      await selfCareService.createNutritionLog({
+      await createNutritionLog({
         household_id: householdId,
         meal_type: formData.meal_type || undefined,
         content: formData.content,
@@ -69,16 +73,24 @@ export function NutritionLog() {
       await loadData();
     } catch (error) {
       console.error('Error saving log:', error);
+      showToast('error', 'Failed to save nutrition log. Please try again.');
     }
   };
 
   const handleDelete = async (id: string) => {
-    if (!confirm('Delete this entry?')) return;
+    setDeleteConfirmId(id);
+  };
+
+  const confirmDelete = async () => {
+    if (!deleteConfirmId) return;
     try {
-      await selfCareService.deleteNutritionLog(id);
+      await selfCareService.deleteNutritionLog(deleteConfirmId);
       await loadData();
+      setDeleteConfirmId(null);
     } catch (error) {
       console.error('Error deleting log:', error);
+      showToast('error', 'Failed to delete entry. Please try again.');
+      setDeleteConfirmId(null);
     }
   };
 
@@ -90,6 +102,23 @@ export function NutritionLog() {
         : [...prev.tags, tag]
     }));
   };
+
+  // Phase 5A: Confirmation dialog
+  if (deleteConfirmId) {
+    return (
+      <PlannerShell>
+        <ConfirmDialogInline
+          isOpen={true}
+          message="Delete this entry?"
+          confirmText="Delete"
+          cancelText="Cancel"
+          variant="danger"
+          onConfirm={confirmDelete}
+          onCancel={() => setDeleteConfirmId(null)}
+        />
+      </PlannerShell>
+    );
+  }
 
   if (loading) {
     return (

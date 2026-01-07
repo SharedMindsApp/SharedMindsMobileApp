@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Target, Heart, Sparkles, Trophy, BookOpen, TrendingUp, Star, Lightbulb, Award, Calendar, ArrowLeft } from 'lucide-react';
 import { PlannerShell } from './PlannerShell';
 import { LifeAreaFeatureCard } from './LifeAreaFeatureCard';
@@ -18,7 +18,23 @@ import {
 type View = 'dashboard' | 'goals' | 'motivation' | 'hobbies' | 'milestones' | 'journal' | 'growth' | 'values' | 'habits' | 'ideas' | 'skills';
 
 export function PlannerPersonal() {
-  const [currentView, setCurrentView] = useState<View>('dashboard');
+  // Phase 4A: Remember last used section for faster access
+  const [currentView, setCurrentView] = useState<View>(() => {
+    if (typeof window !== 'undefined') {
+      const lastSection = localStorage.getItem('last_personal_section');
+      if (lastSection && ['dashboard', 'goals', 'motivation', 'hobbies', 'milestones', 'journal', 'growth', 'values', 'habits', 'ideas', 'skills'].includes(lastSection)) {
+        return lastSection as View;
+      }
+    }
+    return 'dashboard';
+  });
+
+  // Phase 4A: Save section when it changes
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('last_personal_section', currentView);
+    }
+  }, [currentView]);
 
   const renderView = () => {
     switch (currentView) {

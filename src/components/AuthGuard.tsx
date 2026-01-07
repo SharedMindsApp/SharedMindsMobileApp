@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Navigate } from 'react-router-dom';
 import { Loader2, LogOut, AlertCircle } from 'lucide-react';
 import { supabase } from '../lib/supabase';
+import { isStandaloneApp } from '../lib/appContext';
 
 type AuthGuardProps = {
   children: React.ReactNode;
@@ -40,6 +41,7 @@ export function AuthGuard({ children }: AuthGuardProps) {
 
   const checkInitialSession = async () => {
     try {
+      // Phase 3C: Use getSession which is fast for cached sessions
       const { data: { session }, error } = await supabase.auth.getSession();
 
       if (error) {
@@ -49,6 +51,7 @@ export function AuthGuard({ children }: AuthGuardProps) {
         setAuthenticated(!!session);
       }
     } catch (error) {
+      // Phase 3C: Handle network errors gracefully
       console.error('Auth initialization error:', error);
       setAuthenticated(false);
     } finally {
@@ -134,7 +137,9 @@ export function AuthGuard({ children }: AuthGuardProps) {
   }
 
   if (!authenticated) {
-    return <Navigate to="/" replace />;
+    // Phase 3B: In installed app, redirect to login instead of landing page
+    const redirectTo = isStandaloneApp() ? '/auth/login' : '/';
+    return <Navigate to={redirectTo} replace />;
   }
 
   return <>{children}</>;

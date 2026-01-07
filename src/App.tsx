@@ -1,4 +1,4 @@
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { AuthProvider } from './contexts/AuthContext';
 import { EncryptionProvider } from './contexts/EncryptionContext';
 import { ViewAsProvider } from './contexts/ViewAsContext';
@@ -10,6 +10,7 @@ import { RegulationProvider } from './contexts/RegulationContext';
 import { AIChatWidgetProvider } from './contexts/AIChatWidgetContext';
 import { ActiveDataProvider } from './contexts/ActiveDataContext';
 import { ForegroundTriggersProvider } from './contexts/ForegroundTriggersContext';
+import { NetworkStatusProvider } from './contexts/NetworkStatusContext';
 import { Layout } from './components/Layout';
 import { RouteGlitchEffect } from './components/RouteGlitchEffect';
 import { Dashboard } from './components/Dashboard';
@@ -30,6 +31,8 @@ import { GuestGuard } from './components/GuestGuard';
 import { RequireRole } from './components/RequireRole';
 import { Landing } from './components/Landing';
 import { HowItWorks } from './components/HowItWorks';
+import { isStandaloneApp } from './lib/appContext';
+import { AppRouteGuard } from './components/AppRouteGuard';
 import { AdminDashboard } from './components/admin/AdminDashboard';
 import { AdminUsers } from './components/admin/AdminUsers';
 import { AdminHouseholds } from './components/admin/AdminHouseholds';
@@ -200,9 +203,11 @@ function App() {
                     <FocusSessionProvider>
                       <EncryptionProvider>
                         <AIChatWidgetProvider>
-                          <ForegroundTriggersProvider>
+                      <ForegroundTriggersProvider>
+                        <NetworkStatusProvider>
+                          <AppRouteGuard>
                             <RouteGlitchEffect />
-                            <Routes>
+                              <Routes>
           <Route
             path="/"
             element={
@@ -1846,8 +1851,10 @@ function App() {
               </AuthGuard>
             }
           />
-                          </Routes>
-                          </ForegroundTriggersProvider>
+                              </Routes>
+                            </AppRouteGuard>
+                          </NetworkStatusProvider>
+                        </ForegroundTriggersProvider>
                         </AIChatWidgetProvider>
                       </EncryptionProvider>
                     </FocusSessionProvider>

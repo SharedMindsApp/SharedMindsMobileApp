@@ -1,7 +1,8 @@
 // components/fridge-canvas/FridgeCanvas.tsx
 
 import { useState, useEffect, useCallback } from "react";
-import { Loader2, AlertCircle, ShieldCheck, Eye } from "lucide-react";
+import { Loader2, AlertCircle, ShieldCheck, Eye, X } from "lucide-react";
+import { showToast } from "../Toast";
 
 import { InfiniteCanvas } from "./InfiniteCanvas";
 import { CanvasWidget as CanvasWidgetWrapper } from "./CanvasWidget";
@@ -238,7 +239,8 @@ const handleAddWidget = async (type: WidgetType) => {
   // --------------------------------------
   if (!canEdit) {
     console.warn("⛔ User does NOT have edit permissions.");
-    setError("You do not have permission to add widgets.");
+    // Phase 6A: Replace silent failure with toast feedback
+    showToast('warning', 'You don\'t have permission to edit this space');
     return;
   }
 
@@ -342,7 +344,11 @@ const handleAddWidget = async (type: WidgetType) => {
     widgetId: string,
     content: WidgetContent
   ) => {
-    if (!canEdit) return;
+    // Phase 6A: Replace silent failure with toast feedback
+    if (!canEdit) {
+      showToast('warning', 'You don\'t have permission to edit this space');
+      return;
+    }
 
     setWidgets((prev) =>
       prev.map((w) => (w.id === widgetId ? { ...w, content } : w))
@@ -359,7 +365,11 @@ const handleAddWidget = async (type: WidgetType) => {
   // DELETE WIDGET (only if canEdit)
   // ----------------------------
   const handleDeleteWidget = (widgetId: string) => {
-    if (!canEdit) return;
+    // Phase 6A: Replace silent failure with toast feedback
+    if (!canEdit) {
+      showToast('warning', 'You don\'t have permission to edit this space');
+      return;
+    }
     setDeleteWidgetDialog({ isOpen: true, widgetId });
   };
 
@@ -824,12 +834,71 @@ const handleAddWidget = async (type: WidgetType) => {
     );
   }
 
+  // Phase 6A: Mobile canvas disclaimer state
+  const [showMobileDisclaimer, setShowMobileDisclaimer] = useState(() => {
+    if (typeof window === 'undefined') return false;
+    const dismissed = sessionStorage.getItem('mobile_canvas_disclaimer_dismissed');
+    return !dismissed && window.innerWidth < 768;
+  });
+
   // ----------------------------
   // MAIN RENDER
   // ----------------------------
   return (
     <>
       <CanvasHeader householdName={householdName} />
+
+      {/* Phase 6A: Mobile canvas disclaimer - dismissible notice */}
+      {showMobileDisclaimer && isMobile && (
+        <div className="fixed top-20 left-1/2 -translate-x-1/2 z-50 max-w-md mx-4">
+          <div className="bg-blue-50 border border-blue-200 rounded-lg shadow-lg px-4 py-3 flex items-start gap-3">
+            <div className="flex-1">
+              <p className="text-sm text-blue-800 font-medium">
+                Advanced canvas editing works best on desktop
+              </p>
+              <p className="text-xs text-blue-600 mt-1">
+                You can view and interact with widgets, but some actions like drag and resize are optimized for desktop.
+              </p>
+            </div>
+            <button
+              onClick={() => {
+                setShowMobileDisclaimer(false);
+                sessionStorage.setItem('mobile_canvas_disclaimer_dismissed', 'true');
+              }}
+              className="text-blue-400 hover:text-blue-600 transition-colors flex-shrink-0"
+              aria-label="Dismiss"
+            >
+              <X size={18} />
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Phase 6A: Mobile canvas disclaimer - dismissible notice */}
+      {showMobileDisclaimer && isMobile && (
+        <div className="fixed top-20 left-1/2 -translate-x-1/2 z-50 max-w-md mx-4">
+          <div className="bg-blue-50 border border-blue-200 rounded-lg shadow-lg px-4 py-3 flex items-start gap-3">
+            <div className="flex-1">
+              <p className="text-sm text-blue-800 font-medium">
+                Advanced canvas editing works best on desktop
+              </p>
+              <p className="text-xs text-blue-600 mt-1">
+                You can view and interact with widgets, but some actions like drag and resize are optimized for desktop.
+              </p>
+            </div>
+            <button
+              onClick={() => {
+                setShowMobileDisclaimer(false);
+                sessionStorage.setItem('mobile_canvas_disclaimer_dismissed', 'true');
+              }}
+              className="text-blue-400 hover:text-blue-600 transition-colors flex-shrink-0"
+              aria-label="Dismiss"
+            >
+              <X size={18} />
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Permission badge */}
       <div className="fixed top-20 right-4 z-40">

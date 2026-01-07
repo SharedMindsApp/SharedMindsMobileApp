@@ -174,6 +174,8 @@ export function PlannerJournal() {
               rows={12}
               placeholder="What's on your mind today?"
               style={{ minHeight: '300px' }}
+              // Phase 4A: Auto-focus on mobile for faster daily entry
+              autoFocus={typeof window !== 'undefined' && window.innerWidth < 1024 && !dailyEntry}
             />
           </div>
         </section>

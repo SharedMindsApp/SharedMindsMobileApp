@@ -10,6 +10,7 @@ import type { MasterProject } from '../../lib/guardrailsTypes';
 import type { AppTheme } from '../../lib/uiPreferencesTypes';
 import { FloatingAIChatWidget } from '../ai-chat/FloatingAIChatWidget';
 import { getSavedConversations, type GroupedConversations } from '../../lib/guardrails/ai/savedConversationsService';
+import { showToast } from '../Toast';
 
 interface GuardrailsLayoutProps {
   children: ReactNode;
@@ -109,11 +110,12 @@ export function GuardrailsLayout({ children }: GuardrailsLayoutProps) {
   };
 
   return (
-    <div className="flex h-screen bg-slate-50">
+    <div className="flex h-screen-safe bg-slate-50">
       {/* Mobile Menu Button */}
       <button
         onClick={() => setMobileMenuOpen(true)}
-        className="lg:hidden fixed top-4 left-4 z-30 p-2 bg-white rounded-lg shadow-lg border border-gray-200"
+        className="lg:hidden fixed top-4 left-4 z-30 p-3 bg-white rounded-lg shadow-lg border border-gray-200 min-w-[44px] min-h-[44px] flex items-center justify-center active:bg-gray-50"
+        aria-label="Open menu"
       >
         <Menu size={24} className="text-gray-700" />
       </button>
@@ -139,7 +141,8 @@ export function GuardrailsLayout({ children }: GuardrailsLayoutProps) {
             {/* Mobile close button */}
             <button
               onClick={() => setMobileMenuOpen(false)}
-              className="lg:hidden p-2 hover:bg-gray-100 rounded-lg transition-colors"
+              className="lg:hidden p-3 hover:bg-gray-100 active:bg-gray-200 rounded-lg transition-colors min-w-[44px] min-h-[44px] flex items-center justify-center"
+              aria-label="Close menu"
               title="Close menu"
             >
               <X size={20} />
@@ -147,7 +150,8 @@ export function GuardrailsLayout({ children }: GuardrailsLayoutProps) {
             {/* Desktop collapse button */}
             <button
               onClick={() => setCollapsed(!collapsed)}
-              className="hidden lg:block p-2 hover:bg-gray-100 rounded-lg transition-colors"
+              className="hidden lg:block p-3 hover:bg-gray-100 active:bg-gray-200 rounded-lg transition-colors min-w-[44px] min-h-[44px] flex items-center justify-center"
+              aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
               title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
             >
               {collapsed ? <ChevronRight size={20} /> : <ChevronLeft size={20} />}
@@ -195,7 +199,11 @@ export function GuardrailsLayout({ children }: GuardrailsLayoutProps) {
             {collapsed ? (
               <div className="group relative">
                 <Target size={20} className="text-amber-600" />
-                <div className="absolute left-full ml-2 top-1/2 -translate-y-1/2 bg-gray-900 text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none z-50">
+                {/* Phase 2B: Always-visible label on mobile, hover on desktop */}
+                <div className="lg:hidden absolute left-full ml-2 top-1/2 -translate-y-1/2 bg-gray-900 text-white text-xs px-2 py-1 rounded whitespace-nowrap z-50">
+                  No active project
+                </div>
+                <div className="hidden lg:block absolute left-full ml-2 top-1/2 -translate-y-1/2 bg-gray-900 text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none z-50">
                   No active project
                 </div>
               </div>
@@ -223,7 +231,8 @@ export function GuardrailsLayout({ children }: GuardrailsLayoutProps) {
                   onClick={() => {
                     setMobileMenuOpen(false);
                     if (requiresProject) {
-                      alert('Please select an active project from the Dashboard first.');
+                      // Phase 5A: Use toast instead of alert
+                      showToast('warning', 'Please select an active project from the Dashboard first.');
                       navigate('/guardrails/dashboard');
                     } else {
                       if (item.path === '/guardrails/reality' && activeProject) {
@@ -234,23 +243,32 @@ export function GuardrailsLayout({ children }: GuardrailsLayoutProps) {
                     }
                   }}
                   disabled={requiresProject}
-                  className={`w-full flex items-center ${collapsed ? 'justify-center' : 'gap-3'} px-4 py-3 rounded-lg text-sm font-medium transition-colors ${
+                  className={`w-full flex items-center ${collapsed ? 'justify-center min-h-[44px]' : 'gap-3'} px-4 py-3 rounded-lg text-sm font-medium transition-all duration-200 min-h-[44px] ${
                     active
-                      ? 'bg-blue-50 text-blue-700'
+                      ? 'bg-blue-50 text-blue-700 ring-2 ring-blue-300 shadow-md font-semibold'
                       : requiresProject
                       ? 'text-gray-400 cursor-not-allowed'
-                      : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
+                      : 'text-gray-600 hover:bg-gray-50 active:bg-gray-100 hover:text-gray-900'
                   }`}
-                  title={!collapsed && requiresProject ? 'Select an active project first' : ''}
+                  aria-label={item.name}
+                  aria-current={active ? 'page' : undefined}
+                  title={!collapsed && requiresProject ? 'Select an active project first' : item.name}
                 >
                   <Icon size={20} />
                   {!collapsed && <span>{item.name}</span>}
                 </button>
+                {/* Phase 2B: Replace hover-only tooltip with always-visible label on mobile */}
                 {collapsed && (
-                  <div className="absolute left-full ml-2 top-1/2 -translate-y-1/2 bg-gray-900 text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none z-50">
-                    {item.name}
-                    {requiresProject && <span className="block text-gray-400 text-[10px]">Needs active project</span>}
-                  </div>
+                  <>
+                    <div className="lg:hidden absolute left-full ml-2 top-1/2 -translate-y-1/2 bg-gray-900 text-white text-xs px-2 py-1 rounded whitespace-nowrap z-50">
+                      {item.name}
+                      {requiresProject && <span className="block text-gray-400 text-[10px]">Needs active project</span>}
+                    </div>
+                    <div className="hidden lg:block absolute left-full ml-2 top-1/2 -translate-y-1/2 bg-gray-900 text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none z-50">
+                      {item.name}
+                      {requiresProject && <span className="block text-gray-400 text-[10px]">Needs active project</span>}
+                    </div>
+                  </>
                 )}
               </div>
             );
@@ -342,19 +360,26 @@ export function GuardrailsLayout({ children }: GuardrailsLayoutProps) {
                     setMobileMenuOpen(false);
                     navigate('/planner');
                   }}
-                  className={`w-full flex items-center ${collapsed ? 'justify-center' : 'gap-3'} px-4 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+                  className={`w-full flex items-center ${collapsed ? 'justify-center min-h-[44px]' : 'gap-3'} px-4 py-2.5 rounded-lg text-sm font-medium transition-colors min-h-[44px] ${
                     location.pathname.startsWith('/planner')
                       ? 'bg-blue-50 text-blue-700'
-                      : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
+                      : 'text-gray-600 hover:bg-gray-50 active:bg-gray-100 hover:text-gray-900'
                   }`}
+                  aria-label="Planner"
                 >
                   <BookOpen size={18} />
                   {!collapsed && <span>Planner</span>}
                 </button>
+                {/* Phase 2B: Always-visible label on mobile, hover on desktop */}
                 {collapsed && (
-                  <div className="absolute left-full ml-2 top-1/2 -translate-y-1/2 bg-gray-900 text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none z-50">
-                    Planner
-                  </div>
+                  <>
+                    <div className="lg:hidden absolute left-full ml-2 top-1/2 -translate-y-1/2 bg-gray-900 text-white text-xs px-2 py-1 rounded whitespace-nowrap z-50">
+                      Planner
+                    </div>
+                    <div className="hidden lg:block absolute left-full ml-2 top-1/2 -translate-y-1/2 bg-gray-900 text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none z-50">
+                      Planner
+                    </div>
+                  </>
                 )}
               </div>
 
@@ -364,19 +389,26 @@ export function GuardrailsLayout({ children }: GuardrailsLayoutProps) {
                     setMobileMenuOpen(false);
                     navigate('/spaces/personal');
                   }}
-                  className={`w-full flex items-center ${collapsed ? 'justify-center' : 'gap-3'} px-4 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+                  className={`w-full flex items-center ${collapsed ? 'justify-center min-h-[44px]' : 'gap-3'} px-4 py-2.5 rounded-lg text-sm font-medium transition-colors min-h-[44px] ${
                     location.pathname === '/spaces/personal'
                       ? 'bg-blue-50 text-blue-700'
-                      : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
+                      : 'text-gray-600 hover:bg-gray-50 active:bg-gray-100 hover:text-gray-900'
                   }`}
+                  aria-label="Personal Widgets"
                 >
                   <Grid3x3 size={18} />
                   {!collapsed && <span>Personal Widgets</span>}
                 </button>
+                {/* Phase 2B: Always-visible label on mobile, hover on desktop */}
                 {collapsed && (
-                  <div className="absolute left-full ml-2 top-1/2 -translate-y-1/2 bg-gray-900 text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none z-50">
-                    Personal Widgets
-                  </div>
+                  <>
+                    <div className="lg:hidden absolute left-full ml-2 top-1/2 -translate-y-1/2 bg-gray-900 text-white text-xs px-2 py-1 rounded whitespace-nowrap z-50">
+                      Personal Widgets
+                    </div>
+                    <div className="hidden lg:block absolute left-full ml-2 top-1/2 -translate-y-1/2 bg-gray-900 text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none z-50">
+                      Personal Widgets
+                    </div>
+                  </>
                 )}
               </div>
 
@@ -386,19 +418,26 @@ export function GuardrailsLayout({ children }: GuardrailsLayoutProps) {
                     setMobileMenuOpen(false);
                     navigate('/spaces/shared');
                   }}
-                  className={`w-full flex items-center ${collapsed ? 'justify-center' : 'gap-3'} px-4 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+                  className={`w-full flex items-center ${collapsed ? 'justify-center min-h-[44px]' : 'gap-3'} px-4 py-2.5 rounded-lg text-sm font-medium transition-colors min-h-[44px] ${
                     location.pathname === '/spaces/shared'
                       ? 'bg-blue-50 text-blue-700'
-                      : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
+                      : 'text-gray-600 hover:bg-gray-50 active:bg-gray-100 hover:text-gray-900'
                   }`}
+                  aria-label="Shared Widgets"
                 >
                   <Share2 size={18} />
                   {!collapsed && <span>Shared Widgets</span>}
                 </button>
+                {/* Phase 2B: Always-visible label on mobile, hover on desktop */}
                 {collapsed && (
-                  <div className="absolute left-full ml-2 top-1/2 -translate-y-1/2 bg-gray-900 text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none z-50">
-                    Shared Widgets
-                  </div>
+                  <>
+                    <div className="lg:hidden absolute left-full ml-2 top-1/2 -translate-y-1/2 bg-gray-900 text-white text-xs px-2 py-1 rounded whitespace-nowrap z-50">
+                      Shared Widgets
+                    </div>
+                    <div className="hidden lg:block absolute left-full ml-2 top-1/2 -translate-y-1/2 bg-gray-900 text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none z-50">
+                      Shared Widgets
+                    </div>
+                  </>
                 )}
               </div>
 
@@ -408,19 +447,26 @@ export function GuardrailsLayout({ children }: GuardrailsLayoutProps) {
                     setMobileMenuOpen(false);
                     navigate('/mobile');
                   }}
-                  className={`w-full flex items-center ${collapsed ? 'justify-center' : 'gap-3'} px-4 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+                  className={`w-full flex items-center ${collapsed ? 'justify-center min-h-[44px]' : 'gap-3'} px-4 py-2.5 rounded-lg text-sm font-medium transition-colors min-h-[44px] ${
                     location.pathname === '/mobile'
                       ? 'bg-blue-50 text-blue-700'
-                      : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
+                      : 'text-gray-600 hover:bg-gray-50 active:bg-gray-100 hover:text-gray-900'
                   }`}
+                  aria-label="Mobile Mode"
                 >
                   <Smartphone size={18} />
                   {!collapsed && <span>Mobile Mode</span>}
                 </button>
+                {/* Phase 2B: Always-visible label on mobile, hover on desktop */}
                 {collapsed && (
-                  <div className="absolute left-full ml-2 top-1/2 -translate-y-1/2 bg-gray-900 text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none z-50">
-                    Mobile Mode
-                  </div>
+                  <>
+                    <div className="lg:hidden absolute left-full ml-2 top-1/2 -translate-y-1/2 bg-gray-900 text-white text-xs px-2 py-1 rounded whitespace-nowrap z-50">
+                      Mobile Mode
+                    </div>
+                    <div className="hidden lg:block absolute left-full ml-2 top-1/2 -translate-y-1/2 bg-gray-900 text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none z-50">
+                      Mobile Mode
+                    </div>
+                  </>
                 )}
               </div>
 
@@ -430,19 +476,26 @@ export function GuardrailsLayout({ children }: GuardrailsLayoutProps) {
                     setMobileMenuOpen(false);
                     navigate('/guardrails/settings/archive');
                   }}
-                  className={`w-full flex items-center ${collapsed ? 'justify-center' : 'gap-3'} px-4 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+                  className={`w-full flex items-center ${collapsed ? 'justify-center min-h-[44px]' : 'gap-3'} px-4 py-2.5 rounded-lg text-sm font-medium transition-colors min-h-[44px] ${
                     location.pathname === '/guardrails/settings/archive'
                       ? 'bg-blue-50 text-blue-700'
-                      : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
+                      : 'text-gray-600 hover:bg-gray-50 active:bg-gray-100 hover:text-gray-900'
                   }`}
+                  aria-label="Archive"
                 >
                   <Archive size={18} />
                   {!collapsed && <span>Archive</span>}
                 </button>
+                {/* Phase 2B: Always-visible label on mobile, hover on desktop */}
                 {collapsed && (
-                  <div className="absolute left-full ml-2 top-1/2 -translate-y-1/2 bg-gray-900 text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none z-50">
-                    Archive
-                  </div>
+                  <>
+                    <div className="lg:hidden absolute left-full ml-2 top-1/2 -translate-y-1/2 bg-gray-900 text-white text-xs px-2 py-1 rounded whitespace-nowrap z-50">
+                      Archive
+                    </div>
+                    <div className="hidden lg:block absolute left-full ml-2 top-1/2 -translate-y-1/2 bg-gray-900 text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none z-50">
+                      Archive
+                    </div>
+                  </>
                 )}
               </div>
 
@@ -512,7 +565,8 @@ export function GuardrailsLayout({ children }: GuardrailsLayoutProps) {
         </div>
       </aside>
 
-      <main className="flex-1 overflow-y-auto">
+      {/* Phase 2C: Ensure main content expands fully on mobile when sidebar is drawer */}
+      <main className="flex-1 min-w-0 overflow-y-auto">
         {children}
       </main>
 

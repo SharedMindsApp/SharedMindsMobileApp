@@ -22,11 +22,15 @@ import {
 } from '../../lib/weeklyPlanner';
 import {
   getPersonalEventsForDateRange,
-  createPersonalCalendarEvent,
-  updatePersonalCalendarEvent,
   deletePersonalCalendarEvent,
   type PersonalCalendarEvent,
 } from '../../lib/personalSpaces/calendarService';
+// Phase 7A: Use offline-aware wrappers
+import {
+  createPersonalCalendarEvent,
+  updatePersonalCalendarEvent,
+} from '../../lib/personalSpaces/calendarServiceOffline';
+import { showToast } from '../Toast';
 import { updateContextEvent } from '../../lib/contextSovereign/contextEventsService';
 import { enforceVisibility, assertCanEdit, PermissionError } from '../../lib/permissions/enforcement';
 import type { PermissionFlags } from '../../lib/permissions/types';
@@ -71,6 +75,20 @@ export function PlannerWeekly() {
   const [quickAddTitle, setQuickAddTitle] = useState('');
   const [currentTime, setCurrentTime] = useState(new Date());
   const gridRef = useRef<HTMLDivElement>(null);
+  // Phase 7A: Mobile detection and disclaimer
+  const [isMobile, setIsMobile] = useState(false);
+  const [showMobileDisclaimer, setShowMobileDisclaimer] = useState(() => {
+    if (typeof window === 'undefined') return false;
+    const dismissed = sessionStorage.getItem('planner_weekly_mobile_disclaimer_dismissed');
+    return !dismissed && window.innerWidth < 768;
+  });
+
+  useEffect(() => {
+    const checkMobile = () => setIsMobile(window.innerWidth < 768);
+    checkMobile();
+    window.addEventListener('resize', checkMobile);
+    return () => window.removeEventListener('resize', checkMobile);
+  }, []);
 
   useEffect(() => {
     if (user) {
@@ -409,8 +427,11 @@ export function PlannerWeekly() {
       await loadWeeklyData();
     } catch (err) {
       console.error('Error updating event:', err);
+      // Phase 7A: Replace alert with toast
       if (err instanceof PermissionError) {
-        alert('You do not have permission to edit this event');
+        showToast('warning', 'You don\'t have permission to edit this event');
+      } else {
+        showToast('error', 'Couldn\'t update event. It will retry when you\'re online.');
       }
       await loadWeeklyData(); // Reload to revert optimistic update
     } finally {
@@ -421,6 +442,13 @@ export function PlannerWeekly() {
   // Handle resize start
   const handleResizeStart = (e: React.MouseEvent, event: PersonalCalendarEvent, edge: 'top' | 'bottom') => {
     e.stopPropagation();
+    
+    // Phase 7A: Disable resize on mobile
+    if (isMobile) {
+      showToast('info', 'Drag and resize work best on desktop');
+      e.preventDefault();
+      return;
+    }
     
     const permissions = event.permissions;
     if (!permissions?.can_edit) {
@@ -566,11 +594,21 @@ export function PlannerWeekly() {
         event_type: 'event', // Default to 'event', can be changed when editing
       });
 
+      // Phase 7A: Show success feedback
+      const isOnline = navigator.onLine;
+      if (isOnline) {
+        showToast('success', 'Event added');
+      } else {
+        showToast('info', 'Saved — will sync when online');
+      }
+
       setQuickAddSlot(null);
       setQuickAddTitle('');
       await loadWeeklyData();
     } catch (err) {
       console.error('Error adding event:', err);
+      // Phase 7A: Show error feedback
+      showToast('error', 'Couldn\'t add event. It will retry when you\'re online.');
     }
   };
 
@@ -597,8 +635,11 @@ export function PlannerWeekly() {
       await loadWeeklyData();
     } catch (err) {
       console.error('Error deleting event:', err);
+      // Phase 7A: Replace alert with toast
       if (err instanceof PermissionError) {
-        alert('You do not have permission to delete this event');
+        showToast('warning', 'You don\'t have permission to delete this event');
+      } else {
+        showToast('error', 'Couldn\'t delete event. Please try again.');
       }
     }
   };
@@ -619,6 +660,32 @@ export function PlannerWeekly() {
   return (
     <PlannerShell>
       <div className="max-w-full">
+        {/* Phase 7A: Mobile disclaimer */}
+        {showMobileDisclaimer && isMobile && (
+          <div className="mb-4 mx-4">
+            <div className="bg-blue-50 border border-blue-200 rounded-lg shadow-lg px-4 py-3 flex items-start gap-3">
+              <div className="flex-1">
+                <p className="text-sm text-blue-800 font-medium">
+                  Advanced scheduling works best on desktop
+                </p>
+                <p className="text-xs text-blue-600 mt-1">
+                  You can view and edit events, but drag and resize are optimized for desktop.
+                </p>
+              </div>
+              <button
+                onClick={() => {
+                  setShowMobileDisclaimer(false);
+                  sessionStorage.setItem('planner_weekly_mobile_disclaimer_dismissed', 'true');
+                }}
+                className="text-blue-400 hover:text-blue-600 transition-colors flex-shrink-0"
+                aria-label="Dismiss"
+              >
+                <X size={18} />
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* Header */}
         <div className="flex items-center justify-between mb-4 md:mb-6">
           <button onClick={() => navigateWeek('prev')} className="p-1 md:p-2 hover:bg-gray-100 rounded">
@@ -628,9 +695,23 @@ export function PlannerWeekly() {
             <h1 className="text-2xl md:text-3xl lg:text-4xl font-bold text-gray-900">Weekly Planner</h1>
             <p className="text-xs md:text-sm text-gray-600 mt-1">{weekStart} - {weekEnd}</p>
           </div>
-          <button onClick={() => navigateWeek('next')} className="p-1 md:p-2 hover:bg-gray-100 rounded">
-            <ChevronRight size={20} className="md:w-6 md:h-6" />
-          </button>
+          <div className="flex items-center gap-2">
+            {/* Phase 7A: Add "Today" button */}
+            {!isCurrentWeek && (
+              <button
+                onClick={() => {
+                  const today = new Date();
+                  setSelectedDate(today);
+                }}
+                className="px-3 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg text-sm font-medium transition-colors min-h-[44px]"
+              >
+                Today
+              </button>
+            )}
+            <button onClick={() => navigateWeek('next')} className="p-1 md:p-2 hover:bg-gray-100 rounded">
+              <ChevronRight size={20} className="md:w-6 md:h-6" />
+            </button>
+          </div>
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-3 md:gap-4 lg:gap-6">
@@ -685,6 +766,8 @@ export function PlannerWeekly() {
                   onKeyPress={(e) => e.key === 'Enter' && addGoal()}
                   placeholder="Add a goal..."
                   className="flex-1 px-2 py-1 text-xs border border-blue-300 rounded"
+                  // Phase 4A: Auto-focus for faster entry on mobile
+                  autoFocus={typeof window !== 'undefined' && window.innerWidth < 1024}
                 />
                 <button
                   onClick={addGoal}
@@ -697,7 +780,8 @@ export function PlannerWeekly() {
           </div>
 
           {/* Main Week Grid */}
-          <div className="lg:col-span-10 overflow-x-auto">
+          {/* Phase 2C: Ensure horizontal scroll works smoothly on mobile */}
+          <div className="lg:col-span-10 overflow-x-auto overscroll-contain">
             <div className="bg-white rounded-lg border-2 border-gray-300" ref={gridRef}>
               {/* Premium Day Headers */}
               <div className="flex border-b border-gray-200 bg-gradient-to-b from-gray-50 to-white sticky top-0 z-20 shadow-sm">

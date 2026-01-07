@@ -173,8 +173,8 @@ export function CreateProjectModal({
   }
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50 backdrop-blur-sm">
-      <div className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-hidden">
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50 backdrop-blur-sm safe-top safe-bottom">
+      <div className="bg-white rounded-2xl shadow-2xl max-w-full sm:max-w-2xl w-full max-h-screen-safe overflow-hidden flex flex-col">
         <div className="bg-gradient-to-r from-blue-600 to-blue-700 px-6 py-8 relative overflow-hidden">
           <div className="absolute top-0 right-0 w-64 h-64 bg-white opacity-5 rounded-full -mr-32 -mt-32" />
           <div className="absolute bottom-0 left-0 w-48 h-48 bg-white opacity-5 rounded-full -ml-24 -mb-24" />
@@ -193,7 +193,7 @@ export function CreateProjectModal({
           </div>
         </div>
 
-        <div className="p-6 overflow-y-auto max-h-[calc(90vh-120px)]">
+        <div className="p-6 overflow-y-auto flex-1 min-h-0 overscroll-contain">
 
         <div className="space-y-6">
           {!selectedDomainId && (

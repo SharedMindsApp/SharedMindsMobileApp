@@ -229,7 +229,12 @@ export function TableEditor({ spaceId, spaceType, initialTableId, onClose, onTab
         <div className="fixed inset-0 bg-white z-50 flex flex-col">
           <div className="flex items-center justify-between p-4 border-b border-gray-200">
             <h2 className="text-xl font-semibold text-gray-900">Tables</h2>
-            <button onClick={onClose} className="p-2 hover:bg-gray-100 rounded-lg">
+            {/* Phase 2D: Ensure close button is reachable and clear */}
+            <button 
+              onClick={onClose} 
+              className="p-2 hover:bg-gray-100 active:bg-gray-200 rounded-lg transition-colors min-w-[44px] min-h-[44px] flex items-center justify-center"
+              aria-label="Close table editor"
+            >
               <X size={20} />
             </button>
           </div>
@@ -299,7 +304,12 @@ export function TableEditor({ spaceId, spaceType, initialTableId, onClose, onTab
             >
               Import CSV
             </button>
-            <button onClick={onClose} className="p-2 hover:bg-gray-100 rounded-lg">
+            {/* Phase 2D: Ensure close button is reachable and clear */}
+            <button 
+              onClick={onClose} 
+              className="p-2 hover:bg-gray-100 active:bg-gray-200 rounded-lg transition-colors min-w-[44px] min-h-[44px] flex items-center justify-center"
+              aria-label="Close table editor"
+            >
               <X size={20} />
             </button>
           </div>

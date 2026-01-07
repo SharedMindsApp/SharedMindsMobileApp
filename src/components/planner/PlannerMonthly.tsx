@@ -15,10 +15,14 @@ import {
 } from '../../lib/monthlyPlanner';
 import {
   getPersonalEventsForDateRange,
-  createPersonalCalendarEvent,
-  updatePersonalCalendarEvent,
   type PersonalCalendarEvent,
 } from '../../lib/personalSpaces/calendarService';
+// Phase 7A: Use offline-aware wrappers
+import {
+  createPersonalCalendarEvent,
+  updatePersonalCalendarEvent,
+} from '../../lib/personalSpaces/calendarServiceOffline';
+import { showToast } from '../Toast';
 import { getNestedEvents, updateContextEvent } from '../../lib/contextSovereign/contextEventsService';
 import { enforceVisibility, assertCanEdit, PermissionError } from '../../lib/permissions/enforcement';
 import { supabase } from '../../lib/supabase';
@@ -78,6 +82,20 @@ export function PlannerMonthly() {
     originalEnd: Date | null;
   } | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  // Phase 7A: Mobile detection and disclaimer
+  const [isMobile, setIsMobile] = useState(false);
+  const [showMobileDisclaimer, setShowMobileDisclaimer] = useState(() => {
+    if (typeof window === 'undefined') return false;
+    const dismissed = sessionStorage.getItem('planner_monthly_mobile_disclaimer_dismissed');
+    return !dismissed && window.innerWidth < 768;
+  });
+
+  useEffect(() => {
+    const checkMobile = () => setIsMobile(window.innerWidth < 768);
+    checkMobile();
+    window.addEventListener('resize', checkMobile);
+    return () => window.removeEventListener('resize', checkMobile);
+  }, []);
 
   useEffect(() => {
     if (user) {
@@ -291,11 +309,21 @@ export function PlannerMonthly() {
         allDay: false,
       });
 
+      // Phase 7A: Show success feedback
+      const isOnline = navigator.onLine;
+      if (isOnline) {
+        showToast('success', 'Event added');
+      } else {
+        showToast('info', 'Saved — will sync when online');
+      }
+
       setQuickAddDate(null);
       setQuickAddTitle('');
       await loadMonthlyData();
     } catch (err) {
       console.error('Error adding event:', err);
+      // Phase 7A: Show error feedback
+      showToast('error', 'Couldn\'t add event. It will retry when you\'re online.');
     }
   };
 
@@ -421,6 +449,32 @@ export function PlannerMonthly() {
   return (
     <PlannerShell>
       <div className="max-w-full bg-gradient-to-br from-gray-50 to-gray-100/50 min-h-screen pb-8">
+        {/* Phase 7A: Mobile disclaimer */}
+        {showMobileDisclaimer && isMobile && (
+          <div className="mb-4 mx-4 pt-4">
+            <div className="bg-blue-50 border border-blue-200 rounded-lg shadow-lg px-4 py-3 flex items-start gap-3">
+              <div className="flex-1">
+                <p className="text-sm text-blue-800 font-medium">
+                  Advanced scheduling works best on desktop
+                </p>
+                <p className="text-xs text-blue-600 mt-1">
+                  You can view and edit events, but drag and resize are optimized for desktop.
+                </p>
+              </div>
+              <button
+                onClick={() => {
+                  setShowMobileDisclaimer(false);
+                  sessionStorage.setItem('planner_monthly_mobile_disclaimer_dismissed', 'true');
+                }}
+                className="text-blue-400 hover:text-blue-600 transition-colors flex-shrink-0"
+                aria-label="Dismiss"
+              >
+                <X size={18} />
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* Premium Sticky Header */}
         <div className="sticky top-0 z-30 bg-gradient-to-b from-white to-gray-50/50 backdrop-blur-sm border-b border-gray-200 shadow-sm mb-6">
           <div className="px-6 py-4">
@@ -441,7 +495,7 @@ export function PlannerMonthly() {
                     </h1>
                   </div>
                   <button 
-                    onClick={() => navigateMonth('next')} 
+                    onClick={() => navigateMonth('next')}
                     className="p-2.5 hover:bg-gray-50 active:bg-gray-100 transition-all duration-150"
                   >
                     <ChevronRight size={20} className="text-gray-600" />
@@ -494,8 +548,9 @@ export function PlannerMonthly() {
 
         {/* Month Pills Navigation - Premium Style */}
         <div className="mb-6 px-6">
-          <div className="bg-white rounded-2xl border border-gray-200/60 shadow-sm p-3 overflow-x-auto scrollbar-hide">
-            <div className="flex gap-2 min-w-max">
+          {/* Phase 2C: Add padding at scroll edges for better mobile touch scrolling */}
+          <div className="bg-white rounded-2xl border border-gray-200/60 shadow-sm p-3 overflow-x-auto scrollbar-hide overscroll-contain">
+            <div className="flex gap-2 min-w-max px-1">
               {months.map((month, index) => (
                 <button
                   key={month}
@@ -625,7 +680,8 @@ export function PlannerMonthly() {
           </div>
 
           {/* Premium Calendar Grid */}
-          <div className="lg:col-span-9 overflow-x-auto">
+          {/* Phase 2C: Ensure horizontal scroll works smoothly on mobile */}
+          <div className="lg:col-span-9 overflow-x-auto overscroll-contain">
             <div className="bg-white rounded-2xl border border-gray-200/60 min-w-[700px] shadow-xl overflow-hidden">
               <table className="w-full border-collapse">
                 <thead>

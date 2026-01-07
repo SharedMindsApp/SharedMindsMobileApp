@@ -2,6 +2,8 @@ import { PlannerShell } from '../PlannerShell';
 import { CheckSquare, Plus, Trash2, Share2, Calendar, Flag, X, ChevronDown } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import * as todosService from '../../../lib/todosService';
+import { createTodo } from '../../../lib/todosServiceOffline';
+import { showToast } from '../../Toast';
 import type { PersonalTodo, TodoPriority } from '../../../lib/todosService';
 
 export function UnifiedTodoList() {
@@ -73,7 +75,7 @@ export function UnifiedTodoList() {
     if (!newTodoTitle.trim() || !personalSpaceId) return;
 
     try {
-      await todosService.createTodo({
+      await createTodo({
         householdId: personalSpaceId,
         title: newTodoTitle,
         description: newTodoDescription || undefined,
@@ -90,6 +92,7 @@ export function UnifiedTodoList() {
       await loadTodos(personalSpaceId);
     } catch (error) {
       console.error('Error creating todo:', error);
+      showToast('error', 'Failed to create task. Please try again.');
     }
   };
 

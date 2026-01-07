@@ -49,23 +49,23 @@ export function ConfirmDialog({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center">
+    <div className="fixed inset-0 z-50 flex items-center justify-center safe-top safe-bottom">
       <div
         className="absolute inset-0 bg-black/50 backdrop-blur-sm"
         onClick={onClose}
       />
 
-      <div className="relative bg-white rounded-2xl shadow-2xl max-w-md w-full mx-4 overflow-hidden">
-        <div className="absolute top-4 right-4">
+      <div className="relative bg-white rounded-2xl shadow-2xl max-w-full sm:max-w-md w-full mx-4 my-4 max-h-screen-safe overflow-hidden flex flex-col overscroll-contain">
+        <div className="absolute top-4 right-4 z-10">
           <button
             onClick={onClose}
-            className="p-1 hover:bg-gray-100 rounded-lg transition-colors"
+            className="p-2 hover:bg-gray-100 rounded-lg transition-colors min-w-[44px] min-h-[44px] flex items-center justify-center"
           >
             <X size={20} className="text-gray-500" />
           </button>
         </div>
 
-        <div className="p-6">
+        <div className="p-6 flex-1 overflow-y-auto overscroll-contain">
           <div className="flex items-start gap-4">
             <div className={`flex-shrink-0 w-12 h-12 rounded-full ${styles.icon} flex items-center justify-center`}>
               <AlertTriangle className={styles.iconColor} size={24} />

@@ -2,6 +2,13 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Phase 3C: Standalone App Visual Identity */
+/* Subtle styling for installed app context - no visible debug labels */
+.standalone-mode {
+  /* App-specific styling can be added here if needed */
+  /* Currently kept minimal to avoid visual changes */
+}
+
 /* Custom Utilities */
 @layer utilities {
   .scrollbar-hide {
@@ -10,6 +17,45 @@
   }
   .scrollbar-hide::-webkit-scrollbar {
     display: none;
+  }
+
+  /* Mobile-safe height utilities - use dvh where supported, fallback to calc with safe areas */
+  .h-screen-safe {
+    height: 100dvh;
+    height: calc(100vh - env(safe-area-inset-top) - env(safe-area-inset-bottom));
+  }
+
+  .min-h-screen-safe {
+    min-height: 100dvh;
+    min-height: calc(100vh - env(safe-area-inset-top) - env(safe-area-inset-bottom));
+  }
+
+  /* Safe area padding utilities */
+  .safe-top {
+    padding-top: env(safe-area-inset-top);
+  }
+
+  .safe-bottom {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+
+  .safe-left {
+    padding-left: env(safe-area-inset-left);
+  }
+
+  .safe-right {
+    padding-right: env(safe-area-inset-right);
+  }
+
+  /* Mobile-safe max height for modals */
+  .max-h-screen-safe {
+    max-height: 100dvh;
+    max-height: calc(100vh - env(safe-area-inset-top) - env(safe-area-inset-bottom));
+  }
+
+  /* Prevent pull-to-refresh conflicts */
+  .overscroll-contain {
+    overscroll-behavior-y: contain;
   }
 }
 

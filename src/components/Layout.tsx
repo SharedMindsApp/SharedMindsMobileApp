@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { Settings, Home, FileText, LogOut, Shield, Eye, X, MessageCircle, Brain, Users, Target, User, ChevronDown, Zap, Sun, Moon, Check, Calendar, Menu, MoreHorizontal, Home as HomeIcon } from 'lucide-react';
+import { ToastContainer, useToasts } from './Toast';
 import { getUserHousehold, Household } from '../lib/household';
 import { signOut } from '../lib/auth';
 import { useAuth } from '../contexts/AuthContext';
@@ -12,6 +13,7 @@ import type { AppTheme, NavigationTabId } from '../lib/uiPreferencesTypes';
 import { ALL_NAVIGATION_TABS, DEFAULT_FAVOURITE_NAV_TABS } from '../lib/uiPreferencesTypes';
 import { RegulationNotificationBanner } from './guardrails/regulation/RegulationNotificationBanner';
 import { FloatingAIChatWidget } from './ai-chat/FloatingAIChatWidget';
+import { OfflineIndicator } from './OfflineIndicator';
 
 type LayoutProps = {
   children: React.ReactNode;
@@ -36,11 +38,13 @@ export function Layout({ children }: LayoutProps) {
   const [showMoreMenu, setShowMoreMenu] = useState(false);
   const [showMobileMenu, setShowMobileMenu] = useState(false);
   const [uiMode, setUIMode] = useState<UIMode>('fridge');
+  const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
   const { isAdmin, role, isViewingAs, profile, user } = useAuth();
   const { clearViewAs } = useViewAs();
   const { config, updatePreferences } = useUIPreferences();
+  const { toasts, dismissToast } = useToasts();
 
   useEffect(() => {
     loadHousehold();
@@ -76,10 +80,13 @@ export function Layout({ children }: LayoutProps) {
   };
 
   const handleLogout = async () => {
-    if (confirm('Are you sure you want to log out?')) {
-      await signOut();
-      navigate('/auth/login');
-    }
+    setShowLogoutConfirm(true);
+  };
+
+  const confirmLogout = async () => {
+    setShowLogoutConfirm(false);
+    await signOut();
+    navigate('/auth/login');
   };
 
   const handleThemeChange = (theme: AppTheme) => {
@@ -199,10 +206,10 @@ export function Layout({ children }: LayoutProps) {
       <button
         key={tab.id}
         onClick={() => navigate(tab.path)}
-        className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+        className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${
           isTabActive(tab.path)
-            ? tab.id === 'admin' ? 'bg-violet-50 text-violet-700' : 'bg-blue-50 text-blue-700'
-            : 'text-gray-600 hover:bg-gray-50'
+            ? tab.id === 'admin' ? 'bg-violet-50 text-violet-700 ring-2 ring-violet-200 shadow-sm font-semibold' : 'bg-blue-50 text-blue-700 ring-2 ring-blue-200 shadow-sm font-semibold'
+            : 'text-gray-600 hover:bg-gray-50 active:bg-gray-100'
         }`}
       >
         <Icon size={18} />
@@ -212,7 +219,7 @@ export function Layout({ children }: LayoutProps) {
   };
 
   return (
-    <div className="min-h-screen bg-[#f7f7f9]">
+    <div className="min-h-screen-safe bg-[#f7f7f9]">
       <nav className="bg-white border-b border-gray-200 shadow-sm">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16">
@@ -220,7 +227,8 @@ export function Layout({ children }: LayoutProps) {
               {/* Mobile Menu Button */}
               <button
                 onClick={() => setShowMobileMenu(!showMobileMenu)}
-                className="md:hidden p-2 rounded-lg text-gray-600 hover:bg-gray-50"
+                className="md:hidden p-3 rounded-lg text-gray-600 hover:bg-gray-50 active:bg-gray-100 min-w-[44px] min-h-[44px] flex items-center justify-center"
+                aria-label="Open menu"
               >
                 <Menu size={24} />
               </button>
@@ -292,11 +300,12 @@ export function Layout({ children }: LayoutProps) {
               <div className="relative">
                 <button
                   onClick={() => setShowSettingsMenu(!showSettingsMenu)}
-                  className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                  className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-colors min-h-[44px] ${
                     showSettingsMenu || location.pathname.startsWith('/settings')
                       ? 'bg-gray-100 text-gray-900'
-                      : 'text-gray-600 hover:bg-gray-50'
+                      : 'text-gray-600 hover:bg-gray-50 active:bg-gray-100'
                   }`}
+                  aria-label="Settings"
                 >
                   <Settings size={20} />
                   <span className="hidden sm:inline">Settings</span>
@@ -396,7 +405,8 @@ export function Layout({ children }: LayoutProps) {
                 <h2 className="text-xl font-bold text-gray-900">Menu</h2>
                 <button
                   onClick={() => setShowMobileMenu(false)}
-                  className="p-2 rounded-lg text-gray-600 hover:bg-gray-50"
+                  className="p-3 rounded-lg text-gray-600 hover:bg-gray-50 active:bg-gray-100 min-w-[44px] min-h-[44px] flex items-center justify-center"
+                  aria-label="Close menu"
                 >
                   <X size={24} />
                 </button>
@@ -410,9 +420,10 @@ export function Layout({ children }: LayoutProps) {
                   }}
                   className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-colors ${
                     isActive('/dashboard')
-                      ? 'bg-blue-50 text-blue-700'
-                      : 'text-gray-700 hover:bg-gray-50'
+                      ? 'bg-blue-50 text-blue-700 ring-2 ring-blue-200'
+                      : 'text-gray-700 hover:bg-gray-50 active:bg-gray-100'
                   }`}
+                  aria-current={isActive('/dashboard') ? 'page' : undefined}
                 >
                   <Home size={20} />
                   Dashboard
@@ -462,15 +473,21 @@ export function Layout({ children }: LayoutProps) {
                   )}
                 </div>
 
+                {/* Phase 2D: On mobile, navigate directly to daily view (most actionable) instead of index */}
                 <button
                   onClick={() => {
                     setShowMobileMenu(false);
-                    navigate('/planner');
+                    // Mobile-first: go to daily view directly for faster access
+                    if (window.innerWidth < 1024) {
+                      navigate('/planner/daily');
+                    } else {
+                      navigate('/planner');
+                    }
                   }}
                   className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-colors ${
                     location.pathname.startsWith('/planner')
                       ? 'bg-blue-50 text-blue-700'
-                      : 'text-gray-700 hover:bg-gray-50'
+                      : 'text-gray-700 hover:bg-gray-50 active:bg-gray-100'
                   }`}
                 >
                   <Calendar size={20} />
@@ -484,9 +501,10 @@ export function Layout({ children }: LayoutProps) {
                   }}
                   className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-colors ${
                     isActive('/guardrails')
-                      ? 'bg-blue-50 text-blue-700'
-                      : 'text-gray-700 hover:bg-gray-50'
+                      ? 'bg-blue-50 text-blue-700 ring-2 ring-blue-200'
+                      : 'text-gray-700 hover:bg-gray-50 active:bg-gray-100'
                   }`}
+                  aria-current={isActive('/guardrails') ? 'page' : undefined}
                 >
                   <Target size={20} />
                   Guardrails
@@ -499,9 +517,10 @@ export function Layout({ children }: LayoutProps) {
                   }}
                   className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-colors ${
                     location.pathname.startsWith('/regulation')
-                      ? 'bg-blue-50 text-blue-700'
-                      : 'text-gray-700 hover:bg-gray-50'
+                      ? 'bg-blue-50 text-blue-700 ring-2 ring-blue-200'
+                      : 'text-gray-700 hover:bg-gray-50 active:bg-gray-100'
                   }`}
+                  aria-current={location.pathname.startsWith('/regulation') ? 'page' : undefined}
                 >
                   <Zap size={20} />
                   Regulation
@@ -514,9 +533,10 @@ export function Layout({ children }: LayoutProps) {
                   }}
                   className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-colors ${
                     location.pathname.startsWith('/messages')
-                      ? 'bg-blue-50 text-blue-700'
-                      : 'text-gray-700 hover:bg-gray-50'
+                      ? 'bg-blue-50 text-blue-700 ring-2 ring-blue-200'
+                      : 'text-gray-700 hover:bg-gray-50 active:bg-gray-100'
                   }`}
+                  aria-current={location.pathname.startsWith('/messages') ? 'page' : undefined}
                 >
                   <MessageCircle size={20} />
                   Messages
@@ -529,9 +549,10 @@ export function Layout({ children }: LayoutProps) {
                   }}
                   className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-colors ${
                     isActive('/report')
-                      ? 'bg-blue-50 text-blue-700'
-                      : 'text-gray-700 hover:bg-gray-50'
+                      ? 'bg-blue-50 text-blue-700 ring-2 ring-blue-200'
+                      : 'text-gray-700 hover:bg-gray-50 active:bg-gray-100'
                   }`}
+                  aria-current={isActive('/report') ? 'page' : undefined}
                 >
                   <FileText size={20} />
                   Report
@@ -672,8 +693,8 @@ export function Layout({ children }: LayoutProps) {
       <main
         className={
           location.pathname.startsWith('/planner')
-            ? 'w-full min-h-screen'
-            : 'max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8'
+            ? 'w-full min-h-screen-safe'
+            : 'w-full max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8'
         }
       >
         {children}
@@ -681,6 +702,38 @@ export function Layout({ children }: LayoutProps) {
 
       <RegulationNotificationBanner />
       <FloatingAIChatWidget />
+      <OfflineIndicator />
+      <ToastContainer toasts={toasts} onDismiss={dismissToast} />
+      {showLogoutConfirm && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white border border-gray-200 rounded-lg shadow-xl max-w-md w-full p-6">
+            <div className="flex items-start gap-3 mb-4">
+              <p className="flex-1 font-medium text-gray-900">Are you sure you want to log out?</p>
+              <button
+                onClick={() => setShowLogoutConfirm(false)}
+                className="text-gray-400 hover:text-gray-600 transition-colors"
+                aria-label="Close"
+              >
+                <X size={20} />
+              </button>
+            </div>
+            <div className="flex gap-3 justify-end">
+              <button
+                onClick={() => setShowLogoutConfirm(false)}
+                className="px-4 py-2 text-gray-700 font-medium hover:bg-gray-100 rounded-lg transition-colors min-h-[44px]"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={confirmLogout}
+                className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white font-medium rounded-lg transition-colors min-h-[44px]"
+              >
+                Log Out
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

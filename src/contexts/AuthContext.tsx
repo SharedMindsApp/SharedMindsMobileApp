@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
 import { supabase } from '../lib/supabase';
 import type { User } from '@supabase/supabase-js';
+import { isStandaloneApp } from '../lib/appContext';
 
 let getViewAsProfile: (() => any) | null = null;
 
@@ -118,9 +119,43 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
     );
 
+    // Phase 3B: Check session on app visibility change (app resume)
+    // Phase 3C: Enhanced to prevent double redirects and flicker
+    // Ensures session is still valid when app comes back to foreground
+    let isCheckingVisibility = false; // Phase 3C: Prevent concurrent checks
+    const handleVisibilityChange = async () => {
+      if (document.visibilityState === 'visible' && mounted && !isCheckingVisibility) {
+        isCheckingVisibility = true;
+        try {
+          const { data: { session }, error } = await supabase.auth.getSession();
+          if (error || !session) {
+            // Phase 3C: Session expired or invalid - clear state silently
+            // Don't trigger redirects here to avoid flicker
+            if (mounted) {
+              setUser(null);
+              setProfile(null);
+            }
+          } else if (mounted && session.user) {
+            // Phase 3C: Session valid - ensure profile is loaded
+            // Only fetch if profile is missing or user changed
+            if (!profile || profile.user_id !== session.user.id) {
+              await fetchProfile(session.user.id);
+            }
+          }
+        } catch (error) {
+          console.error('Session check on visibility change failed:', error);
+        } finally {
+          isCheckingVisibility = false;
+        }
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
     return () => {
       mounted = false;
       subscription.unsubscribe();
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
   }, []);
 
@@ -128,6 +163,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await supabase.auth.signOut();
     setUser(null);
     setProfile(null);
+    // Phase 3B: In installed app, redirect to login after logout
+    if (isStandaloneApp()) {
+      window.location.href = '/auth/login';
+    }
   };
 
   const toggleSafeMode = async (enabled: boolean) => {

@@ -78,9 +78,11 @@ export function ShareToSpaceModal({
     }
   }
 
+  const [unshareConfirmId, setUnshareConfirmId] = useState<string | null>(null);
+
   async function handleShare() {
     if (!selectedSpaceId) {
-      alert('Please select a shared space');
+      showToast('warning', 'Please select a shared space');
       return;
     }
 
@@ -97,32 +99,53 @@ export function ShareToSpaceModal({
       setSelectedSpaceId('');
       setLinkType('send');
       setAllowEdit(false);
-      alert('Successfully shared to space!');
+      showToast('success', 'Successfully shared to space!');
     } catch (error) {
       console.error('Failed to share:', error);
-      alert('Failed to share. Please try again.');
+      showToast('error', 'Failed to share. Please try again.');
     } finally {
       setLoading(false);
     }
   }
 
   async function handleUnshare(linkId: string) {
-    if (!confirm('Remove this item from the shared space?')) return;
+    setUnshareConfirmId(linkId);
+  }
+
+  async function confirmUnshare() {
+    if (!unshareConfirmId) return;
 
     try {
-      await unpublishFromSharedSpace(linkId);
+      await unpublishFromSharedSpace(unshareConfirmId);
       await loadExistingLinks();
+      setUnshareConfirmId(null);
     } catch (error) {
       console.error('Failed to unshare:', error);
-      alert('Failed to remove. Please try again.');
+      showToast('error', 'Failed to remove. Please try again.');
+      setUnshareConfirmId(null);
     }
   }
 
   if (!isOpen) return null;
 
+  // Phase 5A: Show confirmation dialog if needed
+  if (unshareConfirmId) {
+    return (
+      <ConfirmDialogInline
+        isOpen={true}
+        message="Remove this item from the shared space?"
+        confirmText="Remove"
+        cancelText="Cancel"
+        variant="warning"
+        onConfirm={confirmUnshare}
+        onCancel={() => setUnshareConfirmId(null)}
+      />
+    );
+  }
+
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
-      <div className="bg-white rounded-xl shadow-2xl max-w-md w-full max-h-[80vh] overflow-y-auto">
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50 safe-top safe-bottom">
+      <div className="bg-white rounded-xl shadow-2xl max-w-full sm:max-w-md w-full max-h-screen-safe overflow-hidden flex flex-col overscroll-contain">
         <div className="sticky top-0 bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center">
@@ -135,13 +158,13 @@ export function ShareToSpaceModal({
           </div>
           <button
             onClick={onClose}
-            className="text-gray-400 hover:text-gray-600 transition-colors"
+            className="p-2 text-gray-400 hover:text-gray-600 transition-colors min-w-[44px] min-h-[44px] flex items-center justify-center"
           >
             <X size={20} />
           </button>
         </div>
 
-        <div className="p-6 space-y-6">
+        <div className="p-6 space-y-6 overflow-y-auto flex-1 min-h-0">
           {existingLinks.length > 0 && (
             <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
               <h3 className="text-sm font-semibold text-blue-900 mb-2 flex items-center gap-2">

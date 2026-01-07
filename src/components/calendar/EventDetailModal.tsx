@@ -13,6 +13,8 @@
 import { useState } from 'react';
 import { X, Edit2, Trash2, Lock, Share2, Calendar, Clock, MapPin, Eye, EyeOff } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import { showToast } from '../Toast';
+import { ConfirmDialogInline } from '../ConfirmDialogInline';
 import { PersonalCalendarEvent } from '../../lib/personalSpaces/calendarService';
 import { updatePersonalCalendarEvent, deletePersonalCalendarEvent } from '../../lib/personalSpaces/calendarService';
 import { deleteContextEvent } from '../../lib/contextSovereign/contextEventsService';
@@ -75,11 +77,15 @@ export function EventDetailModal({
     setIsEditing(true);
   };
 
-  const handleDelete = async () => {
-    if (!window.confirm(`Are you sure you want to delete "${event.title}"?`)) {
-      return;
-    }
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
+  const handleDelete = async () => {
+    // Phase 7A: Show inline confirmation dialog
+    setShowDeleteConfirm(true);
+  };
+
+  const confirmDelete = async () => {
+    setShowDeleteConfirm(false);
     setIsDeleting(true);
     setError(null);
 
@@ -204,6 +210,8 @@ export function EventDetailModal({
 
   return (
     <>
+      {/* Phase 7A: Inline delete confirmation */}
+      {confirmDeleteDialog}
       <div
         className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
         onClick={onClose}
@@ -250,9 +258,11 @@ export function EventDetailModal({
                 )}
               </div>
             </div>
+            {/* Phase 2D: Ensure close button is reachable and clear */}
             <button
               onClick={onClose}
-              className="text-gray-400 hover:text-gray-600 ml-4 flex-shrink-0"
+              className="text-gray-400 hover:text-gray-600 active:text-gray-700 ml-4 flex-shrink-0 p-2 rounded-lg hover:bg-gray-100 active:bg-gray-200 transition-colors min-w-[44px] min-h-[44px] flex items-center justify-center"
+              aria-label="Close event details"
             >
               <X size={24} />
             </button>

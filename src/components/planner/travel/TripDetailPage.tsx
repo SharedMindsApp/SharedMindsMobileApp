@@ -32,6 +32,8 @@ import { offerTripItineraryToCalendar, isItineraryItemOffered } from '../../../l
 import { useSharingDrawer } from '../../../hooks/useSharingDrawer';
 import { SharingDrawer } from '../../../components/sharing/SharingDrawer';
 import { PermissionIndicator } from '../../../components/sharing/PermissionIndicator';
+import { showToast } from '../../Toast';
+import { ConfirmDialogInline } from '../../ConfirmDialogInline';
 
 type TabType = 'destinations' | 'accommodations' | 'itinerary' | 'wishlist';
 
@@ -91,6 +93,9 @@ export function TripDetailPage() {
   const [editingAccommodation, setEditingAccommodation] = useState<TripAccommodation | null>(null);
   const [editingItinerary, setEditingItinerary] = useState<TripItineraryItem | null>(null);
   const [editingWishlist, setEditingWishlist] = useState<TripPlace | null>(null);
+  
+  // Phase 5A: Confirmation dialogs
+  const [deleteConfirm, setDeleteConfirm] = useState<{ type: string; id: string; message: string } | null>(null);
   
   // Sharing state
   const { isOpen: isSharingOpen, adapter: sharingAdapter, openDrawer: openSharing, closeDrawer: closeSharing } = useSharingDrawer('trip', tripId || null);
@@ -157,43 +162,57 @@ export function TripDetailPage() {
   }
 
   async function handleDeleteDestination(id: string) {
-    if (!confirm('Delete this destination? All associated accommodations and events will remain.')) return;
+    setDeleteConfirm({
+      type: 'destination',
+      id,
+      message: 'Delete this destination? All associated accommodations and events will remain.',
+    });
+  }
+
+  async function confirmDelete() {
+    if (!deleteConfirm) return;
+    
     try {
-      await travelService.deleteDestination(id);
+      if (deleteConfirm.type === 'destination') {
+        await travelService.deleteDestination(deleteConfirm.id);
+      } else if (deleteConfirm.type === 'accommodation') {
+        await travelService.deleteAccommodation(deleteConfirm.id);
+      } else if (deleteConfirm.type === 'itinerary') {
+        await travelService.deleteItineraryItem(deleteConfirm.id);
+      } else if (deleteConfirm.type === 'place') {
+        await travelService.deletePlace(deleteConfirm.id);
+      }
       await loadTripData();
+      setDeleteConfirm(null);
     } catch (error) {
-      console.error('Error deleting destination:', error);
+      console.error('Error deleting:', error);
+      showToast('error', 'Failed to delete. Please try again.');
+      setDeleteConfirm(null);
     }
   }
 
   async function handleDeleteAccommodation(id: string) {
-    if (!confirm('Delete this accommodation?')) return;
-    try {
-      await travelService.deleteAccommodation(id);
-      await loadTripData();
-    } catch (error) {
-      console.error('Error deleting accommodation:', error);
-    }
+    setDeleteConfirm({
+      type: 'accommodation',
+      id,
+      message: 'Delete this accommodation?',
+    });
   }
 
   async function handleDeleteItineraryItem(id: string) {
-    if (!confirm('Delete this itinerary item?')) return;
-    try {
-      await travelService.deleteItineraryItem(id);
-      await loadTripData();
-    } catch (error) {
-      console.error('Error deleting itinerary item:', error);
-    }
+    setDeleteConfirm({
+      type: 'itinerary',
+      id,
+      message: 'Delete this itinerary item?',
+    });
   }
 
   async function handleDeleteWishlistItem(id: string) {
-    if (!confirm('Delete this place?')) return;
-    try {
-      await travelService.deletePlace(id);
-      await loadTripData();
-    } catch (error) {
-      console.error('Error deleting place:', error);
-    }
+    setDeleteConfirm({
+      type: 'place',
+      id,
+      message: 'Delete this place?',
+    });
   }
 
   async function handleToggleVisited(place: TripPlace) {
@@ -709,7 +728,7 @@ function ItineraryTab({
           [item.id]: { offered: true, status: 'pending' },
         }));
       } else {
-        alert(result.error || 'Failed to offer event to calendar');
+        showToast('error', result.error || 'Failed to offer event to calendar');
       }
     } catch (error) {
       console.error('Error offering to calendar:', error);
@@ -1035,7 +1054,7 @@ function DestinationModal({
       onClose();
     } catch (error) {
       console.error('Error saving destination:', error);
-      alert('Failed to save destination');
+      showToast('error', 'Failed to save destination');
     } finally {
       setSaving(false);
     }
@@ -1204,7 +1223,7 @@ function AccommodationModal({
       onClose();
     } catch (error) {
       console.error('Error saving accommodation:', error);
-      alert('Failed to save accommodation');
+      showToast('error', 'Failed to save accommodation');
     } finally {
       setSaving(false);
     }
@@ -1218,7 +1237,12 @@ function AccommodationModal({
             <h2 className="text-2xl font-bold text-slate-800">
               {accommodation ? 'Edit Accommodation' : 'Add Accommodation'}
             </h2>
-            <button onClick={onClose} className="p-2 hover:bg-slate-100 rounded-lg">
+            {/* Phase 2D: Ensure close button is reachable and clear */}
+            <button 
+              onClick={onClose} 
+              className="p-2 hover:bg-slate-100 active:bg-slate-200 rounded-lg transition-colors min-w-[44px] min-h-[44px] flex items-center justify-center"
+              aria-label="Close modal"
+            >
               <X className="w-6 h-6" />
             </button>
           </div>
@@ -1386,7 +1410,7 @@ function ItineraryModal({
       onClose();
     } catch (error) {
       console.error('Error saving itinerary item:', error);
-      alert('Failed to save itinerary item');
+      showToast('error', 'Failed to save itinerary item');
     } finally {
       setSaving(false);
     }
@@ -1400,7 +1424,12 @@ function ItineraryModal({
             <h2 className="text-2xl font-bold text-slate-800">
               {item ? 'Edit Event' : 'Add Event'}
             </h2>
-            <button onClick={onClose} className="p-2 hover:bg-slate-100 rounded-lg">
+            {/* Phase 2D: Ensure close button is reachable and clear */}
+            <button 
+              onClick={onClose} 
+              className="p-2 hover:bg-slate-100 active:bg-slate-200 rounded-lg transition-colors min-w-[44px] min-h-[44px] flex items-center justify-center"
+              aria-label="Close modal"
+            >
               <X className="w-6 h-6" />
             </button>
           </div>
@@ -1561,7 +1590,7 @@ function WishlistModal({
       onClose();
     } catch (error) {
       console.error('Error saving place:', error);
-      alert('Failed to save place');
+      showToast('error', 'Failed to save place');
     } finally {
       setSaving(false);
     }
@@ -1575,7 +1604,12 @@ function WishlistModal({
             <h2 className="text-2xl font-bold text-slate-800">
               {place ? 'Edit Place' : 'Add Place'}
             </h2>
-            <button onClick={onClose} className="p-2 hover:bg-slate-100 rounded-lg">
+            {/* Phase 2D: Ensure close button is reachable and clear */}
+            <button 
+              onClick={onClose} 
+              className="p-2 hover:bg-slate-100 active:bg-slate-200 rounded-lg transition-colors min-w-[44px] min-h-[44px] flex items-center justify-center"
+              aria-label="Close modal"
+            >
               <X className="w-6 h-6" />
             </button>
           </div>
