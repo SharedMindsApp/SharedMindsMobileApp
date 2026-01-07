@@ -1,0 +1,686 @@
+import { useState, useEffect } from 'react';
+import { useNavigate, useLocation } from 'react-router-dom';
+import { Settings, Home, FileText, LogOut, Shield, Eye, X, MessageCircle, Brain, Users, Target, User, ChevronDown, Zap, Sun, Moon, Check, Calendar, Menu, MoreHorizontal, Home as HomeIcon } from 'lucide-react';
+import { getUserHousehold, Household } from '../lib/household';
+import { signOut } from '../lib/auth';
+import { useAuth } from '../contexts/AuthContext';
+import { useViewAs } from '../contexts/ViewAsContext';
+import { useUIPreferences } from '../contexts/UIPreferencesContext';
+import { getUserUIMode } from '../lib/mobileApps';
+import type { UIMode } from '../lib/mobileTypes';
+import type { AppTheme, NavigationTabId } from '../lib/uiPreferencesTypes';
+import { ALL_NAVIGATION_TABS, DEFAULT_FAVOURITE_NAV_TABS } from '../lib/uiPreferencesTypes';
+import { RegulationNotificationBanner } from './guardrails/regulation/RegulationNotificationBanner';
+import { FloatingAIChatWidget } from './ai-chat/FloatingAIChatWidget';
+
+type LayoutProps = {
+  children: React.ReactNode;
+};
+
+const ICON_MAP: Record<string, any> = {
+  Home,
+  Users,
+  Calendar,
+  Target,
+  Zap,
+  MessageCircle,
+  FileText,
+  Shield,
+  BookOpen: Calendar,
+};
+
+export function Layout({ children }: LayoutProps) {
+  const [household, setHousehold] = useState<Household | null>(null);
+  const [showSettingsMenu, setShowSettingsMenu] = useState(false);
+  const [showSpacesMenu, setShowSpacesMenu] = useState(false);
+  const [showMoreMenu, setShowMoreMenu] = useState(false);
+  const [showMobileMenu, setShowMobileMenu] = useState(false);
+  const [uiMode, setUIMode] = useState<UIMode>('fridge');
+  const navigate = useNavigate();
+  const location = useLocation();
+  const { isAdmin, role, isViewingAs, profile, user } = useAuth();
+  const { clearViewAs } = useViewAs();
+  const { config, updatePreferences } = useUIPreferences();
+
+  useEffect(() => {
+    loadHousehold();
+    loadUIMode();
+  }, [user]);
+
+  const loadHousehold = async () => {
+    try {
+      const householdData = await getUserHousehold();
+      setHousehold(householdData);
+    } catch (err) {
+      console.error('Error loading household:', err);
+    }
+  };
+
+  const loadUIMode = async () => {
+    if (!user) return;
+
+    try {
+      const mode = await getUserUIMode(user.id);
+      setUIMode(mode);
+
+      if (mode === 'mobile' && location.pathname === '/household') {
+        navigate('/mobile');
+      }
+    } catch (err) {
+      console.error('Error loading UI mode:', err);
+      const savedMode = localStorage.getItem('ui_mode') as UIMode;
+      if (savedMode) {
+        setUIMode(savedMode);
+      }
+    }
+  };
+
+  const handleLogout = async () => {
+    if (confirm('Are you sure you want to log out?')) {
+      await signOut();
+      navigate('/auth/login');
+    }
+  };
+
+  const handleThemeChange = (theme: AppTheme) => {
+    updatePreferences({ appTheme: theme });
+    setShowSettingsMenu(false);
+  };
+
+  const isActive = (path: string) => {
+    return location.pathname === path;
+  };
+
+  const isSpacesActive = () => {
+    return location.pathname === '/household' ||
+           location.pathname === '/spaces/personal' ||
+           location.pathname === '/spaces/shared' ||
+           location.pathname.startsWith('/spaces/');
+  };
+
+  const favouriteNavTabs = config.favouriteNavTabs || DEFAULT_FAVOURITE_NAV_TABS;
+
+  const availableTabs = ALL_NAVIGATION_TABS.filter((tab) => {
+    if (tab.requiresAdmin && !isAdmin) return false;
+    return true;
+  });
+
+  const favouriteTabs = availableTabs.filter((tab) =>
+    favouriteNavTabs.includes(tab.id)
+  );
+
+  const moreTabs = availableTabs.filter((tab) =>
+    !favouriteNavTabs.includes(tab.id)
+  );
+
+  const isTabActive = (tabPath: string) => {
+    if (tabPath === '/spaces') {
+      return isSpacesActive();
+    }
+    if (tabPath === '/planner') {
+      return location.pathname.startsWith('/planner');
+    }
+    if (tabPath === '/regulation') {
+      return location.pathname.startsWith('/regulation');
+    }
+    if (tabPath === '/messages') {
+      return location.pathname.startsWith('/messages');
+    }
+    if (tabPath === '/admin') {
+      return location.pathname.startsWith('/admin');
+    }
+    return isActive(tabPath);
+  };
+
+  const renderNavTab = (tab: typeof ALL_NAVIGATION_TABS[0]) => {
+    const Icon = ICON_MAP[tab.icon];
+
+    if (tab.id === 'spaces') {
+      return (
+        <div key={tab.id} className="relative">
+          <button
+            onClick={() => setShowSpacesMenu(!showSpacesMenu)}
+            className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+              isSpacesActive()
+                ? 'bg-amber-50 text-amber-700'
+                : 'text-gray-600 hover:bg-gray-50'
+            }`}
+          >
+            <Icon size={18} />
+            {tab.label}
+            <ChevronDown size={16} className={`transition-transform ${showSpacesMenu ? 'rotate-180' : ''}`} />
+          </button>
+
+          {showSpacesMenu && (
+            <>
+              <div
+                className="fixed inset-0 z-10"
+                onClick={() => setShowSpacesMenu(false)}
+              ></div>
+              <div className="absolute left-0 mt-2 w-56 bg-white rounded-lg shadow-lg border border-gray-200 py-2 z-20">
+                <button
+                  onClick={() => {
+                    setShowSpacesMenu(false);
+                    navigate('/planner');
+                  }}
+                  className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2 font-semibold border-b border-gray-100"
+                >
+                  <HomeIcon size={16} className="text-amber-600" />
+                  Household Hub
+                </button>
+                <button
+                  onClick={() => {
+                    setShowSpacesMenu(false);
+                    navigate('/spaces/personal');
+                  }}
+                  className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2"
+                >
+                  <User size={16} />
+                  Personal Space
+                </button>
+                <button
+                  onClick={() => {
+                    setShowSpacesMenu(false);
+                    navigate('/spaces/shared');
+                  }}
+                  className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2"
+                >
+                  <Users size={16} />
+                  Shared Spaces
+                </button>
+              </div>
+            </>
+          )}
+        </div>
+      );
+    }
+
+    return (
+      <button
+        key={tab.id}
+        onClick={() => navigate(tab.path)}
+        className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+          isTabActive(tab.path)
+            ? tab.id === 'admin' ? 'bg-violet-50 text-violet-700' : 'bg-blue-50 text-blue-700'
+            : 'text-gray-600 hover:bg-gray-50'
+        }`}
+      >
+        <Icon size={18} />
+        {tab.label}
+      </button>
+    );
+  };
+
+  return (
+    <div className="min-h-screen bg-[#f7f7f9]">
+      <nav className="bg-white border-b border-gray-200 shadow-sm">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex items-center justify-between h-16">
+            <div className="flex items-center gap-4 md:gap-8">
+              {/* Mobile Menu Button */}
+              <button
+                onClick={() => setShowMobileMenu(!showMobileMenu)}
+                className="md:hidden p-2 rounded-lg text-gray-600 hover:bg-gray-50"
+              >
+                <Menu size={24} />
+              </button>
+
+              <div>
+                <h1 className="text-lg md:text-xl font-bold text-gray-900">SharedMind</h1>
+                {household && (
+                  <p className="text-xs text-gray-500">{household.name}</p>
+                )}
+                {role && (
+                  <span className={`text-xs px-2 py-0.5 rounded ${
+                    role === 'premium' ? 'bg-teal-100 text-teal-700' :
+                    role === 'admin' ? 'bg-violet-100 text-violet-700' :
+                    'bg-gray-100 text-gray-700'
+                  }`}>
+                    {role.toUpperCase()}
+                  </span>
+                )}
+              </div>
+
+              <div className="hidden md:flex items-center gap-2">
+                {favouriteTabs.map((tab) => renderNavTab(tab))}
+
+                {moreTabs.length > 0 && (
+                  <div className="relative">
+                    <button
+                      onClick={() => setShowMoreMenu(!showMoreMenu)}
+                      className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-colors text-gray-600 hover:bg-gray-50"
+                    >
+                      <MoreHorizontal size={18} />
+                      More
+                      <ChevronDown size={16} className={`transition-transform ${showMoreMenu ? 'rotate-180' : ''}`} />
+                    </button>
+
+                    {showMoreMenu && (
+                      <>
+                        <div
+                          className="fixed inset-0 z-10"
+                          onClick={() => setShowMoreMenu(false)}
+                        ></div>
+                        <div className="absolute left-0 mt-2 w-56 bg-white rounded-lg shadow-lg border border-gray-200 py-2 z-20">
+                          {moreTabs.map((tab) => {
+                            const Icon = ICON_MAP[tab.icon];
+                            return (
+                              <button
+                                key={tab.id}
+                                onClick={() => {
+                                  setShowMoreMenu(false);
+                                  navigate(tab.path);
+                                }}
+                                className={`w-full text-left px-4 py-2 text-sm hover:bg-gray-50 flex items-center gap-2 ${
+                                  isTabActive(tab.path) ? 'text-blue-700 bg-blue-50' : 'text-gray-700'
+                                }`}
+                              >
+                                <Icon size={16} />
+                                {tab.label}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="flex items-center gap-3">
+              <div className="relative">
+                <button
+                  onClick={() => setShowSettingsMenu(!showSettingsMenu)}
+                  className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                    showSettingsMenu || location.pathname.startsWith('/settings')
+                      ? 'bg-gray-100 text-gray-900'
+                      : 'text-gray-600 hover:bg-gray-50'
+                  }`}
+                >
+                  <Settings size={20} />
+                  <span className="hidden sm:inline">Settings</span>
+                </button>
+
+                {showSettingsMenu && (
+                  <>
+                    <div
+                      className="fixed inset-0 z-10"
+                      onClick={() => setShowSettingsMenu(false)}
+                    ></div>
+                    <div className="absolute right-0 mt-2 w-56 bg-white rounded-lg shadow-lg border border-gray-200 py-2 z-20">
+                      <button
+                        onClick={() => {
+                          setShowSettingsMenu(false);
+                          navigate('/settings');
+                        }}
+                        className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2"
+                      >
+                        <Settings size={16} />
+                        Profile Settings
+                      </button>
+                      <button
+                        onClick={() => {
+                          setShowSettingsMenu(false);
+                          navigate('/brain-profile/cards');
+                        }}
+                        className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2"
+                      >
+                        <Brain size={16} />
+                        My Brain Profile
+                      </button>
+                      <div className="border-t border-gray-200 my-2"></div>
+                      <div className="px-4 py-2">
+                        <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Theme</p>
+                      </div>
+                      <button
+                        onClick={() => handleThemeChange('light')}
+                        className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 flex items-center justify-between"
+                      >
+                        <div className="flex items-center gap-2">
+                          <Sun size={16} />
+                          Light
+                        </div>
+                        {config.appTheme === 'light' && <Check size={16} className="text-blue-600" />}
+                      </button>
+                      <button
+                        onClick={() => handleThemeChange('dark')}
+                        className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 flex items-center justify-between"
+                      >
+                        <div className="flex items-center gap-2">
+                          <Moon size={16} />
+                          Dark
+                        </div>
+                        {config.appTheme === 'dark' && <Check size={16} className="text-blue-600" />}
+                      </button>
+                      <button
+                        onClick={() => handleThemeChange('neon-dark')}
+                        className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 flex items-center justify-between"
+                      >
+                        <div className="flex items-center gap-2">
+                          <Zap size={16} />
+                          Neon Dark
+                        </div>
+                        {config.appTheme === 'neon-dark' && <Check size={16} className="text-blue-600" />}
+                      </button>
+                      <div className="border-t border-gray-200 my-2"></div>
+                      <button
+                        onClick={handleLogout}
+                        className="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50 flex items-center gap-2"
+                      >
+                        <LogOut size={16} />
+                        Log Out
+                      </button>
+                    </div>
+                  </>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      </nav>
+
+      {/* Mobile Navigation Drawer */}
+      {showMobileMenu && (
+        <>
+          {/* Backdrop */}
+          <div
+            className="fixed inset-0 bg-black/50 z-40 md:hidden"
+            onClick={() => setShowMobileMenu(false)}
+          ></div>
+
+          {/* Drawer */}
+          <div className="fixed top-0 left-0 bottom-0 w-80 bg-white shadow-xl z-50 md:hidden overflow-y-auto">
+            <div className="p-4">
+              <div className="flex items-center justify-between mb-6">
+                <h2 className="text-xl font-bold text-gray-900">Menu</h2>
+                <button
+                  onClick={() => setShowMobileMenu(false)}
+                  className="p-2 rounded-lg text-gray-600 hover:bg-gray-50"
+                >
+                  <X size={24} />
+                </button>
+              </div>
+
+              <div className="space-y-2">
+                <button
+                  onClick={() => {
+                    setShowMobileMenu(false);
+                    navigate('/dashboard');
+                  }}
+                  className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-colors ${
+                    isActive('/dashboard')
+                      ? 'bg-blue-50 text-blue-700'
+                      : 'text-gray-700 hover:bg-gray-50'
+                  }`}
+                >
+                  <Home size={20} />
+                  Dashboard
+                </button>
+
+                <div className="space-y-1">
+                  <button
+                    onClick={() => setShowSpacesMenu(!showSpacesMenu)}
+                    className={`w-full flex items-center justify-between px-4 py-3 rounded-lg text-sm font-medium transition-colors ${
+                      isSpacesActive()
+                        ? 'bg-amber-50 text-amber-700'
+                        : 'text-gray-700 hover:bg-gray-50'
+                    }`}
+                  >
+                    <div className="flex items-center gap-3">
+                      <Users size={20} />
+                      Spaces
+                    </div>
+                    <ChevronDown size={16} className={`transition-transform ${showSpacesMenu ? 'rotate-180' : ''}`} />
+                  </button>
+
+                  {showSpacesMenu && (
+                    <div className="ml-4 space-y-1">
+                      <button
+                        onClick={() => {
+                          setShowMobileMenu(false);
+                          setShowSpacesMenu(false);
+                          navigate('/spaces/personal');
+                        }}
+                        className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 rounded-lg flex items-center gap-2"
+                      >
+                        <User size={18} />
+                        Personal Space
+                      </button>
+                      <button
+                        onClick={() => {
+                          setShowMobileMenu(false);
+                          setShowSpacesMenu(false);
+                          navigate('/spaces/shared');
+                        }}
+                        className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 rounded-lg flex items-center gap-2"
+                      >
+                        <Users size={18} />
+                        Shared Spaces
+                      </button>
+                    </div>
+                  )}
+                </div>
+
+                <button
+                  onClick={() => {
+                    setShowMobileMenu(false);
+                    navigate('/planner');
+                  }}
+                  className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-colors ${
+                    location.pathname.startsWith('/planner')
+                      ? 'bg-blue-50 text-blue-700'
+                      : 'text-gray-700 hover:bg-gray-50'
+                  }`}
+                >
+                  <Calendar size={20} />
+                  Planner
+                </button>
+
+                <button
+                  onClick={() => {
+                    setShowMobileMenu(false);
+                    navigate('/guardrails');
+                  }}
+                  className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-colors ${
+                    isActive('/guardrails')
+                      ? 'bg-blue-50 text-blue-700'
+                      : 'text-gray-700 hover:bg-gray-50'
+                  }`}
+                >
+                  <Target size={20} />
+                  Guardrails
+                </button>
+
+                <button
+                  onClick={() => {
+                    setShowMobileMenu(false);
+                    navigate('/regulation');
+                  }}
+                  className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-colors ${
+                    location.pathname.startsWith('/regulation')
+                      ? 'bg-blue-50 text-blue-700'
+                      : 'text-gray-700 hover:bg-gray-50'
+                  }`}
+                >
+                  <Zap size={20} />
+                  Regulation
+                </button>
+
+                <button
+                  onClick={() => {
+                    setShowMobileMenu(false);
+                    navigate('/messages');
+                  }}
+                  className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-colors ${
+                    location.pathname.startsWith('/messages')
+                      ? 'bg-blue-50 text-blue-700'
+                      : 'text-gray-700 hover:bg-gray-50'
+                  }`}
+                >
+                  <MessageCircle size={20} />
+                  Messages
+                </button>
+
+                <button
+                  onClick={() => {
+                    setShowMobileMenu(false);
+                    navigate('/report');
+                  }}
+                  className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-colors ${
+                    isActive('/report')
+                      ? 'bg-blue-50 text-blue-700'
+                      : 'text-gray-700 hover:bg-gray-50'
+                  }`}
+                >
+                  <FileText size={20} />
+                  Report
+                </button>
+
+                {isAdmin && (
+                  <button
+                    onClick={() => {
+                      setShowMobileMenu(false);
+                      navigate('/admin');
+                    }}
+                    className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-colors ${
+                      location.pathname.startsWith('/admin')
+                        ? 'bg-violet-50 text-violet-700'
+                        : 'text-gray-700 hover:bg-gray-50'
+                    }`}
+                  >
+                    <Shield size={20} />
+                    Admin
+                  </button>
+                )}
+
+                <div className="border-t border-gray-200 my-4"></div>
+
+                <button
+                  onClick={() => {
+                    setShowMobileMenu(false);
+                    navigate('/settings');
+                  }}
+                  className="w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50"
+                >
+                  <Settings size={20} />
+                  Profile Settings
+                </button>
+
+                <button
+                  onClick={() => {
+                    setShowMobileMenu(false);
+                    navigate('/brain-profile/cards');
+                  }}
+                  className="w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50"
+                >
+                  <Brain size={20} />
+                  My Brain Profile
+                </button>
+
+                <div className="border-t border-gray-200 my-4"></div>
+
+                <div className="px-4 py-2">
+                  <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Theme</p>
+                </div>
+
+                <button
+                  onClick={() => {
+                    handleThemeChange('light');
+                    setShowMobileMenu(false);
+                  }}
+                  className="w-full flex items-center justify-between px-4 py-3 rounded-lg text-sm text-gray-700 hover:bg-gray-50"
+                >
+                  <div className="flex items-center gap-3">
+                    <Sun size={20} />
+                    Light
+                  </div>
+                  {config.appTheme === 'light' && <Check size={18} className="text-blue-600" />}
+                </button>
+
+                <button
+                  onClick={() => {
+                    handleThemeChange('dark');
+                    setShowMobileMenu(false);
+                  }}
+                  className="w-full flex items-center justify-between px-4 py-3 rounded-lg text-sm text-gray-700 hover:bg-gray-50"
+                >
+                  <div className="flex items-center gap-3">
+                    <Moon size={20} />
+                    Dark
+                  </div>
+                  {config.appTheme === 'dark' && <Check size={18} className="text-blue-600" />}
+                </button>
+
+                <button
+                  onClick={() => {
+                    handleThemeChange('neon-dark');
+                    setShowMobileMenu(false);
+                  }}
+                  className="w-full flex items-center justify-between px-4 py-3 rounded-lg text-sm text-gray-700 hover:bg-gray-50"
+                >
+                  <div className="flex items-center gap-3">
+                    <Zap size={20} />
+                    Neon Dark
+                  </div>
+                  {config.appTheme === 'neon-dark' && <Check size={18} className="text-blue-600" />}
+                </button>
+
+                <div className="border-t border-gray-200 my-4"></div>
+
+                <button
+                  onClick={() => {
+                    setShowMobileMenu(false);
+                    handleLogout();
+                  }}
+                  className="w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium text-red-600 hover:bg-red-50"
+                >
+                  <LogOut size={20} />
+                  Log Out
+                </button>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
+
+      {isViewingAs && (
+        <div className="bg-amber-500 text-white">
+          <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <Eye size={20} />
+                <div>
+                  <p className="text-sm font-semibold">Admin View Mode</p>
+                  <p className="text-xs opacity-90">
+                    Currently viewing as: {profile?.full_name} ({profile?.role?.toUpperCase()})
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={clearViewAs}
+                className="flex items-center gap-2 px-3 py-1.5 bg-white/20 hover:bg-white/30 rounded-lg transition-colors text-sm font-medium"
+              >
+                <X size={16} />
+                Exit View Mode
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <main
+        className={
+          location.pathname.startsWith('/planner')
+            ? 'w-full min-h-screen'
+            : 'max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8'
+        }
+      >
+        {children}
+      </main>
+
+      <RegulationNotificationBanner />
+      <FloatingAIChatWidget />
+    </div>
+  );
+}

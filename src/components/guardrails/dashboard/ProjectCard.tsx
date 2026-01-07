@@ -1,0 +1,350 @@
+import { useState, useEffect } from 'react';
+import { CheckCircle2, Clock, Archive, Trash2, MoreVertical, Network, ListChecks, MapPin, X, AlertTriangle, Wand2 } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import type { MasterProject, Domain } from '../../../lib/guardrailsTypes';
+import { setActiveProjectId } from '../../../state/activeDataContext';
+import { abandonMasterProject } from '../../../lib/guardrails';
+import { getProjectTypeById } from '../../../lib/guardrails/projectTypes';
+import { getProjectTypeIcon } from '../../../lib/guardrails/projectTypeIcons';
+import { getDomainConfig } from '../../../lib/guardrails/domainConfig';
+import { getProjectLifecyclePhase, getContinuePhaseButtonLabel, canAccessExecutionTools, getExecutionToolsTooltip } from '../../../lib/guardrails/projectLifecycle';
+import { PhaseProgress } from './PhaseProgress';
+
+interface ProjectCardProps {
+  project: MasterProject;
+  domain: Domain;
+  stats: {
+    totalItems: number;
+    completedItems: number;
+    inProgressItems: number;
+    blockedItems: number;
+  };
+  activeProjectId: string | null;
+  onOpenRoadmap: (projectId: string) => void;
+  onOpenMindMesh: (projectId: string) => void;
+  onOpenTaskFlow: (projectId: string) => void;
+  onRefresh: () => void;
+}
+
+export function ProjectCard({
+  project,
+  domain,
+  stats,
+  activeProjectId,
+  onOpenRoadmap,
+  onOpenMindMesh,
+  onOpenTaskFlow,
+  onRefresh,
+}: ProjectCardProps) {
+  const navigate = useNavigate();
+  const [showMenu, setShowMenu] = useState(false);
+  const [showAbandonModal, setShowAbandonModal] = useState(false);
+  const [abandonReason, setAbandonReason] = useState('');
+  const [abandoning, setAbandoning] = useState(false);
+  const [projectTypeName, setProjectTypeName] = useState<string | null>(null);
+
+  const isActive = activeProjectId === project.id;
+  const progress = stats.totalItems > 0
+    ? Math.round((stats.completedItems / stats.totalItems) * 100)
+    : 0;
+
+  const domainConfig = getDomainConfig(domain.name);
+  const ProjectTypeIcon = projectTypeName ? getProjectTypeIcon(projectTypeName) : null;
+  const lifecyclePhase = getProjectLifecyclePhase(project);
+  const canAccessExecution = canAccessExecutionTools(lifecyclePhase);
+  const executionTooltip = getExecutionToolsTooltip(lifecyclePhase);
+
+  useEffect(() => {
+    if (project.project_type_id) {
+      getProjectTypeById(project.project_type_id).then(pt => {
+        if (pt) {
+          setProjectTypeName(pt.name);
+        }
+      });
+    }
+  }, [project.project_type_id]);
+
+  const statusConfig = {
+    active: {
+      label: 'Active',
+      icon: Clock,
+      color: 'text-blue-600 bg-blue-50 border-blue-200',
+    },
+    completed: {
+      label: 'Completed',
+      icon: CheckCircle2,
+      color: 'text-green-600 bg-green-50 border-green-200',
+    },
+    abandoned: {
+      label: 'Abandoned',
+      icon: Archive,
+      color: 'text-gray-600 bg-gray-50 border-gray-200',
+    },
+  };
+
+  const config = statusConfig[project.status];
+  const StatusIcon = config.icon;
+
+  function handleSetActive() {
+    setActiveProjectId(project.id, project.domain_id);
+    setShowMenu(false);
+  }
+
+  function handleLaunchWizard() {
+    navigate(`/guardrails/wizard?project=${project.id}`);
+  }
+
+  async function handleAbandon() {
+    if (!abandonReason.trim()) {
+      alert('Please provide a reason for abandoning this project.');
+      return;
+    }
+
+    try {
+      setAbandoning(true);
+      await abandonMasterProject(project.id, abandonReason.trim());
+
+      if (isActive) {
+        setActiveProjectId(null, null);
+      }
+
+      setShowAbandonModal(false);
+      onRefresh();
+    } catch (error) {
+      console.error('Failed to abandon project:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Failed to abandon project. Please try again.';
+      alert(errorMessage);
+    } finally {
+      setAbandoning(false);
+    }
+  }
+
+  return (
+    <>
+      <div
+        className={`bg-white rounded-xl border-2 transition-all ${
+          isActive
+            ? `${domainConfig.colors.border} shadow-lg`
+            : `${domainConfig.colors.border} hover:shadow-md`
+        }`}
+      >
+        <div className="p-6">
+          <div className="flex items-start justify-between mb-4">
+            <div className="flex-1">
+              <div className="flex items-center gap-2 mb-2">
+                <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium border ${config.color}`}>
+                  <StatusIcon size={14} />
+                  {config.label}
+                </span>
+                {project.status === 'active' && (
+                  <button
+                    onClick={isActive ? undefined : handleSetActive}
+                    disabled={isActive}
+                    className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium transition-all ${
+                      isActive
+                        ? `${domainConfig.colors.primary} text-white cursor-default`
+                        : `${domainConfig.colors.light} ${domainConfig.colors.text} hover:${domainConfig.colors.bg} border ${domainConfig.colors.border}`
+                    }`}
+                    title={isActive ? 'Currently selected as active project' : 'Click to select as active project'}
+                  >
+                    <CheckCircle2 size={14} />
+                    {isActive ? 'Selected' : 'Select'}
+                  </button>
+                )}
+                {projectTypeName && ProjectTypeIcon && (
+                  <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium border ${domainConfig.colors.light} ${domainConfig.colors.text} ${domainConfig.colors.border}`}>
+                    <ProjectTypeIcon size={14} />
+                    {projectTypeName}
+                  </span>
+                )}
+              </div>
+              <h3 className="text-lg font-bold text-gray-900 mb-1">{project.name}</h3>
+              <p className={`text-sm font-medium ${domainConfig.colors.text}`}>
+                {domainConfig.name} Domain
+              </p>
+              {project.description && (
+                <p className="text-sm text-gray-500 mt-2 line-clamp-2">{project.description}</p>
+              )}
+            </div>
+
+            {project.status === 'active' && (
+              <div className="relative ml-2">
+                <button
+                  onClick={() => setShowMenu(!showMenu)}
+                  className="p-2 rounded-lg hover:bg-gray-100 transition-colors"
+                >
+                  <MoreVertical size={20} className="text-gray-600" />
+                </button>
+
+                {showMenu && (
+                  <>
+                    <div
+                      className="fixed inset-0 z-10"
+                      onClick={() => setShowMenu(false)}
+                    />
+                    <div className="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-xl border border-gray-200 py-1 z-20">
+                      <button
+                        onClick={() => {
+                          setShowAbandonModal(true);
+                          setShowMenu(false);
+                        }}
+                        className="w-full px-4 py-2 text-left text-sm text-red-600 hover:bg-red-50 flex items-center gap-2"
+                      >
+                        <Trash2 size={16} />
+                        Abandon Project
+                      </button>
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
+          </div>
+
+          <div className="space-y-3 mb-4">
+            <div>
+              <div className="flex items-center justify-between text-sm mb-1.5">
+                <span className="text-gray-600">Progress</span>
+                <span className="font-medium text-gray-900">{progress}%</span>
+              </div>
+              <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
+                <div
+                  className={`h-full ${domainConfig.colors.primary} transition-all`}
+                  style={{ width: `${progress}%` }}
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-2 text-sm">
+              <div className="flex items-center gap-2">
+                <div className="w-3 h-3 rounded-full bg-yellow-500" />
+                <span className="text-gray-600">{stats.inProgressItems} In Progress</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="w-3 h-3 rounded-full bg-red-500" />
+                <span className="text-gray-600">{stats.blockedItems} Blocked</span>
+              </div>
+            </div>
+          </div>
+
+          {project.status === 'active' && (
+            <div className="space-y-3">
+              {/* Phase Progress Indicator */}
+              <div className="pt-2 border-t border-gray-200">
+                <PhaseProgress currentPhase={lifecyclePhase} />
+              </div>
+
+              {/* Continue Setup Button */}
+              {(lifecyclePhase === 'intent' || lifecyclePhase === 'intent_checked' || lifecyclePhase === 'feasibility' || lifecyclePhase === 'feasibility_checked' || lifecyclePhase === 'execution') && (
+                <button
+                  onClick={handleLaunchWizard}
+                  className={`w-full flex items-center justify-center gap-2 px-4 py-2.5 ${domainConfig.colors.primary} text-white rounded-lg hover:opacity-90 transition-all text-sm font-semibold shadow-md`}
+                >
+                  <Wand2 size={16} />
+                  {getContinuePhaseButtonLabel(lifecyclePhase)}
+                </button>
+              )}
+
+              {/* Execution Tools */}
+              <div className="flex gap-2">
+                <button
+                  onClick={() => onOpenRoadmap(project.id)}
+                  disabled={!canAccessExecution}
+                  title={!canAccessExecution ? executionTooltip : ''}
+                  className={`flex-1 flex items-center justify-center gap-2 px-3 py-2 ${domainConfig.colors.light} ${domainConfig.colors.text} rounded-lg transition-colors text-sm font-medium ${
+                    canAccessExecution
+                      ? `hover:${domainConfig.colors.bg}`
+                      : 'opacity-50 cursor-not-allowed'
+                  }`}
+                >
+                  <MapPin size={16} />
+                  Roadmap
+                </button>
+                <button
+                  onClick={() => onOpenMindMesh(project.id)}
+                  disabled={!canAccessExecution}
+                  title={!canAccessExecution ? executionTooltip : ''}
+                  className={`flex-1 flex items-center justify-center gap-2 px-3 py-2 ${domainConfig.colors.light} ${domainConfig.colors.text} rounded-lg transition-colors text-sm font-medium ${
+                    canAccessExecution
+                      ? `hover:${domainConfig.colors.bg}`
+                      : 'opacity-50 cursor-not-allowed'
+                  }`}
+                >
+                  <Network size={16} />
+                  Mesh
+                </button>
+                <button
+                  onClick={() => onOpenTaskFlow(project.id)}
+                  disabled={!canAccessExecution}
+                  title={!canAccessExecution ? executionTooltip : ''}
+                  className={`flex-1 flex items-center justify-center gap-2 px-3 py-2 ${domainConfig.colors.light} ${domainConfig.colors.text} rounded-lg transition-colors text-sm font-medium ${
+                    canAccessExecution
+                      ? `hover:${domainConfig.colors.bg}`
+                      : 'opacity-50 cursor-not-allowed'
+                  }`}
+                >
+                  <ListChecks size={16} />
+                  Tasks
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {showAbandonModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-xl shadow-xl max-w-md w-full p-6">
+            <div className="flex items-start justify-between mb-4">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-red-100 rounded-lg">
+                  <AlertTriangle className="text-red-600" size={24} />
+                </div>
+                <div>
+                  <h2 className="text-xl font-bold text-gray-900">Abandon Project</h2>
+                  <p className="text-sm text-gray-600 mt-1">This action cannot be undone</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowAbandonModal(false)}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                <X size={24} />
+              </button>
+            </div>
+
+            <div className="mb-6">
+              <p className="text-gray-700 mb-4">
+                You are about to abandon <span className="font-semibold">{project.name}</span>. Please provide a reason for abandoning this project.
+              </p>
+
+              <textarea
+                value={abandonReason}
+                onChange={(e) => setAbandonReason(e.target.value)}
+                placeholder="e.g., Shifted priorities, no longer relevant, scope too large..."
+                rows={4}
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500 resize-none"
+                autoFocus
+              />
+            </div>
+
+            <div className="flex gap-3">
+              <button
+                onClick={() => setShowAbandonModal(false)}
+                className="flex-1 px-4 py-2.5 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors font-medium"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleAbandon}
+                disabled={!abandonReason.trim() || abandoning}
+                className="flex-1 px-4 py-2.5 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors font-medium"
+              >
+                {abandoning ? 'Abandoning...' : 'Abandon Project'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
