@@ -1,0 +1,156 @@
+/**
+ * Phase 8: Top-Level Error Boundary for App Shell
+ * 
+ * Catches chunk load errors, PWA hydration errors, and routing failures.
+ * Provides branded error screen with recovery options.
+ */
+
+import { Component, ReactNode, ErrorInfo } from 'react';
+import { AlertCircle, RefreshCw, RotateCcw } from 'lucide-react';
+
+interface Props {
+  children: ReactNode;
+}
+
+interface State {
+  hasError: boolean;
+  error: Error | null;
+  errorInfo: ErrorInfo | null;
+  errorCode: string | null;
+}
+
+export class AppErrorBoundary extends Component<Props, State> {
+  constructor(props: Props) {
+    super(props);
+    this.state = {
+      hasError: false,
+      error: null,
+      errorInfo: null,
+      errorCode: null,
+    };
+  }
+
+  static getDerivedStateFromError(error: Error): Partial<State> {
+    // Phase 8: Detect specific error types
+    let errorCode = 'UNKNOWN_ERROR';
+    
+    if (error.message.includes('ChunkLoadError') || error.message.includes('Loading chunk')) {
+      errorCode = 'CHUNK_LOAD_ERROR';
+    } else if (error.message.includes('Failed to fetch') || error.message.includes('NetworkError')) {
+      errorCode = 'NETWORK_ERROR';
+    } else if (error.message.includes('hydration')) {
+      errorCode = 'HYDRATION_ERROR';
+    } else if (error.message.includes('service worker') || error.message.includes('ServiceWorker')) {
+      errorCode = 'SERVICE_WORKER_ERROR';
+    }
+
+    return {
+      hasError: true,
+      error,
+      errorCode,
+    };
+  }
+
+  componentDidCatch(error: Error, errorInfo: ErrorInfo) {
+    this.setState({
+      error,
+      errorInfo,
+    });
+
+    // Phase 8: Developer logging (no user-facing technical details)
+    if (import.meta.env.DEV) {
+      console.error('[AppErrorBoundary] Error caught:', error);
+      console.error('[AppErrorBoundary] Component stack:', errorInfo.componentStack);
+    }
+
+    // Phase 8: Optional remote logging hook (for production)
+    if (import.meta.env.PROD) {
+      // TODO: Add remote logging service integration if needed
+      // logErrorToService(error, errorInfo, this.state.errorCode);
+    }
+  }
+
+  handleRetry = () => {
+    this.setState({
+      hasError: false,
+      error: null,
+      errorInfo: null,
+      errorCode: null,
+    });
+    window.location.reload();
+  };
+
+  handleReset = async () => {
+    try {
+      // Phase 8: Clear service worker and cache
+      if ('serviceWorker' in navigator) {
+        const registrations = await navigator.serviceWorker.getRegistrations();
+        for (const registration of registrations) {
+          await registration.unregister();
+        }
+      }
+
+      // Clear all caches
+      if ('caches' in window) {
+        const cacheNames = await caches.keys();
+        await Promise.all(cacheNames.map((name) => caches.delete(name)));
+      }
+
+      // Reset state and reload
+      this.setState({
+        hasError: false,
+        error: null,
+        errorInfo: null,
+        errorCode: null,
+      });
+
+      window.location.reload();
+    } catch (resetError) {
+      console.error('[AppErrorBoundary] Error resetting app:', resetError);
+      // If reset fails, still try to reload
+      window.location.reload();
+    }
+  };
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="fixed inset-0 bg-gradient-to-br from-red-50 via-rose-50 to-pink-50 flex items-center justify-center p-4 z-50">
+          <div className="max-w-md w-full bg-white rounded-xl shadow-lg p-6 text-center">
+            <AlertCircle size={48} className="text-red-500 mx-auto mb-4" />
+            <h1 className="text-xl font-bold text-gray-900 mb-2">
+              Something Went Wrong
+            </h1>
+            <p className="text-gray-600 mb-2">
+              Something went wrong while loading the app.
+            </p>
+            {this.state.errorCode && (
+              <p className="text-xs text-gray-500 mb-6">
+                Error code: {this.state.errorCode}
+              </p>
+            )}
+            <div className="flex flex-col gap-3">
+              <button
+                onClick={this.handleRetry}
+                className="px-6 py-3 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors font-medium flex items-center justify-center gap-2"
+              >
+                <RefreshCw size={18} />
+                Retry
+              </button>
+              <button
+                onClick={this.handleReset}
+                className="px-6 py-3 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors font-medium flex items-center justify-center gap-2"
+              >
+                <RotateCcw size={18} />
+                Reset App
+              </button>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    return this.props.children;
+  }
+}
+

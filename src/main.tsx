@@ -32,8 +32,32 @@ document.addEventListener('focusin', (e: FocusEvent) => {
   }
 });
 
+// Phase 8: Global error handlers for chunk load errors
+import { handleChunkLoadError } from './lib/serviceWorkerRecovery';
+
+// Phase 8: Handle chunk load errors globally
+window.addEventListener('error', (event) => {
+  if (event.error) {
+    const handled = handleChunkLoadError(event.error);
+    if (handled) {
+      event.preventDefault(); // Prevent default error handling
+    }
+  }
+});
+
+// Phase 8: Handle unhandled promise rejections (chunk load errors often appear here)
+window.addEventListener('unhandledrejection', (event) => {
+  if (event.reason && event.reason instanceof Error) {
+    const handled = handleChunkLoadError(event.reason);
+    if (handled) {
+      event.preventDefault(); // Prevent default error handling
+    }
+  }
+});
+
 // Phase 3A: Register Service Worker (Production Only)
 // Phase 3C: Enhanced with update handling
+// Phase 8: Enhanced with recovery detection
 // Service worker is disabled in dev to avoid caching issues during development
 if (import.meta.env.PROD && 'serviceWorker' in navigator) {
   window.addEventListener('load', () => {
@@ -46,19 +70,15 @@ if (import.meta.env.PROD && 'serviceWorker' in navigator) {
         }, 60 * 60 * 1000);
 
         // Phase 3C: Handle service worker updates
+        // Phase 8: Don't auto-reload, let boot system handle it
         registration.addEventListener('updatefound', () => {
           const newWorker = registration.installing;
           if (newWorker) {
             newWorker.addEventListener('statechange', () => {
               if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
-                // Phase 3C: New service worker available - reload when safe
-                // Only reload if app is in foreground and not during critical operations
-                if (document.visibilityState === 'visible') {
-                  // Small delay to avoid interrupting user actions
-                  setTimeout(() => {
-                    window.location.reload();
-                  }, 1000);
-                }
+                // Phase 8: Signal update available instead of auto-reloading
+                // The boot system will show update banner
+                window.dispatchEvent(new CustomEvent('sw-update-available'));
               }
             });
           }
@@ -66,6 +86,8 @@ if (import.meta.env.PROD && 'serviceWorker' in navigator) {
       })
       .catch((error) => {
         console.warn('Service Worker registration failed:', error);
+        // Phase 8: Signal service worker error to boot system
+        window.dispatchEvent(new CustomEvent('sw-registration-failed', { detail: error }));
       });
   });
 }

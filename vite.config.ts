@@ -2,39 +2,47 @@ import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import path from 'path';
 
-// https://vitejs.dev/config/
 export default defineConfig({
+  base: '/',
+
   plugins: [react()],
+
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),
     },
   },
+
   optimizeDeps: {
     exclude: ['lucide-react'],
   },
+
   server: {
-    host: true, // Enable network access for mobile testing (binds to 0.0.0.0)
+    host: true,
     port: 5173,
-    strictPort: true, // Fail if port is already in use
+    strictPort: true,
     hmr: {
       timeout: 30000,
       overlay: true,
     },
-    watch: {
-      usePolling: false,
-      useFsEvents: true,
-    },
   },
+
   build: {
+    target: 'es2018',
     sourcemap: false,
     minify: 'esbuild',
+    cssCodeSplit: true,
+    assetsInlineLimit: 0,
+
     rollupOptions: {
       output: {
-        manualChunks: {
-          'react-vendor': ['react', 'react-dom', 'react-router-dom'],
-          'supabase-vendor': ['@supabase/supabase-js'],
-          'dnd-vendor': ['@dnd-kit/core', '@dnd-kit/sortable', '@dnd-kit/utilities'],
+        manualChunks(id) {
+          if (id.includes('node_modules')) {
+            if (id.includes('react')) return 'react-vendor';
+            if (id.includes('@supabase')) return 'supabase-vendor';
+            if (id.includes('@dnd-kit')) return 'dnd-vendor';
+            return 'vendor';
+          }
         },
       },
     },

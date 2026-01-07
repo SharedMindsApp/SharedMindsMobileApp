@@ -1,4 +1,5 @@
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
+import { useEffect } from 'react';
 import { AuthProvider } from './contexts/AuthContext';
 import { EncryptionProvider } from './contexts/EncryptionContext';
 import { ViewAsProvider } from './contexts/ViewAsContext';
@@ -11,6 +12,9 @@ import { AIChatWidgetProvider } from './contexts/AIChatWidgetContext';
 import { ActiveDataProvider } from './contexts/ActiveDataContext';
 import { ForegroundTriggersProvider } from './contexts/ForegroundTriggersContext';
 import { NetworkStatusProvider } from './contexts/NetworkStatusContext';
+import { AppBootProvider, useAppBoot } from './contexts/AppBootContext';
+import { AppErrorBoundary } from './components/AppErrorBoundary';
+import { AppBootScreen } from './components/AppBootScreen';
 import { Layout } from './components/Layout';
 import { RouteGlitchEffect } from './components/RouteGlitchEffect';
 import { Dashboard } from './components/Dashboard';
@@ -190,7 +194,60 @@ import { TripDetailPage } from './components/planner/travel/TripDetailPage';
 import { PlannerSocial } from './components/planner/PlannerSocial';
 import { PlannerJournal } from './components/planner/PlannerJournal';
 
-function App() {
+// Phase 8: Inner app component that manages boot state
+function AppContent() {
+  const { state, setStatus, setServiceWorkerState } = useAppBoot();
+
+  // Phase 8: Monitor service worker state
+  useEffect(() => {
+    if ('serviceWorker' in navigator) {
+      const controller = navigator.serviceWorker.controller;
+      if (controller) {
+        setServiceWorkerState('controlling');
+      } else {
+        navigator.serviceWorker.ready.then(() => {
+          setServiceWorkerState('registered');
+        });
+      }
+
+      // Phase 8: Listen for service worker update events
+      const handleUpdateAvailable = () => {
+        setStatus('update-available');
+      };
+
+      const handleRegistrationFailed = () => {
+        setServiceWorkerState('broken');
+      };
+
+      window.addEventListener('sw-update-available', handleUpdateAvailable);
+      window.addEventListener('sw-registration-failed', handleRegistrationFailed);
+
+      return () => {
+        window.removeEventListener('sw-update-available', handleUpdateAvailable);
+        window.removeEventListener('sw-registration-failed', handleRegistrationFailed);
+      };
+    }
+  }, [setStatus, setServiceWorkerState]);
+
+  // Phase 8: Boot sequence - transition through states
+  useEffect(() => {
+    if (state.status === 'initializing') {
+      // Start loading assets
+      setTimeout(() => setStatus('loading-assets'), 500);
+    } else if (state.status === 'loading-assets') {
+      // Simulate asset loading, then hydrate session
+      setTimeout(() => setStatus('hydrating-session'), 1000);
+    } else if (state.status === 'hydrating-session') {
+      // Session hydration complete, app is ready
+      setTimeout(() => setStatus('ready'), 500);
+    }
+  }, [state.status, setStatus]);
+
+  // Phase 8: Show boot screen if not ready
+  if (state.status !== 'ready') {
+    return <AppBootScreen />;
+  }
+
   return (
     <BrowserRouter>
       <AuthProvider>
@@ -1866,6 +1923,17 @@ function App() {
         </ViewAsProvider>
       </AuthProvider>
     </BrowserRouter>
+  );
+}
+
+// Phase 8: Main App component with boot system and error boundary
+function App() {
+  return (
+    <AppErrorBoundary>
+      <AppBootProvider>
+        <AppContent />
+      </AppBootProvider>
+    </AppErrorBoundary>
   );
 }
 

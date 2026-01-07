@@ -54,3 +54,4 @@ END $$;
 COMMENT ON COLUMN master_projects.wizard_intent_snapshot IS 'JSONB object storing the complete ProjectIntentSnapshot from the Review step, including domain, projectType, idea (3 fields), goals, and clarifySignals';
 
 
+

@@ -30,3 +30,4 @@ END $$;
 COMMENT ON COLUMN ai_provider_models.reasoning_level IS 'Admin-selectable reasoning level preset for OpenAI models. Expands to model-specific parameters at request time. Allowed values: fast, balanced, deep, long_form';
 
 
+
