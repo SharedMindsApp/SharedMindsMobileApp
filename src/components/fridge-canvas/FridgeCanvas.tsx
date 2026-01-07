@@ -117,6 +117,13 @@ export function FridgeCanvas({ householdId }: FridgeCanvasProps) {
   // SVG upload modal state
   const [showSVGUpload, setShowSVGUpload] = useState(false);
 
+  // Phase 6A: Mobile canvas disclaimer state (must be before any early returns)
+  const [showMobileDisclaimer, setShowMobileDisclaimer] = useState(() => {
+    if (typeof window === 'undefined') return false;
+    const dismissed = sessionStorage.getItem('mobile_canvas_disclaimer_dismissed');
+    return !dismissed && window.innerWidth < 768;
+  });
+
   const { preferences } = useUIPreferences();
   const reducedMotion = preferences?.reduce_motion || false;
 
@@ -833,13 +840,6 @@ const handleAddWidget = async (type: WidgetType) => {
       </div>
     );
   }
-
-  // Phase 6A: Mobile canvas disclaimer state
-  const [showMobileDisclaimer, setShowMobileDisclaimer] = useState(() => {
-    if (typeof window === 'undefined') return false;
-    const dismissed = sessionStorage.getItem('mobile_canvas_disclaimer_dismissed');
-    return !dismissed && window.innerWidth < 768;
-  });
 
   // ----------------------------
   // MAIN RENDER
