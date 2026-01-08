@@ -6,8 +6,10 @@
  */
 
 import { useEffect, useState } from 'react';
-import { Loader2, AlertCircle, WifiOff, RefreshCw, RotateCcw, CheckCircle2 } from 'lucide-react';
+import { Loader2, AlertCircle, WifiOff, RefreshCw, RotateCcw, CheckCircle2, LogOut } from 'lucide-react';
 import { useAppBoot, LONG_LOADING_THRESHOLD_MS_EXPORT, FATAL_ERROR_THRESHOLD_MS_EXPORT } from '../contexts/AppBootContext';
+import { useAuth } from '../contexts/AuthContext';
+import { supabase } from '../lib/supabase';
 
 const BOOT_STEPS = [
   { status: 'initializing', message: 'Starting app…' },
@@ -19,6 +21,8 @@ const BOOT_STEPS = [
 export function AppBootScreen() {
   const { state, retryBoot, resetApp, setStatus } = useAppBoot();
   const [currentStepIndex, setCurrentStepIndex] = useState(0);
+  const [authStuck, setAuthStuck] = useState(false);
+  const authContext = useAuth();
 
   // Phase 8: Progress through boot steps based on status
   useEffect(() => {
@@ -27,6 +31,48 @@ export function AppBootScreen() {
       setCurrentStepIndex(stepIndex);
     }
   }, [state.status]);
+
+  // Detect stuck authentication state
+  useEffect(() => {
+    // If boot is ready but auth is still loading for too long, mark as stuck
+    if (state.status === 'ready' && authContext.loading && state.elapsedTime > 10000) {
+      setAuthStuck(true);
+    } else {
+      setAuthStuck(false);
+    }
+  }, [state.status, state.elapsedTime, authContext.loading]);
+
+  // Handle clearing auth and redirecting to login
+  const handleClearAuthAndLogin = async () => {
+    try {
+      // Clear Supabase session
+      await supabase.auth.signOut();
+      
+      // Clear localStorage auth-related items
+      localStorage.removeItem('supabase.auth.token');
+      localStorage.removeItem('sb-auth-token');
+      
+      // Clear any cached auth state
+      if ('caches' in window) {
+        try {
+          const cacheNames = await caches.keys();
+          const authCacheNames = cacheNames.filter(name => 
+            name.includes('auth') || name.includes('session')
+          );
+          await Promise.all(authCacheNames.map(name => caches.delete(name)));
+        } catch (err) {
+          console.error('Error clearing auth caches:', err);
+        }
+      }
+      
+      // Redirect to login
+      window.location.href = '/auth/login';
+    } catch (error) {
+      console.error('Error clearing auth:', error);
+      // Force redirect even if signOut fails
+      window.location.href = '/auth/login';
+    }
+  };
 
   const currentStep = BOOT_STEPS[currentStepIndex] || BOOT_STEPS[0];
   const showLongLoadingMessage = state.elapsedTime >= LONG_LOADING_THRESHOLD_MS_EXPORT;
@@ -133,6 +179,39 @@ export function AppBootScreen() {
     );
   }
 
+  // Phase 8: Stuck authentication state (boot ready but auth still loading)
+  if (authStuck || (state.status === 'ready' && authContext.loading && state.elapsedTime > 10000)) {
+    return (
+      <div className="fixed inset-0 bg-gradient-to-br from-red-50 via-rose-50 to-pink-50 flex items-center justify-center p-4 z-50">
+        <div className="max-w-md w-full bg-white rounded-xl shadow-lg p-6 text-center">
+          <AlertCircle size={48} className="text-red-500 mx-auto mb-4" />
+          <h1 className="text-xl font-bold text-gray-900 mb-2">Authentication Issue</h1>
+          <p className="text-gray-600 mb-2">
+            The app is having trouble verifying your login. This can happen if your session expired or there was a connection issue.
+          </p>
+          <p className="text-xs text-gray-500 mb-6">
+            Clearing your session and redirecting to login will fix this.
+          </p>
+          <div className="flex flex-col gap-3">
+            <button
+              onClick={handleClearAuthAndLogin}
+              className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium flex items-center justify-center gap-2"
+            >
+              <LogOut size={18} />
+              Clear Session & Go to Login
+            </button>
+            <button
+              onClick={() => window.location.reload()}
+              className="px-6 py-3 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors font-medium"
+            >
+              Try Reloading First
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   // Phase 8: Normal loading state
   return (
     <div className="fixed inset-0 bg-gradient-to-br from-amber-50 via-orange-50 to-rose-50 flex items-center justify-center p-4 z-50">
@@ -171,6 +250,15 @@ export function AppBootScreen() {
               >
                 Reload App
               </button>
+              {authContext.loading && state.elapsedTime > 8000 && (
+                <button
+                  onClick={handleClearAuthAndLogin}
+                  className="px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors text-sm font-medium flex items-center justify-center gap-2"
+                >
+                  <LogOut size={16} />
+                  Clear Auth & Login
+                </button>
+              )}
             </div>
           </div>
         )}

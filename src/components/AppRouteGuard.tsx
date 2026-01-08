@@ -1,13 +1,11 @@
 // Phase 3B: App-Only Route Guard
 // Phase 3C: Enhanced with launch stability
 // Phase 8C: App-first auth entry - always redirect unauthenticated to /login
-// Redirects installed apps away from marketing/landing pages
-// Now applies to all contexts (browser + installed app)
+// Phase 1: Critical Load Protection - Added timeout protection
+// FIXED: Removed redundant auth checks - now relies on AuthContext instead of checking on every route change
 
-import { useEffect, useRef } from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
-import { supabase } from '../lib/supabase';
-import { useState } from 'react';
+import { useAuth } from '../contexts/AuthContext';
 
 type AppRouteGuardProps = {
   children: React.ReactNode;
@@ -15,52 +13,16 @@ type AppRouteGuardProps = {
 
 export function AppRouteGuard({ children }: AppRouteGuardProps) {
   const location = useLocation();
-  const [checkingAuth, setCheckingAuth] = useState(true);
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const hasRedirected = useRef(false); // Phase 8C: Prevent double redirects
-
-  useEffect(() => {
-    // Phase 8C: Check auth for all contexts (not just installed app)
-    const checkAuth = async () => {
-      try {
-        const { data: { session }, error } = await supabase.auth.getSession();
-        if (error) throw error;
-        
-        setIsAuthenticated(!!session);
-        
-        // Phase 8C: Immediate redirect if needed, before showing loading state
-        const isRootRoute = location.pathname === '/';
-        
-        if (isRootRoute && !hasRedirected.current) {
-          hasRedirected.current = true;
-          // Redirect will happen in render, but we set state first
-        }
-      } catch (error) {
-        console.error('[AppRouteGuard] Auth check error:', error);
-        setIsAuthenticated(false);
-      } finally {
-        setCheckingAuth(false);
-      }
-    };
-
-    checkAuth();
-
-    // Listen for auth changes (but don't trigger redirects on change)
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setIsAuthenticated(!!session);
-    });
-
-    return () => {
-      subscription.unsubscribe();
-    };
-  }, [location.pathname]);
+  const { user, loading } = useAuth(); // Use AuthContext instead of doing our own check
+  const isAuthenticated = !!user;
 
   // Phase 8C: Handle root route redirect
+  // FIXED: Only check root route, don't do auth check here - AuthContext handles that
   const isRootRoute = location.pathname === '/';
 
-  if (isRootRoute && !hasRedirected.current) {
-    if (checkingAuth) {
-      // Phase 8C: Minimal loading state - no flicker
+  if (isRootRoute) {
+    // Show loading while auth is being checked by AuthContext
+    if (loading) {
       return (
         <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50 flex items-center justify-center">
           <div className="text-center">
@@ -70,8 +32,7 @@ export function AppRouteGuard({ children }: AppRouteGuardProps) {
       );
     }
     
-    // Phase 8C: Redirect immediately once auth state is known
-    hasRedirected.current = true;
+    // Redirect based on auth state from AuthContext
     if (isAuthenticated) {
       // Phase 8C: Check for last planner view (mobile-first)
       if (typeof window !== 'undefined' && window.innerWidth < 1024) {

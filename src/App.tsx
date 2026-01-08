@@ -1,6 +1,6 @@
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { useEffect } from 'react';
-import { AuthProvider } from './contexts/AuthContext';
+import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { EncryptionProvider } from './contexts/EncryptionContext';
 import { ViewAsProvider } from './contexts/ViewAsContext';
 import { UIPreferencesProvider } from './contexts/UIPreferencesContext';
@@ -118,6 +118,7 @@ import { ManualInterventionsPage } from './components/interventions/ManualInterv
 import { TriggerAuditPanel } from './components/interventions/TriggerAuditPanel';
 import { GovernancePanel } from './components/interventions/GovernancePanel';
 import { Stage3ErrorBoundary } from './components/interventions/Stage3ErrorBoundary';
+import { ErrorBoundary } from './components/common/ErrorBoundary';
 import { RegulationHubTabbed } from './components/interventions/RegulationHubTabbed';
 import { RegulationUsePage } from './components/interventions/RegulationUsePage';
 import { ContextsPage } from './components/interventions/ContextsPage';
@@ -201,6 +202,21 @@ import { PlannerSocial } from './components/planner/PlannerSocial';
 import { PlannerJournal } from './components/planner/PlannerJournal';
 import { DailyAlignmentPage } from './components/regulation/DailyAlignmentPage';
 
+// Phase 8: Wrapper to show boot screen when auth is stuck (must be inside AuthProvider)
+function AppBootScreenWrapper() {
+  const { state } = useAppBoot();
+  const { loading: authLoading } = useAuth();
+  const showStuckAuth = state.status === 'ready' && authLoading && state.elapsedTime > 10000;
+  
+  if (!showStuckAuth) return null;
+  
+  return (
+    <div className="fixed inset-0 z-[9999] bg-white">
+      <AppBootScreen />
+    </div>
+  );
+}
+
 // Phase 8: Inner app component that manages boot state
 function AppContent() {
   const { state, setStatus, setServiceWorkerState } = useAppBoot();
@@ -257,6 +273,7 @@ function AppContent() {
 
   // Phase 10: Render app immediately, boot screen is shown as overlay during auth loading
   // This allows contexts to start initializing in parallel rather than sequentially
+  // AppBootScreen will handle detecting stuck auth states internally
   const showBootOverlay = state.status !== 'ready';
 
   return (
@@ -266,6 +283,8 @@ function AppContent() {
           <AppBootScreen />
         </div>
       )}
+      {/* AppBootScreen also shows when auth is stuck, handled inside the component */}
+      <AppBootScreenWrapper />
     <BrowserRouter>
       <AuthProvider>
         <NotificationProvider>
@@ -361,7 +380,13 @@ function AppContent() {
             path="/calendar/personal"
             element={
               <AuthGuard>
-                <PersonalCalendarPage />
+                <ErrorBoundary
+                  context="Personal Calendar"
+                  fallbackRoute="/planner"
+                  errorMessage="An error occurred while loading the personal calendar."
+                >
+                  <PersonalCalendarPage />
+                </ErrorBoundary>
               </AuthGuard>
             }
           />
@@ -419,7 +444,13 @@ function AppContent() {
             path="/calendar"
             element={
               <AuthGuard>
-                <CalendarPageWrapper />
+                <ErrorBoundary
+                  context="Calendar"
+                  fallbackRoute="/planner"
+                  errorMessage="An error occurred while loading the calendar."
+                >
+                  <CalendarPageWrapper />
+                </ErrorBoundary>
               </AuthGuard>
             }
           />
@@ -1144,7 +1175,13 @@ function AppContent() {
             element={
               <AuthGuard>
                 <Layout>
-                  <PlannerDailyV2 />
+                  <ErrorBoundary
+                    context="Planner Daily"
+                    fallbackRoute="/planner"
+                    errorMessage="An error occurred while loading the daily planner."
+                  >
+                    <PlannerDailyV2 />
+                  </ErrorBoundary>
                 </Layout>
               </AuthGuard>
             }
@@ -1154,7 +1191,13 @@ function AppContent() {
             element={
               <AuthGuard>
                 <Layout>
-                  <PlannerWeekly />
+                  <ErrorBoundary
+                    context="Planner Weekly"
+                    fallbackRoute="/planner"
+                    errorMessage="An error occurred while loading the weekly planner."
+                  >
+                    <PlannerWeekly />
+                  </ErrorBoundary>
                 </Layout>
               </AuthGuard>
             }
@@ -1164,7 +1207,13 @@ function AppContent() {
             element={
               <AuthGuard>
                 <Layout>
-                  <PlannerMonthly />
+                  <ErrorBoundary
+                    context="Planner Monthly"
+                    fallbackRoute="/planner"
+                    errorMessage="An error occurred while loading the monthly planner."
+                  >
+                    <PlannerMonthly />
+                  </ErrorBoundary>
                 </Layout>
               </AuthGuard>
             }

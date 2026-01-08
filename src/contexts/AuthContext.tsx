@@ -92,6 +92,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     let mounted = true;
+    let timeoutId: NodeJS.Timeout | null = null;
 
     const initAuth = async () => {
       try {
@@ -127,31 +128,62 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             });
           }
         }
-        } catch (error) {
-          logError(
-            'Auth initialization failed',
-            error instanceof Error ? error : new Error(String(error)),
-            {
-              component: 'AuthContext',
-              action: 'initAuth',
-              userId: user?.id,
-            }
-          );
-          if (mounted) {
-            setUser(null);
-            setProfile(null);
-            setLoading(false);
+      } catch (error) {
+        logError(
+          'Auth initialization failed',
+          error instanceof Error ? error : new Error(String(error)),
+          {
+            component: 'AuthContext',
+            action: 'initAuth',
+            userId: user?.id,
           }
+        );
+        if (mounted) {
+          setUser(null);
+          setProfile(null);
+          setLoading(false);
         }
+      } finally {
+        if (timeoutId) {
+          clearTimeout(timeoutId);
+        }
+      }
     };
 
     initAuth();
+
+    // Phase 12: Add a maximum timeout for auth loading to prevent infinite loading
+    // If auth is still loading after 15 seconds, force it to stop
+    timeoutId = setTimeout(() => {
+      if (mounted) {
+        // Check current loading state - if still loading after timeout, force stop
+        setLoading((currentLoading) => {
+          if (currentLoading) {
+            logWarning('Auth loading timeout - forcing loading state to false', {
+              component: 'AuthContext',
+              action: 'initAuth',
+              timeout: 15000,
+            });
+            // Clear any potentially invalid session state if no user
+            setUser((currentUser) => {
+              if (!currentUser) {
+                setProfile(null);
+              }
+              return currentUser;
+            });
+            return false;
+          }
+          return currentLoading;
+        });
+      }
+    }, 15000);
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       (event, session) => {
         (async () => {
           if (mounted) {
             setUser(session?.user ?? null);
+            setLoading(false); // Clear loading when auth state changes
             if (session?.user) {
               await fetchProfile(session.user.id);
             } else {
@@ -217,6 +249,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       mounted = false;
       subscription.unsubscribe();
       document.removeEventListener('visibilitychange', handleVisibilityChange);
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+      }
     };
   }, [fetchProfile]);
 

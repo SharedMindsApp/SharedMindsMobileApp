@@ -1,4 +1,9 @@
-import { useEffect, useState } from 'react';
+/**
+ * Phase 1: Critical Load Protection - Added timeout protection
+ * Phase 2: Memory Leak Prevention - Using safe hooks for event listeners
+ */
+
+import { useEffect, useState, useCallback } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { Loader2, LayoutGrid, Smartphone, Home, Users, User, ChevronDown, Target, MessageCircle, Settings, ArrowLeft, Menu } from 'lucide-react';
 import { FridgeCanvas } from './fridge-canvas/FridgeCanvas';
@@ -8,13 +13,19 @@ import { isStandaloneApp } from '../lib/appContext';
 import { loadHouseholdWidgets } from '../lib/fridgeCanvas';
 import { WidgetWithLayout } from '../lib/fridgeCanvasTypes';
 import { NotificationBell } from './notifications/NotificationBell';
+import { useLoadingState } from '../hooks/useLoadingState';
+import { TimeoutRecovery } from './common/TimeoutRecovery';
+import { useSafeEventListener } from '../hooks/useSafeEventListener';
+import { ErrorBoundary } from './common/ErrorBoundary';
 
 export function SpaceViewPage() {
   const { spaceId } = useParams<{ spaceId: string }>();
   const [searchParams] = useSearchParams();
   const widgetParam = searchParams.get('widget');
   const [household, setHousehold] = useState<Household | null>(null);
-  const [loading, setLoading] = useState(true);
+  const { loading, timedOut, setLoading } = useLoadingState({
+    timeoutMs: 12000, // 12 seconds for space load
+  });
   const [error, setError] = useState<string | null>(null);
   const [showSpacesMenu, setShowSpacesMenu] = useState(false);
   const [showMobileMenu, setShowMobileMenu] = useState(false);
@@ -23,15 +34,17 @@ export function SpaceViewPage() {
   const navigate = useNavigate();
 
   // Phase 9A: Detect mobile/installed app
-  useEffect(() => {
-    const checkMobile = () => {
-      const mobile = window.innerWidth < 768 || isStandaloneApp();
-      setIsMobile(mobile);
-    };
-    checkMobile();
-    window.addEventListener('resize', checkMobile);
-    return () => window.removeEventListener('resize', checkMobile);
+  // Phase 2: Use safe event listener for resize
+  const checkMobile = useCallback(() => {
+    const mobile = window.innerWidth < 768 || isStandaloneApp();
+    setIsMobile(mobile);
   }, []);
+
+  useEffect(() => {
+    checkMobile();
+  }, [checkMobile]);
+
+  useSafeEventListener('resize', checkMobile, window);
 
   useEffect(() => {
     if (spaceId) {
@@ -74,6 +87,18 @@ export function SpaceViewPage() {
     }
   };
 
+  // Phase 1: Show timeout recovery if space load timed out
+  if (timedOut) {
+    return (
+      <TimeoutRecovery
+        message="Space is taking longer than expected to load. This may be due to a network issue."
+        timeoutSeconds={12}
+        onRetry={() => loadSpace()}
+        onReload={() => window.location.reload()}
+      />
+    );
+  }
+
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-amber-50 via-orange-50 to-rose-50">
@@ -106,20 +131,36 @@ export function SpaceViewPage() {
   const showCanvasOnMobile = viewParam === 'canvas' || widgetParam;
 
   // Phase 9A: On mobile/installed app, default to OS launcher UNLESS canvas view is requested
+  // Phase 3: Enhanced Error Boundaries - Wrap SpacesOSLauncher with error boundary
   if (isMobile && household && !showCanvasOnMobile) {
     return (
-      <SpacesOSLauncher
-        widgets={widgets}
-        householdId={household.id}
-        householdName={household.name}
-        onWidgetsChange={loadWidgets}
-      />
+      <ErrorBoundary
+        context="Shared Space"
+        fallbackRoute="/spaces/shared"
+        errorMessage="An error occurred while loading the shared space."
+        onRetry={loadWidgets}
+        resetOnPropsChange={true}
+      >
+        <SpacesOSLauncher
+          widgets={widgets}
+          householdId={household.id}
+          householdName={household.name}
+          onWidgetsChange={loadWidgets}
+        />
+      </ErrorBoundary>
     );
   }
 
   // Phase 9A: Desktop - show canvas (mode toggle removed, desktop-only if needed)
   // On mobile with widget param or canvas view, also show canvas but with back button to launcher
+  // Phase 3: Enhanced Error Boundaries - Wrap FridgeCanvas with error boundary
   return (
+    <ErrorBoundary
+      context="Shared Space Canvas"
+      fallbackRoute="/spaces/shared"
+      errorMessage="An error occurred while loading the canvas view."
+      resetOnPropsChange={true}
+    >
     <div className="min-h-screen bg-gradient-to-br from-amber-50 via-orange-50 to-rose-50">
       {/* Mobile Header */}
       {isMobile && showCanvasOnMobile ? (
@@ -406,6 +447,7 @@ export function SpaceViewPage() {
 
       <FridgeCanvas householdId={household.id} />
       {/* AI chat widget disabled for shared spaces */}
-    </div>
+      </div>
+    </ErrorBoundary>
   );
 }

@@ -1,3 +1,7 @@
+/**
+ * Phase 1: Critical Load Protection - Added timeout protection
+ */
+
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
@@ -11,6 +15,8 @@ import { useAuth } from '../contexts/AuthContext';
 import { useUIPreferences } from '../contexts/UIPreferencesContext';
 import { DashboardLayoutRouter } from './dashboard/DashboardLayoutRouter';
 import { COLOR_THEMES } from '../lib/uiPreferencesTypes';
+import { useLoadingState } from '../hooks/useLoadingState';
+import { TimeoutRecovery } from './common/TimeoutRecovery';
 
 export function Dashboard() {
   const [sections, setSections] = useState<Section[]>([]);
@@ -18,7 +24,9 @@ export function Dashboard() {
   const [progressData, setProgressData] = useState<Progress[]>([]);
   const [household, setHousehold] = useState<Household | null>(null);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
+  const { loading, timedOut, setLoading } = useLoadingState({
+    timeoutMs: 12000, // 12 seconds for dashboard data load
+  });
   const [error, setError] = useState<string | null>(null);
   const [activeSection, setActiveSection] = useState<string | null>(null);
   const navigate = useNavigate();
@@ -129,6 +137,30 @@ export function Dashboard() {
 
     return completedSections === totalSections;
   };
+
+  // Phase 1: Show timeout recovery if data load timed out
+  if (timedOut) {
+    return (
+      <TimeoutRecovery
+        message="Dashboard data is taking longer than expected to load. This may be due to a network issue."
+        timeoutSeconds={12}
+        onRetry={() => loadData()}
+        onReload={() => window.location.reload()}
+      />
+    );
+  }
+
+  // Phase 1: Show timeout recovery if data load timed out
+  if (timedOut) {
+    return (
+      <TimeoutRecovery
+        message="Dashboard data is taking longer than expected to load. This may be due to a network issue."
+        timeoutSeconds={12}
+        onRetry={() => loadData()}
+        onReload={() => window.location.reload()}
+      />
+    );
+  }
 
   if (loading) {
     return (

@@ -1,5 +1,6 @@
 /**
  * Mind Mesh Page - V2 Integration
+ * Phase 3: Enhanced Error Boundaries - Added error boundary around canvas
  *
  * Uses Mind Mesh V2 backend with truthful rendering.
  */
@@ -8,6 +9,7 @@ import { useActiveDataContext } from '../../../state/useActiveDataContext';
 import { useMindMeshWorkspace } from '../../../hooks/useMindMeshWorkspace';
 import { MindMeshCanvasV2 } from './MindMeshCanvasV2';
 import { Loader2, AlertCircle } from 'lucide-react';
+import { ErrorBoundary } from '../../common/ErrorBoundary';
 
 export function MindMeshPage() {
   const { activeProjectId } = useActiveDataContext();
@@ -44,5 +46,15 @@ export function MindMeshPage() {
     );
   }
 
-  return <MindMeshCanvasV2 workspaceId={workspaceId} />;
+  return (
+    <ErrorBoundary
+      context="MindMesh Canvas"
+      fallbackRoute="/guardrails/dashboard"
+      errorMessage="An error occurred while loading the Mind Mesh canvas."
+      onRetry={() => window.location.reload()}
+      resetOnPropsChange={true}
+    >
+      <MindMeshCanvasV2 workspaceId={workspaceId} />
+    </ErrorBoundary>
+  );
 }

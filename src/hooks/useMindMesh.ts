@@ -157,8 +157,19 @@ export function useMindMesh(workspaceId: string | null) {
         throw new Error('Not authenticated');
       }
 
+      // Phase 4: Network Resilience - Use networkRequest with timeout
       const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-      const response = await fetch(
+      const { networkRequest } = await import('../lib/networkRequest');
+      
+      const result = await networkRequest<{
+        containers: any[];
+        nodes: any[];
+        ports: any[];
+        visibility: Record<string, boolean>;
+        lock: any;
+        error?: string;
+        details?: any;
+      }>(
         `${supabaseUrl}/functions/v1/mindmesh-graph?workspaceId=${workspaceId}`,
         {
           method: 'GET',
@@ -166,30 +177,36 @@ export function useMindMesh(workspaceId: string | null) {
             'Authorization': `Bearer ${session.access_token}`,
             'Content-Type': 'application/json',
           },
+          timeout: 10000, // 10 second timeout
+          maxRetries: 2,
+          context: { component: 'MindMesh', action: 'fetchGraph' },
         }
       );
 
-      if (!response.ok) {
-        const errorData = await response.json();
+      if (result.aborted) {
+        throw new Error('Request was cancelled');
+      }
 
+      const response = result.response;
+      const data = result.data;
+
+      if (!response.ok) {
         // Check if this is a reconciliation error (duplicate containers)
         if (
-          errorData.error?.includes('data integrity') ||
-          errorData.error?.includes('Duplicate containers')
+          data?.error?.includes('data integrity') ||
+          data?.error?.includes('Duplicate containers')
         ) {
           setReconciliationError({
             isDuplicateError: true,
-            duplicateCount: errorData.details?.duplicateCount || 0,
-            duplicates: errorData.details?.duplicates || [],
-            workspaceId: errorData.details?.workspaceId,
+            duplicateCount: data.details?.duplicateCount || 0,
+            duplicates: data.details?.duplicates || [],
+            workspaceId: data.details?.workspaceId,
           });
           throw new Error('Mind Mesh data integrity issue detected');
         }
 
-        throw new Error(errorData.error || 'Failed to fetch graph');
+        throw new Error(data?.error || 'Failed to fetch graph');
       }
-
-      const data = await response.json();
 
       setGraphState({
         containers: data.containers || [],
@@ -222,8 +239,11 @@ export function useMindMesh(workspaceId: string | null) {
         throw new Error('Not authenticated');
       }
 
+      // Phase 4: Network Resilience - Use networkRequest with timeout
       const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-      const response = await fetch(
+      const { networkRequest } = await import('../lib/networkRequest');
+      
+      const networkResult = await networkRequest<OrchestrationResult>(
         `${supabaseUrl}/functions/v1/mindmesh-intent`,
         {
           method: 'POST',
@@ -235,16 +255,17 @@ export function useMindMesh(workspaceId: string | null) {
             workspaceId,
             intent,
           }),
+          timeout: 15000, // 15 second timeout for intent execution
+          maxRetries: 2,
+          context: { component: 'MindMesh', action: 'executeIntent' },
         }
       );
 
-      const result = await response.json();
-
-      if (!response.ok) {
-        console.error('[MindMesh] Intent execution failed with status:', response.status);
-        console.error('[MindMesh] Error response:', result);
-        console.error('[MindMesh] Request was:', { workspaceId, intent });
+      if (networkResult.aborted) {
+        throw new Error('Request was cancelled');
       }
+
+      const result = networkResult.data;
 
       if (result.success) {
         await fetchGraph();

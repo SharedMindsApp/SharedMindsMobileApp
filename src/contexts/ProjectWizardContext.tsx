@@ -148,6 +148,9 @@ const initialState: WizardState = {
   realityCheckResult: null,
 };
 
+/**
+ * Phase 5: State Management Resilience - Added storage protection
+ */
 function loadSavedWizardState(): WizardState | null {
   if (typeof window === 'undefined') return null;
   

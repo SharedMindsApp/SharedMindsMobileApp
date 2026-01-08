@@ -1,31 +1,19 @@
-import { useEffect, useState } from 'react';
+/**
+ * Phase 1: Critical Load Protection - Added timeout protection
+ * FIXED: Removed redundant auth check - now relies on AuthContext
+ */
+
 import { Navigate } from 'react-router-dom';
 import { Loader2 } from 'lucide-react';
-import { getCurrentUser } from '../lib/auth';
+import { useAuth } from '../contexts/AuthContext';
 
 type ProtectedRouteProps = {
   children: React.ReactNode;
 };
 
 export function ProtectedRoute({ children }: ProtectedRouteProps) {
-  const [loading, setLoading] = useState(true);
-  const [authenticated, setAuthenticated] = useState(false);
-
-  useEffect(() => {
-    checkAuth();
-  }, []);
-
-  const checkAuth = async () => {
-    try {
-      const user = await getCurrentUser();
-      setAuthenticated(!!user);
-    } catch (error) {
-      console.error('Auth check error:', error);
-      setAuthenticated(false);
-    } finally {
-      setLoading(false);
-    }
-  };
+  const { user, loading } = useAuth(); // Use AuthContext instead of doing our own check
+  const isAuthenticated = !!user;
 
   if (loading) {
     return (
@@ -38,7 +26,7 @@ export function ProtectedRoute({ children }: ProtectedRouteProps) {
     );
   }
 
-  if (!authenticated) {
+  if (!isAuthenticated) {
     return <Navigate to="/auth/login" replace />;
   }
 

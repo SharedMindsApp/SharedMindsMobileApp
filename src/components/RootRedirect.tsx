@@ -1,5 +1,6 @@
 /**
  * Phase 8C: RootRedirect Component
+ * FIXED: Removed redundant auth check - now relies on AuthContext
  * 
  * Makes / a redirect-only route.
  * - Authenticated users → /planner/daily (or last planner view)
@@ -8,43 +9,16 @@
  * No UI is rendered at / - it's purely a routing decision.
  */
 
-import { useEffect, useState } from 'react';
 import { Navigate } from 'react-router-dom';
-import { supabase } from '../lib/supabase';
 import { Loader2 } from 'lucide-react';
+import { useAuth } from '../contexts/AuthContext';
 
 export function RootRedirect() {
-  const [checkingAuth, setCheckingAuth] = useState(true);
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const { user, loading } = useAuth(); // Use AuthContext instead of doing our own check
+  const isAuthenticated = !!user;
 
-  useEffect(() => {
-    const checkAuth = async () => {
-      try {
-        const { data: { session }, error } = await supabase.auth.getSession();
-        if (error) throw error;
-        setIsAuthenticated(!!session);
-      } catch (error) {
-        console.error('[RootRedirect] Auth check error:', error);
-        setIsAuthenticated(false);
-      } finally {
-        setCheckingAuth(false);
-      }
-    };
-
-    checkAuth();
-
-    // Listen for auth changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setIsAuthenticated(!!session);
-    });
-
-    return () => {
-      subscription.unsubscribe();
-    };
-  }, []);
-
-  // Phase 8C: Show minimal loading during auth check
-  if (checkingAuth) {
+  // Show minimal loading during auth check (handled by AuthContext)
+  if (loading) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50 flex items-center justify-center">
         <div className="text-center">
@@ -54,7 +28,7 @@ export function RootRedirect() {
     );
   }
 
-  // Phase 8C: Redirect based on auth state
+  // Phase 8C: Redirect based on auth state from AuthContext
   if (isAuthenticated) {
     // Phase 8C: Check for last planner view (mobile-first)
     if (typeof window !== 'undefined' && window.innerWidth < 1024) {

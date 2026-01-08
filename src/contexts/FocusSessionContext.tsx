@@ -1,6 +1,13 @@
-import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+/**
+ * Phase 2: Memory Leak Prevention - Using safe hooks for timers and subscriptions
+ */
+
+import { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
 import type { FocusSession, SessionEvent } from '../lib/guardrails/focusTypes';
 import { supabase } from '../lib/supabase';
+import { useSafeInterval } from '../hooks/useSafeInterval';
+import { useSupabaseSubscription } from '../hooks/useSupabaseSubscription';
+import { useIsMounted } from '../hooks/useMountedState';
 
 interface FocusSessionContextType {
   activeSession: FocusSession | null;
@@ -32,67 +39,72 @@ export function FocusSessionProvider({ children }: { children: ReactNode }) {
   const [sessionEvents, setSessionEvents] = useState<SessionEvent[]>([]);
   const [driftCount, setDriftCount] = useState(0);
   const [distractionCount, setDistractionCount] = useState(0);
+  const isMounted = useIsMounted();
 
-  useEffect(() => {
-    if (activeSession) {
-      const targetTime = new Date(activeSession.target_end_time).getTime();
-      const updateTimer = () => {
-        const now = Date.now();
-        const remaining = Math.max(0, Math.floor((targetTime - now) / 1000));
-        setTimerSecondsRemaining(remaining);
-
-        if (remaining === 0 && !activeSession.ended_at) {
-          setPendingNudge({
-            type: 'hard',
-            message: 'Session time is up! End your session or extend it.',
-          });
-        }
-      };
-
-      updateTimer();
-      const interval = setInterval(updateTimer, 1000);
-
-      const sessionSubscription = supabase
-        .channel(`focus_session:${activeSession.id}`)
-        .on(
-          'postgres_changes',
-          {
-            event: 'UPDATE',
-            schema: 'public',
-            table: 'focus_sessions',
-            filter: `id=eq.${activeSession.id}`,
-          },
-          (payload) => {
-            setActiveSession(payload.new as FocusSession);
-          }
-        )
-        .subscribe();
-
-      const eventsSubscription = supabase
-        .channel(`session_events:${activeSession.id}`)
-        .on(
-          'postgres_changes',
-          {
-            event: 'INSERT',
-            schema: 'public',
-            table: 'session_events',
-            filter: `session_id=eq.${activeSession.id}`,
-          },
-          (payload) => {
-            addSessionEvent(payload.new as any);
-          }
-        )
-        .subscribe();
-
-      return () => {
-        clearInterval(interval);
-        sessionSubscription.unsubscribe();
-        eventsSubscription.unsubscribe();
-      };
+  // Define addSessionEvent before it's used in subscriptions
+  const addSessionEvent = useCallback((event: SessionEvent) => {
+    if (isMounted()) {
+      setSessionEvents(prev => [...prev, event]);
     }
-  }, [activeSession?.id]);
+  }, [isMounted]);
+
+  // Phase 2: Use safe interval for timer updates
+  const updateTimer = useCallback(() => {
+    if (!activeSession || !isMounted()) return;
+    
+    const targetTime = new Date(activeSession.target_end_time).getTime();
+    const now = Date.now();
+    const remaining = Math.max(0, Math.floor((targetTime - now) / 1000));
+    
+    if (isMounted()) {
+      setTimerSecondsRemaining(remaining);
+
+      if (remaining === 0 && !activeSession.ended_at && isMounted()) {
+        setPendingNudge({
+          type: 'hard',
+          message: 'Session time is up! End your session or extend it.',
+        });
+      }
+    }
+  }, [activeSession, isMounted]);
+
+  useSafeInterval(
+    updateTimer,
+    activeSession ? 1000 : null,
+    [activeSession?.id, activeSession?.target_end_time, activeSession?.ended_at]
+  );
+
+  // Phase 2: Use safe subscription for session updates
+  const handleSessionUpdate = useCallback((payload: any) => {
+    if (isMounted()) {
+      setActiveSession(payload.new as FocusSession);
+    }
+  }, [isMounted]);
+
+  useSupabaseSubscription({
+    channelName: activeSession ? `focus_session:${activeSession.id}` : undefined,
+    table: 'focus_sessions',
+    event: 'UPDATE',
+    filter: activeSession ? `id=eq.${activeSession.id}` : undefined,
+    onEvent: handleSessionUpdate,
+  });
+
+  // Phase 2: Use safe subscription for session events
+  const handleSessionEvent = useCallback((payload: any) => {
+    addSessionEvent(payload.new as SessionEvent);
+  }, [addSessionEvent]);
+
+  useSupabaseSubscription({
+    channelName: activeSession ? `session_events:${activeSession.id}` : undefined,
+    table: 'session_events',
+    event: 'INSERT',
+    filter: activeSession ? `session_id=eq.${activeSession.id}` : undefined,
+    onEvent: handleSessionEvent,
+  });
 
   useEffect(() => {
+    if (!isMounted()) return;
+    
     const counts = sessionEvents.reduce(
       (acc, event) => {
         if (event.event_type === 'drift') acc.driftCount++;
@@ -101,9 +113,12 @@ export function FocusSessionProvider({ children }: { children: ReactNode }) {
       },
       { driftCount: 0, distractionCount: 0 }
     );
-    setDriftCount(counts.driftCount);
-    setDistractionCount(counts.distractionCount);
-  }, [sessionEvents]);
+    
+    if (isMounted()) {
+      setDriftCount(counts.driftCount);
+      setDistractionCount(counts.distractionCount);
+    }
+  }, [sessionEvents, isMounted]);
 
   async function loadSessionEvents(sessionId: string) {
     try {
@@ -114,14 +129,13 @@ export function FocusSessionProvider({ children }: { children: ReactNode }) {
         .order('created_at', { ascending: true });
 
       if (error) throw error;
-      setSessionEvents(data || []);
+      
+      if (isMounted()) {
+        setSessionEvents(data || []);
+      }
     } catch (error) {
       console.error('Failed to load session events:', error);
     }
-  }
-
-  function addSessionEvent(event: SessionEvent) {
-    setSessionEvents(prev => [...prev, event]);
   }
 
   function clearSession() {

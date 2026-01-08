@@ -444,6 +444,16 @@ export function startHealthMonitoring(): void {
       action: 'network.online',
     });
     performHealthCheck('network-reconnect');
+    
+    // Phase 4: Trigger retry queue processing when connection restored
+    if (typeof window !== 'undefined') {
+      // Dynamically import to avoid circular dependency
+      import('./connectionHealthRetryQueue').then(({ processRetryQueue }) => {
+        processRetryQueue();
+      }).catch(() => {
+        // Retry queue module not available, skip
+      });
+    }
   };
 
   // Event 3: Network Offline (update status immediately, no check needed)
@@ -520,6 +530,16 @@ export function stopHealthMonitoring(): void {
     component: 'ConnectionHealth',
     action: 'stopHealthMonitoring',
   });
+  
+  // Phase 4: Stop retry queue monitoring when health monitoring stops
+  if (typeof window !== 'undefined') {
+    // Dynamically import to avoid circular dependency
+    import('./connectionHealthRetryQueue').then(({ stopRetryQueueMonitoring }) => {
+      stopRetryQueueMonitoring();
+    }).catch(() => {
+      // Retry queue module not available, skip
+    });
+  }
 }
 
 /**

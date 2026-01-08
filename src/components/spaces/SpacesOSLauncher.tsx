@@ -20,6 +20,7 @@ import { updateWidgetLayout } from '../../lib/fridgeCanvas';
 import { MobileAddWidgetModal } from './MobileAddWidgetModal';
 import { MobileNavigationPanel } from './MobileNavigationPanel';
 import { NotificationBell } from '../notifications/NotificationBell';
+import { executeWithRollback, checkStateConsistency, createStateSnapshot } from '../../lib/stateManagement';
 
 interface SpacesOSLauncherProps {
   widgets: WidgetWithLayout[];
@@ -372,26 +373,47 @@ export function SpacesOSLauncher({ widgets, householdId, householdName, onWidget
     swipeStartRef.current = null;
   };
 
-  // Save widget order to database
+  // Phase 5: State Management Resilience - Save widget order with rollback protection
   const saveWidgetOrder = async (newOrder: WidgetWithLayout[]) => {
     setIsSaving(true);
-    try {
-      // Update position_x for each widget to reflect its new order
-      const updatePromises = newOrder.map((widget, index) => {
-        return updateWidgetLayout(widget.layout.id, {
-          position_x: index,
-          position_y: 0, // Keep y at 0 for launcher view
+    
+    // Phase 5: Validate state before saving
+    checkStateConsistency('widgets', newOrder, [
+      (w) => w.length > 0 || 'Widget order cannot be empty',
+      (w) => w.every(widget => widget.id && widget.layout?.id) || 'All widgets must have valid IDs',
+      (w) => {
+        const ids = w.map(widget => widget.id);
+        const uniqueIds = new Set(ids);
+        return ids.length === uniqueIds.size || 'Widget IDs must be unique';
+      },
+    ], { component: 'SpacesOSLauncher', action: 'saveWidgetOrder' });
+    
+    // Phase 5: Execute with rollback protection
+    const result = await executeWithRollback(
+      'widgets',
+      orderedWidgets,
+      async () => {
+        // Update position_x for each widget to reflect its new order
+        const updatePromises = newOrder.map((widget, index) => {
+          return updateWidgetLayout(widget.layout.id, {
+            position_x: index,
+            position_y: 0, // Keep y at 0 for launcher view
+          });
         });
-      });
-      
-      await Promise.all(updatePromises);
+        
+        await Promise.all(updatePromises);
+      },
+      setOrderedWidgets,
+      { component: 'SpacesOSLauncher', action: 'saveWidgetOrder' }
+    );
+    
+    if (result.success) {
       showToast('success', 'Widget order saved');
-    } catch (error) {
-      console.error('Failed to save widget order:', error);
-      showToast('error', 'Failed to save order');
-    } finally {
-      setIsSaving(false);
+    } else {
+      showToast('error', 'Failed to save order. Changes have been reverted.');
     }
+    
+    setIsSaving(false);
   };
 
   // Handle swipe start for page navigation

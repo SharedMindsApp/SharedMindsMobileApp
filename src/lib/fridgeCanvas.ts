@@ -1,7 +1,12 @@
+/**
+ * Phase 4: Network Resilience - Added timeout protection to critical queries
+ */
+
 // lib/fridgeCanvas.ts
 
 import { supabase } from "./supabase";
 import { getSupabaseClient } from "./supabaseClientWithToken";
+import { supabaseQuery } from "./networkRequest";
 import {
   FridgeWidget,
   FridgeGroup,
@@ -107,25 +112,41 @@ export async function loadHouseholdWidgets(
 
   const sb = await getSupabaseClient();
 
+  // Phase 4: Network Resilience - Use supabaseQuery with timeout
   // Load widgets (exclude deleted ones)
-  const { data: widgets, error: wErr } = await sb
-    .from("fridge_widgets")
-    .select("*")
-    .eq("space_id", householdId)
-    .is("deleted_at", null)
-    .order("created_at", { ascending: true });
+  const { data: widgets, error: wErr } = await supabaseQuery(
+    () => sb
+      .from("fridge_widgets")
+      .select("*")
+      .eq("space_id", householdId)
+      .is("deleted_at", null)
+      .order("created_at", { ascending: true }),
+    {
+      timeout: 10000, // 10 second timeout
+      maxRetries: 2,
+      context: { component: 'FridgeCanvas', action: 'loadHouseholdWidgets' },
+    }
+  );
 
   if (wErr) throw wErr;
   if (!widgets || widgets.length === 0) return [];
 
   const widgetIds = widgets.map((w) => w.id);
 
+  // Phase 4: Network Resilience - Use supabaseQuery with timeout
   // Load layouts for this user
-  const { data: layouts, error: layoutErr } = await sb
-    .from("fridge_widget_layouts")
-    .select("*")
-    .eq("member_id", profileId)
-    .in("widget_id", widgetIds.length ? widgetIds : ["_"]);
+  const { data: layouts, error: layoutErr } = await supabaseQuery(
+    () => sb
+      .from("fridge_widget_layouts")
+      .select("*")
+      .eq("member_id", profileId)
+      .in("widget_id", widgetIds.length ? widgetIds : ["_"]),
+    {
+      timeout: 10000, // 10 second timeout
+      maxRetries: 2,
+      context: { component: 'FridgeCanvas', action: 'loadHouseholdWidgets' },
+    }
+  );
 
   if (layoutErr) throw layoutErr;
 
@@ -335,10 +356,19 @@ export async function updateWidgetLayout(
   const { id, widget_id, member_id, updated_at, ...safe } = updates;
 
   const sb = await getSupabaseClient();
-  const { error } = await sb
-    .from("fridge_widget_layouts")
-    .update(safe)
-    .eq("id", layoutId);
+  
+  // Phase 4: Network Resilience - Use supabaseQuery with timeout
+  const { error } = await supabaseQuery(
+    () => sb
+      .from("fridge_widget_layouts")
+      .update(safe)
+      .eq("id", layoutId),
+    {
+      timeout: 8000, // 8 second timeout for updates
+      maxRetries: 2,
+      context: { component: 'FridgeCanvas', action: 'updateWidgetLayout' },
+    }
+  );
 
   if (error) throw error;
 }

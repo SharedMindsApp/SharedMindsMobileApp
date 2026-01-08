@@ -82,6 +82,7 @@ import {
 import { useUIPreferences } from "../../contexts/UIPreferencesContext";
 import { useHouseholdPermissions } from "../../lib/useHouseholdPermissions";
 import { supabase } from "../../lib/supabase";
+import { executeOptimisticUpdate, checkStateConsistency } from "../../lib/stateManagement";
 
 interface FridgeCanvasProps {
   householdId: string;
@@ -279,30 +280,98 @@ const handleAddWidget = async (type: WidgetType) => {
 
     console.log("📦 Widget INSERT PAYLOAD:", payloadPreview);
 
-    // --------------------------------------
-    // Perform create
-    // --------------------------------------
-    const widget = await createWidget(householdId, type, content);
+    // Phase 5: State Management Resilience - Use optimistic update with rollback
+    // Map widget type to proper display name (same as in fridgeCanvas.ts)
+    const widgetTypeNames: Record<WidgetType, string> = {
+      note: 'Note',
+      task: 'Task',
+      reminder: 'Reminder',
+      calendar: 'Calendar',
+      goal: 'Goal',
+      habit: 'Habit',
+      habit_tracker: 'Habit Tracker',
+      achievements: 'Achievements',
+      photo: 'Photo',
+      insight: 'Insight',
+      agreement: 'Agreement',
+      meal_planner: 'Meal Planner',
+      grocery_list: 'Grocery List',
+      stack_card: 'Stack Cards',
+      files: 'Files',
+      collections: 'Collections',
+      tables: 'Tables',
+      todos: 'Todos',
+      custom: 'Custom Widget',
+    };
+    
+    const optimisticWidget: WidgetWithLayout = {
+      id: `temp-${Date.now()}`,
+      space_id: householdId,
+      created_by: '',
+      widget_type: type,
+      title: widgetTypeNames[type] || 'Widget',
+      content,
+      color: 'yellow',
+      icon: 'StickyNote',
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+      deleted_at: null,
+      group_id: null,
+      layout: {
+        id: `temp-layout-${Date.now()}`,
+        widget_id: `temp-${Date.now()}`,
+        member_id: '',
+        position_x: 200,
+        position_y: 200,
+        size_mode: 'mini',
+        z_index: 1,
+        rotation: 0,
+        is_collapsed: false,
+        group_id: null,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      },
+    };
 
-    console.log("✅ Widget created successfully:", widget);
+    const result = await executeOptimisticUpdate(
+      `widget-create-${Date.now()}`,
+      widgets,
+      [...widgets, optimisticWidget],
+      setWidgets,
+      async () => {
+        const widget = await createWidget(householdId, type, content);
+        console.log("✅ Widget created successfully:", widget);
+        
+        // Replace optimistic widget with real widget
+        setWidgets((prev) => {
+          const filtered = prev.filter(w => w.id !== optimisticWidget.id);
+          return [...filtered, widget];
+        });
+        
+        // Phase 5: Validate state after creation
+        checkStateConsistency('widgets', [...filtered, widget], [
+          (w) => w.every(widget => widget.id && widget.layout?.id) || 'All widgets must have valid IDs',
+          (w) => {
+            const ids = w.map(widget => widget.id);
+            const uniqueIds = new Set(ids);
+            return ids.length === uniqueIds.size || 'Widget IDs must be unique';
+          },
+        ], { component: 'FridgeCanvas', action: 'createWidget' });
+      },
+      { component: 'FridgeCanvas', action: 'createWidget' }
+    );
 
-    // --------------------------------------
-    // Update state
-    // --------------------------------------
-    setWidgets((prev) => [...prev, widget]);
-  } catch (err: any) {
-    console.error("❌ Widget creation FAILED:", err);
-
-    const message =
-      err?.message ||
-      err?.error_description ||
-      err?.details ||
-      "Failed to create widget due to an unknown error.";
-
-    console.error("❌ Error message returned:", message);
-
-    setError(message);
-  }
+    if (!result.success) {
+      const message =
+        result.error?.message ||
+        "Failed to create widget due to an unknown error.";
+      console.error("❌ Error message returned:", message);
+      setError(message);
+      
+      if (result.rolledBack) {
+        showToast('error', 'Widget creation failed. Changes have been reverted.');
+      }
+    }
 
   console.log("──────────────────────────────");
 };
@@ -313,16 +382,23 @@ const handleAddWidget = async (type: WidgetType) => {
   // UPDATE LAYOUT (allowed for all members)
   // Each user has their own layout row.
   // ----------------------------
+  // Phase 5: State Management Resilience - Layout change with rollback
   const handleLayoutChange = async (
     widgetId: string,
     updates: Partial<WidgetLayout>
   ) => {
-    let layoutId: string | null = null;
+    const widget = widgets.find(w => w.id === widgetId);
+    if (!widget) return;
 
-    setWidgets((prev) =>
-      prev.map((w) => {
+    const layoutId = widget.layout.id;
+    const previousLayout = { ...widget.layout };
+
+    // Phase 5: Apply optimistic update
+    const result = await executeOptimisticUpdate(
+      `widget-layout-${widgetId}`,
+      widgets,
+      widgets.map((w) => {
         if (w.id === widgetId) {
-          layoutId = w.layout.id;
           return {
             ...w,
             layout: {
@@ -332,15 +408,19 @@ const handleAddWidget = async (type: WidgetType) => {
           };
         }
         return w;
-      })
+      }),
+      setWidgets,
+      async () => {
+        await updateWidgetLayout(layoutId, updates);
+      },
+      { component: 'FridgeCanvas', action: 'updateLayout' }
     );
 
-    if (!layoutId) return;
-
-    try {
-      await updateWidgetLayout(layoutId, updates);
-    } catch (err) {
-      console.error("Error saving layout:", err);
+    if (!result.success) {
+      console.error("Error saving layout:", result.error);
+      if (result.rolledBack) {
+        showToast('error', 'Failed to save layout. Changes have been reverted.');
+      }
     }
   };
 

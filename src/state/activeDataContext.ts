@@ -54,6 +54,9 @@ class ActiveDataContextStore {
     };
   }
 
+  /**
+   * Phase 5: State Management Resilience - Added storage protection
+   */
   private loadPersistedState(): void {
     if (typeof window === 'undefined') return;
 

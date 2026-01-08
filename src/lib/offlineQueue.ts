@@ -1,5 +1,6 @@
 /**
  * Phase 4B: Offline Action Queue
+ * Phase 5: State Management Resilience - Added storage protection
  * 
  * Simple write-behind queue for offline actions.
  * Stores actions in localStorage and replays them when online.
@@ -9,6 +10,8 @@
  * - No conflict resolution
  * - Stop on first failure during sync
  */
+
+import { safeStorageGet, safeStorageSet, safeStorageRemove } from './storageProtection';
 
 const QUEUE_STORAGE_KEY = 'offline_action_queue';
 const MAX_QUEUE_SIZE = 100; // Prevent unbounded growth
@@ -22,22 +25,24 @@ export interface QueuedAction {
 }
 
 /**
- * Get all queued actions from storage
+ * Phase 5: Get all queued actions from storage with protection
  */
 export function getQueuedActions(): QueuedAction[] {
-  try {
-    const stored = localStorage.getItem(QUEUE_STORAGE_KEY);
-    if (!stored) return [];
-    const parsed = JSON.parse(stored);
-    return Array.isArray(parsed) ? parsed : [];
-  } catch (error) {
-    console.error('[OfflineQueue] Error reading queue:', error);
+  const result = safeStorageGet<QueuedAction[]>(
+    localStorage,
+    QUEUE_STORAGE_KEY,
+    []
+  );
+  
+  if (!result.success || !result.data) {
     return [];
   }
+  
+  return Array.isArray(result.data) ? result.data : [];
 }
 
 /**
- * Add an action to the queue
+ * Phase 5: Add an action to the queue with storage protection
  */
 export function queueAction(
   type: string,
@@ -61,54 +66,60 @@ export function queueAction(
 
   actions.push(action);
   
-  try {
-    localStorage.setItem(QUEUE_STORAGE_KEY, JSON.stringify(actions));
-  } catch (error) {
-    console.error('[OfflineQueue] Error saving queue:', error);
-    throw new Error('Failed to queue action');
+  // Phase 5: Use safe storage set
+  const result = safeStorageSet(
+    localStorage,
+    QUEUE_STORAGE_KEY,
+    actions,
+    { component: 'OfflineQueue', action: 'queueAction' }
+  );
+  
+  if (!result.success) {
+    throw new Error(result.error || 'Failed to queue action');
   }
 
   return action;
 }
 
 /**
- * Remove an action from the queue (after successful sync)
+ * Phase 5: Remove an action from the queue with storage protection
  */
 export function removeQueuedAction(actionId: string): void {
   const actions = getQueuedActions();
   const filtered = actions.filter(a => a.id !== actionId);
   
-  try {
-    localStorage.setItem(QUEUE_STORAGE_KEY, JSON.stringify(filtered));
-  } catch (error) {
-    console.error('[OfflineQueue] Error removing action:', error);
-  }
+  // Phase 5: Use safe storage set
+  safeStorageSet(
+    localStorage,
+    QUEUE_STORAGE_KEY,
+    filtered,
+    { component: 'OfflineQueue', action: 'removeQueuedAction' }
+  );
 }
 
 /**
- * Clear all queued actions
+ * Phase 5: Clear all queued actions with storage protection
  */
 export function clearQueue(): void {
-  try {
-    localStorage.removeItem(QUEUE_STORAGE_KEY);
-  } catch (error) {
-    console.error('[OfflineQueue] Error clearing queue:', error);
-  }
+  safeStorageRemove(localStorage, QUEUE_STORAGE_KEY);
 }
 
 /**
- * Increment retry count for an action
+ * Phase 5: Increment retry count with storage protection
  */
 export function incrementRetryCount(actionId: string): void {
   const actions = getQueuedActions();
   const action = actions.find(a => a.id === actionId);
   if (action) {
     action.retryCount = (action.retryCount || 0) + 1;
-    try {
-      localStorage.setItem(QUEUE_STORAGE_KEY, JSON.stringify(actions));
-    } catch (error) {
-      console.error('[OfflineQueue] Error updating retry count:', error);
-    }
+    
+    // Phase 5: Use safe storage set
+    safeStorageSet(
+      localStorage,
+      QUEUE_STORAGE_KEY,
+      actions,
+      { component: 'OfflineQueue', action: 'incrementRetryCount' }
+    );
   }
 }
 

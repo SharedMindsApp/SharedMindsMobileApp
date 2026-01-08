@@ -1,4 +1,10 @@
-import { useEffect, useState } from 'react';
+/**
+ * Phase 2: Memory Leak Prevention - Using safe hooks for timers
+ */
+
+import { useEffect, useState, useCallback } from 'react';
+import { useSafeInterval } from '../../../hooks/useSafeInterval';
+import { useIsMounted } from '../../../hooks/useMountedState';
 import { useNavigate } from 'react-router-dom';
 import { Loader2, Play } from 'lucide-react';
 import { useActiveProject } from '../../../contexts/ActiveProjectContext';
@@ -40,6 +46,8 @@ export function FocusModePage() {
     message: string;
     delaySeconds?: number;
   } | null>(null);
+  
+  const isMounted = useIsMounted();
 
   useEffect(() => {
     if (!activeProject) {
@@ -64,55 +72,64 @@ export function FocusModePage() {
     }
   }, [activeSession, activeProject]);
 
+  // Phase 2: Load session events when session changes
   useEffect(() => {
     if (activeSession) {
       loadSessionEvents(activeSession.id);
-
-      const nudgeInterval = setInterval(() => {
-        if (!isPaused && !driftActive) {
-          if (driftCount > 2) {
-            setPendingNudge({
-              type: 'hard',
-              message: 'You\'ve drifted multiple times. Refocus on your main project!',
-            });
-          } else {
-            setPendingNudge({
-              type: 'soft',
-              message: 'You\'re doing great! Stay on track.',
-            });
-          }
-        }
-      }, 5 * 60 * 1000);
-
-      return () => clearInterval(nudgeInterval);
     }
-  }, [activeSession, isPaused, driftActive, driftCount]);
+  }, [activeSession]);
 
-  useEffect(() => {
-    if (activeSession && !isPaused) {
-      const regulationInterval = setInterval(async () => {
-        try {
-          const rule = await checkRegulationRules(activeSession.id);
-          if (rule) {
-            setRegulationPause({
-              type: rule.rule_type as 'hydrate' | 'stretch' | 'meal' | 'rest',
-              message: rule.message || 'Time for a break',
-              delaySeconds: rule.mandatory_delay_seconds,
-            });
-            setIsPaused(true);
-            setPendingNudge({
-              type: 'regulation',
-              message: rule.message || 'Required pause triggered',
-            });
-          }
-        } catch (error) {
-          console.error('Failed to check regulation rules:', error);
-        }
-      }, 60 * 1000);
-
-      return () => clearInterval(regulationInterval);
+  // Phase 2: Use safe interval for nudge reminders
+  const handleNudgeCheck = useCallback(() => {
+    if (!isPaused && !driftActive && activeSession) {
+      if (driftCount > 2) {
+        setPendingNudge({
+          type: 'hard',
+          message: 'You\'ve drifted multiple times. Refocus on your main project!',
+        });
+      } else {
+        setPendingNudge({
+          type: 'soft',
+          message: 'You\'re doing great! Stay on track.',
+        });
+      }
     }
-  }, [activeSession, isPaused]);
+  }, [isPaused, driftActive, driftCount, activeSession]);
+
+  useSafeInterval(
+    handleNudgeCheck,
+    activeSession ? 5 * 60 * 1000 : null,
+    [activeSession?.id, isPaused, driftActive, driftCount]
+  );
+
+  // Phase 2: Use safe interval for regulation checks
+  const handleRegulationCheck = useCallback(async () => {
+    if (!activeSession || isPaused || !isMounted()) return;
+    
+    try {
+      const rule = await checkRegulationRules(activeSession.id);
+      if (rule && isMounted()) {
+        setRegulationPause({
+          type: rule.rule_type as 'hydrate' | 'stretch' | 'meal' | 'rest',
+          message: rule.message || 'Time for a break',
+          delaySeconds: rule.mandatory_delay_seconds,
+        });
+        setIsPaused(true);
+        setPendingNudge({
+          type: 'regulation',
+          message: rule.message || 'Required pause triggered',
+        });
+      }
+    } catch (error) {
+      console.error('Failed to check regulation rules:', error);
+    }
+  }, [activeSession, isPaused, isMounted]);
+
+  useSafeInterval(
+    handleRegulationCheck,
+    activeSession && !isPaused ? 60 * 1000 : null,
+    [activeSession?.id, isPaused]
+  );
 
   async function handleStartSession() {
     if (!activeProject) return;
