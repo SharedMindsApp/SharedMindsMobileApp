@@ -1,4 +1,5 @@
 import { supabase } from './supabase';
+import { checkStorageQuota, freeStorageSpaceAggressively } from './errorLogger';
 
 export type Profile = {
   id: string;
@@ -40,14 +41,50 @@ export async function signUp({ email, password, fullName }: SignUpInput) {
 }
 
 export async function signIn({ email, password }: SignInInput) {
-  const { data, error } = await supabase.auth.signInWithPassword({
-    email,
-    password,
-  });
+  // Proactively check storage quota before attempting login
+  // This ensures we have space for the auth token
+  const quotaCheck = checkStorageQuota();
+  
+  // If storage is not healthy, aggressively free up space
+  if (!quotaCheck.isHealthy) {
+    freeStorageSpaceAggressively();
+  }
+  
+  try {
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email,
+      password,
+    });
 
-  if (error) throw error;
+    if (error) throw error;
 
-  return data;
+    return data;
+  } catch (error) {
+    // Check if it's a quota error and aggressively free up space
+    if (error instanceof DOMException && (
+      error.code === 22 ||
+      error.code === 1014 ||
+      error.name === 'QuotaExceededError' ||
+      error.name === 'NS_ERROR_DOM_QUOTA_REACHED'
+    )) {
+      // Aggressively free up storage space
+      freeStorageSpaceAggressively();
+      
+      // Wait a bit for cleanup to complete
+      await new Promise(resolve => setTimeout(resolve, 100));
+      
+      // Retry once after freeing space
+      const { data, error: retryError } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
+
+      if (retryError) throw retryError;
+      return data;
+    }
+    
+    throw error;
+  }
 }
 
 export async function signOut() {

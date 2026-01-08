@@ -47,25 +47,46 @@ export function ActiveProjectProvider({ children }: { children: ReactNode }) {
     } : null);
   }, [activeProject]);
 
-  // Initialize ADC on mount
+  // Initialize ADC on mount - sync localStorage project to ADC immediately
   useEffect(() => {
-    if (!initialized) {
-      if (activeProject) {
-        setADCProjectId(activeProject.id, activeProject.domain_id);
+    if (!initialized && typeof window !== 'undefined') {
+      const storedId = localStorage.getItem(STORAGE_KEY);
+      const storedProject = localStorage.getItem(STORAGE_PROJECT_KEY);
+      
+      // Ensure ADC is synced with stored project immediately
+      if (storedId && storedProject) {
+        try {
+          const parsedProject = JSON.parse(storedProject);
+          if (parsedProject && parsedProject.id === storedId) {
+            // Project already loaded in initial state, just sync ADC
+            setADCProjectId(parsedProject.id, parsedProject.domain_id);
+          }
+        } catch (e) {
+          console.error('[ActiveProjectContext] Failed to parse stored project on init:', e);
+        }
+      } else if (storedId) {
+        // We have an ID but no full project - still sync ADC
+        setADCProjectId(storedId, null);
       } else {
+        // No stored project - clear ADC
         setADCProjectId(null, null);
       }
       setInitialized(true);
     }
-  }, [initialized, activeProject]);
+  }, [initialized]);
 
-  // Sync to ADC when project changes after initialization
+  // Sync ADC when project changes after initialization
   useEffect(() => {
     if (initialized) {
       if (activeProject) {
         setADCProjectId(activeProject.id, activeProject.domain_id);
       } else {
-        setADCProjectId(null, null);
+        // Only clear ADC if project is explicitly null AND not stored in localStorage
+        // This prevents clearing the project during page refresh while data loads
+        const storedId = typeof window !== 'undefined' ? localStorage.getItem(STORAGE_KEY) : null;
+        if (!storedId) {
+          setADCProjectId(null, null);
+        }
       }
     }
   }, [activeProject, initialized]);

@@ -86,55 +86,89 @@ export function initGlobalErrorHandlers(): void {
   }
 
   // Log console errors (for additional context)
+  // But skip logging errors from the error logger itself to prevent infinite loops
   const originalConsoleError = console.error;
   console.error = (...args: unknown[]) => {
     // Call original first
     originalConsoleError(...args);
     
+    // Skip logging if this error is from the error logger itself
+    const message = args.find(arg => typeof arg === 'string') as string | undefined;
+    if (message && message.includes('[ErrorLogger]')) {
+      return; // Don't log logger errors to avoid recursion
+    }
+    
     // Extract error if present
     const error = args.find(arg => arg instanceof Error) as Error | undefined;
-    const message = args.find(arg => typeof arg === 'string') as string | undefined;
     
     if (error || message) {
-      logError(
-        `Console Error: ${message || error?.message || 'Unknown error'}`,
-        error,
-        {
-          component: 'GlobalErrorHandler',
-          action: 'console.error',
-          args: args.map(arg => {
-            if (arg instanceof Error) {
-              return { type: 'Error', message: arg.message, name: arg.name };
-            }
-            if (typeof arg === 'object') {
-              try {
-                return JSON.stringify(arg);
-              } catch {
-                return String(arg);
+      try {
+        logError(
+          `Console Error: ${message || error?.message || 'Unknown error'}`,
+          error,
+          {
+            component: 'GlobalErrorHandler',
+            action: 'console.error',
+            args: args.map(arg => {
+              if (arg instanceof Error) {
+                return { type: 'Error', message: arg.message, name: arg.name };
               }
-            }
-            return String(arg);
-          }),
-        }
-      );
+              if (typeof arg === 'object') {
+                try {
+                  return JSON.stringify(arg);
+                } catch {
+                  return String(arg);
+                }
+              }
+              return String(arg);
+            }),
+          }
+        );
+      } catch {
+        // If logging fails, just ignore it to prevent infinite loops
+      }
     }
   };
 
   // Log console warnings
+  // But skip logging warnings from the error logger itself to prevent infinite loops
+  // Also skip deprecation warnings as they're expected and informational
   const originalConsoleWarn = console.warn;
   console.warn = (...args: unknown[]) => {
+    const message = args.find(arg => typeof arg === 'string') as string | undefined;
+    
+    // Skip logging if this warning is from the error logger itself
+    if (message && message.includes('[ErrorLogger]')) {
+      return; // Don't log logger warnings to avoid recursion
+    }
+    
+    // Skip deprecation warnings - they're expected and informational, not errors
+    // Also skip showing them in console to reduce clutter
+    if (message && (
+      message.includes('DEPRECATED') ||
+      message.includes('deprecated') ||
+      message.includes('Deprecated') ||
+      message.toLowerCase().includes('use instead')
+    )) {
+      return; // Don't log or show deprecation warnings
+    }
+    
+    // Call original console.warn for non-deprecation warnings
     originalConsoleWarn(...args);
     
-    const message = args.find(arg => typeof arg === 'string') as string | undefined;
     if (message) {
-      logWarning(
-        `Console Warning: ${message}`,
-        {
-          component: 'GlobalErrorHandler',
-          action: 'console.warn',
-          args: args.map(arg => String(arg)),
-        }
-      );
+      try {
+        logWarning(
+          `Console Warning: ${message}`,
+          {
+            component: 'GlobalErrorHandler',
+            action: 'console.warn',
+            args: args.map(arg => String(arg)),
+          }
+        );
+      } catch {
+        // If logging fails, just ignore it to prevent infinite loops
+      }
     }
   };
 

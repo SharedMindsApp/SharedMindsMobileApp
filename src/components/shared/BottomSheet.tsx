@@ -45,6 +45,7 @@ export function BottomSheet({
   const [dragStartY, setDragStartY] = useState(0);
   const [dragCurrentY, setDragCurrentY] = useState(0);
   const [keyboardHeight, setKeyboardHeight] = useState(0);
+  const [scrollState, setScrollState] = useState({ isScrolled: false, isScrollable: false, scrollTop: 0 });
   const sheetRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
 
@@ -104,6 +105,44 @@ export function BottomSheet({
       document.body.style.overflow = originalOverflow;
     };
   }, [isOpen]);
+
+  // Track scroll state
+  useEffect(() => {
+    if (!isOpen || !contentRef.current) {
+      setScrollState({ isScrolled: false, isScrollable: false, scrollTop: 0 });
+      return;
+    }
+
+    const contentEl = contentRef.current;
+    
+    const handleScroll = () => {
+      const scrollTop = contentEl.scrollTop;
+      const scrollHeight = contentEl.scrollHeight;
+      const clientHeight = contentEl.clientHeight;
+      const isScrollable = scrollHeight > clientHeight;
+      const isScrolled = scrollTop > 0;
+
+      setScrollState({
+        isScrolled,
+        isScrollable,
+        scrollTop,
+      });
+    };
+
+    // Initial check
+    handleScroll();
+
+    contentEl.addEventListener('scroll', handleScroll);
+    
+    // Also check on resize (content might change)
+    const resizeObserver = new ResizeObserver(handleScroll);
+    resizeObserver.observe(contentEl);
+
+    return () => {
+      contentEl.removeEventListener('scroll', handleScroll);
+      resizeObserver.disconnect();
+    };
+  }, [isOpen, children]);
 
   // Touch handlers for swipe-down to dismiss
   const handleTouchStart = useCallback((e: React.TouchEvent) => {
@@ -165,9 +204,13 @@ export function BottomSheet({
           className="relative bg-white rounded-xl shadow-2xl max-w-lg w-full mx-4 max-h-[90vh] flex flex-col"
           onClick={(e) => e.stopPropagation()}
         >
-          {/* Header */}
+          {/* Header with scroll shadow */}
           {(title || header || showCloseButton) && (
-            <div className="flex items-center justify-between p-4 border-b border-gray-200 flex-shrink-0">
+            <div 
+              className={`flex items-center justify-between p-4 border-b border-gray-200 flex-shrink-0 transition-shadow ${
+                scrollState.isScrolled ? 'shadow-sm' : ''
+              }`}
+            >
               {title && <h2 className="text-lg font-semibold text-gray-900">{title}</h2>}
               {header && <div className="flex-1">{header}</div>}
               {showCloseButton && (
@@ -229,9 +272,13 @@ export function BottomSheet({
           </div>
         )}
 
-        {/* Header */}
+        {/* Header with scroll shadow */}
         {(title || header || showCloseButton) && (
-          <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200 flex-shrink-0">
+          <div 
+            className={`flex items-center justify-between px-4 py-3 border-b border-gray-200 flex-shrink-0 transition-shadow ${
+              scrollState.isScrolled ? 'shadow-sm' : ''
+            }`}
+          >
             {title && <h2 className="text-lg font-semibold text-gray-900">{title}</h2>}
             {header && <div className="flex-1">{header}</div>}
             {showCloseButton && (

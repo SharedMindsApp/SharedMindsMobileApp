@@ -3,11 +3,16 @@ import { useNavigate } from 'react-router-dom';
 import { Calendar, Clock, CalendarDays, ChevronRight } from 'lucide-react';
 import { PlannerShell } from './PlannerShell';
 import { BottomSheet } from '../shared/BottomSheet';
+import { useAuth } from '../../contexts/AuthContext';
+import { QuickAddBottomSheet } from './mobile/QuickAddBottomSheet';
 
 export function PlannerIndex() {
   const navigate = useNavigate();
+  const { user } = useAuth();
   const [isMobile, setIsMobile] = useState(false);
   const [selectedArea, setSelectedArea] = useState<string | null>(null);
+  const [showQuickAdd, setShowQuickAdd] = useState(false);
+  const [recentLinks, setRecentLinks] = useState<Array<{ label: string; route: string }>>([]);
 
   // Mobile detection
   useEffect(() => {
@@ -15,6 +20,21 @@ export function PlannerIndex() {
     checkMobile();
     window.addEventListener('resize', checkMobile);
     return () => window.removeEventListener('resize', checkMobile);
+  }, []);
+
+  // Load recent planner destinations (if any were stored elsewhere in app)
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem('planner_recent_routes');
+      if (raw) {
+        const parsed = JSON.parse(raw) as Array<{ label: string; route: string }>;
+        if (Array.isArray(parsed)) {
+          setRecentLinks(parsed.slice(0, 5));
+        }
+      }
+    } catch {
+      // ignore
+    }
   }, []);
 
   const openAreaBottomSheet = (areaTitle: string) => {
@@ -234,39 +254,26 @@ export function PlannerIndex() {
             <p className="text-sm text-gray-600 mt-1">Quick navigation</p>
           </div>
 
-          {/* Primary Quick Actions - Most Common */}
-          <div className="space-y-3">
-            <h2 className="text-sm font-semibold text-gray-700 uppercase tracking-wide px-1">
-              Quick Access
-            </h2>
-            <div className="grid grid-cols-2 gap-3">
+          {/* Primary view tabs (thumb-reachable) */}
+          <div className="px-1 -mt-2">
+            <div className="flex gap-2 overflow-x-auto scrollbar-hide">
               <button
                 onClick={() => navigate('/planner/daily')}
-                className="bg-gradient-to-br from-blue-500 to-blue-600 text-white rounded-xl p-4 shadow-lg hover:shadow-xl active:scale-[0.98] transition-all flex flex-col items-center gap-2 min-h-[100px]"
+                className="px-4 py-2 rounded-full text-sm font-medium bg-blue-600 text-white whitespace-nowrap min-h-[40px]"
               >
-                <Calendar size={28} />
-                <span className="font-semibold text-base">Daily</span>
+                Daily
               </button>
               <button
                 onClick={() => navigate('/planner/weekly')}
-                className="bg-gradient-to-br from-purple-500 to-purple-600 text-white rounded-xl p-4 shadow-lg hover:shadow-xl active:scale-[0.98] transition-all flex flex-col items-center gap-2 min-h-[100px]"
+                className="px-4 py-2 rounded-full text-sm font-medium bg-gray-100 text-gray-800 hover:bg-gray-200 whitespace-nowrap min-h-[40px]"
               >
-                <CalendarDays size={28} />
-                <span className="font-semibold text-base">Weekly</span>
+                Weekly
               </button>
               <button
                 onClick={() => navigate('/planner/monthly')}
-                className="bg-gradient-to-br from-pink-500 to-pink-600 text-white rounded-xl p-4 shadow-lg hover:shadow-xl active:scale-[0.98] transition-all flex flex-col items-center gap-2 min-h-[100px]"
+                className="px-4 py-2 rounded-full text-sm font-medium bg-gray-100 text-gray-800 hover:bg-gray-200 whitespace-nowrap min-h-[40px]"
               >
-                <Clock size={28} />
-                <span className="font-semibold text-base">Monthly</span>
-              </button>
-              <button
-                onClick={() => navigate('/planner')}
-                className="bg-gradient-to-br from-gray-500 to-gray-600 text-white rounded-xl p-4 shadow-lg hover:shadow-xl active:scale-[0.98] transition-all flex flex-col items-center gap-2 min-h-[100px]"
-              >
-                <ChevronRight size={28} />
-                <span className="font-semibold text-base">Index</span>
+                Monthly
               </button>
             </div>
           </div>
@@ -293,6 +300,26 @@ export function PlannerIndex() {
               </button>
             </div>
           </div>
+
+          {/* Recents (if available) */}
+          {recentLinks.length > 0 && (
+            <div className="space-y-3">
+              <h2 className="text-sm font-semibold text-gray-700 uppercase tracking-wide px-1">
+                Recent
+              </h2>
+              <div className="bg-white rounded-xl border border-gray-200 p-2 space-y-2">
+                {recentLinks.map((link) => (
+                  <button
+                    key={`${link.route}-${link.label}`}
+                    onClick={() => navigate(link.route)}
+                    className="w-full text-left px-4 py-3 bg-gray-50 hover:bg-gray-100 rounded-lg border border-gray-200 active:scale-[0.98] transition-all min-h-[44px] text-sm font-medium text-gray-900"
+                  >
+                    {link.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* Life Areas - Collapsible Sections */}
           <div className="space-y-3">
@@ -362,6 +389,25 @@ export function PlannerIndex() {
             </div>
           </div>
         </div>
+
+        {/* Floating Quick Add Button */}
+        {user && (
+          <>
+            <button
+              onClick={() => setShowQuickAdd(true)}
+              className="fixed bottom-20 right-5 z-[60] w-14 h-14 rounded-full bg-blue-600 text-white shadow-lg hover:bg-blue-700 active:scale-95 transition-all flex items-center justify-center"
+              aria-label="Quick Add"
+            >
+              <span className="text-2xl leading-none">＋</span>
+            </button>
+            <QuickAddBottomSheet
+              isOpen={showQuickAdd}
+              onClose={() => setShowQuickAdd(false)}
+              userId={user.id}
+              date={new Date()}
+            />
+          </>
+        )}
 
         {/* Life Area Bottom Sheet - Full Item List */}
         {selectedAreaData && (

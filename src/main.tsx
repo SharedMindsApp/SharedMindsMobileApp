@@ -121,6 +121,11 @@ if (isStandaloneApp()) {
 }
 
 // Phase 11: Initialize global error handlers for mobile debugging
+import { checkStorageQuota } from './lib/errorLogger';
+
+// Check storage quota before initializing error handlers
+checkStorageQuota();
+
 initGlobalErrorHandlers();
 
 // ---- Mount App ----

@@ -19,9 +19,10 @@
  */
 
 import { useState, useRef, useCallback, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useMindMesh } from '../../../hooks/useMindMesh';
 import type { MindMeshContainer, MindMeshIntent, MindMeshNode } from '../../../hooks/useMindMesh';
-import { Loader2, AlertCircle, ChevronDown, ChevronUp, CreditCard as Edit2, Trash2, Link } from 'lucide-react';
+import { Loader2, AlertCircle, ChevronDown, ChevronUp, CreditCard as Edit2, Trash2, Link, ChevronLeft } from 'lucide-react';
 import { useAuth } from '../../../contexts/AuthContext';
 import { LockStatusBar } from './LockStatusBar';
 import { MindMeshToolbar } from './MindMeshToolbar';
@@ -86,6 +87,7 @@ interface MindMeshCanvasV2Props {
 }
 
 export function MindMeshCanvasV2({ workspaceId }: MindMeshCanvasV2Props) {
+  const navigate = useNavigate();
   const { user } = useAuth();
   const { graphState, loading, error, reconciliationError, executeIntent, rollback, fetchGraph } = useMindMesh(workspaceId);
   const [draggingContainer, setDraggingContainer] = useState<{
@@ -1573,22 +1575,37 @@ export function MindMeshCanvasV2({ workspaceId }: MindMeshCanvasV2Props) {
   }
 
   return (
-    <div className="relative w-full h-full overflow-hidden bg-gray-50">
-      {/* Lock Status Bar */}
-      <div className="absolute top-4 left-4 z-50">
-        <LockStatusBar
-          lock={lock}
-          onAcquireLock={handleAcquireLock}
-          onReleaseLock={handleReleaseLock}
-          executing={executing}
-          error={lockError}
-        />
+    <div className="relative w-full h-full overflow-hidden bg-gray-50 flex flex-col">
+      {/* Header with Navigation */}
+      <div className="flex-shrink-0 bg-white border-b border-gray-200 px-4 py-3 flex items-center justify-between">
+        <button
+          onClick={() => navigate('/guardrails/dashboard')}
+          className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100 rounded-lg transition-colors min-h-[44px]"
+          aria-label="Back to Guardrails"
+        >
+          <ChevronLeft size={20} />
+          <span>Back to Guardrails</span>
+        </button>
+        <div className="flex-1"></div>
+        {/* Lock Status Bar in Header */}
+        <div className="flex-shrink-0">
+          <LockStatusBar
+            lock={lock}
+            onAcquireLock={handleAcquireLock}
+            onReleaseLock={handleReleaseLock}
+            executing={executing}
+            error={lockError}
+          />
+        </div>
       </div>
 
-      {/* Operation Error Banner */}
-      {operationError && (
-        <div className="absolute top-4 left-1/2 transform -translate-x-1/2 z-50 max-w-2xl">
-          <div className="bg-red-50 border-2 border-red-500 rounded-lg shadow-lg p-4 flex items-start gap-3">
+      {/* Main Canvas Area */}
+      <div className="flex-1 relative overflow-hidden">
+
+        {/* Operation Error Banner */}
+        {operationError && (
+          <div className="absolute top-4 left-1/2 transform -translate-x-1/2 z-50 max-w-2xl">
+            <div className="bg-red-50 border-2 border-red-500 rounded-lg shadow-lg p-4 flex items-start gap-3">
             <AlertCircle className="h-5 w-5 text-red-600 flex-shrink-0 mt-0.5" />
             <div className="flex-1">
               <p className="text-sm font-medium text-red-900">{operationError}</p>
@@ -1599,12 +1616,12 @@ export function MindMeshCanvasV2({ workspaceId }: MindMeshCanvasV2Props) {
             >
               ×
             </button>
+            </div>
           </div>
-        </div>
-      )}
+        )}
 
-      {/* Toolbar */}
-      <div className="absolute top-20 left-4 z-50">
+        {/* Toolbar */}
+        <div className="absolute top-4 left-4 z-50">
         <MindMeshToolbar
           onRollback={handleRollback}
           onShowHelp={() => setShowHelp(true)}
@@ -1625,88 +1642,88 @@ export function MindMeshCanvasV2({ workspaceId }: MindMeshCanvasV2Props) {
           containerCount={visibleContainers.length}
           nodeCount={visibleNodes.length}
         />
-      </div>
+        </div>
 
-      {/* Help Panel */}
-      {showHelp && (
-        <div className="absolute top-36 left-4 z-50">
+        {/* Help Panel */}
+        {showHelp && (
+          <div className="absolute top-36 left-4 z-50">
           <CanvasHelpPanel
             onClose={() => setShowHelp(false)}
             canEdit={canEdit}
           />
-        </div>
-      )}
+          </div>
+        )}
 
-      {/* Execution Status */}
-      {executing && (
-        <div className="absolute top-4 right-4 z-50 flex items-center gap-2 px-4 py-2 bg-blue-50 border border-blue-200 rounded-lg shadow-sm">
-          <Loader2 className="animate-spin h-4 w-4 text-blue-600" />
-          <span className="text-sm text-blue-600 font-medium">Executing...</span>
-        </div>
-      )}
+        {/* Execution Status */}
+        {executing && (
+          <div className="absolute top-4 right-4 z-50 flex items-center gap-2 px-4 py-2 bg-blue-50 border border-blue-200 rounded-lg shadow-sm">
+            <Loader2 className="animate-spin h-4 w-4 text-blue-600" />
+            <span className="text-sm text-blue-600 font-medium">Executing...</span>
+          </div>
+        )}
 
-      {/* General Error Display */}
-      {error && (
-        <div className="absolute top-36 left-4 z-50 flex items-center gap-2 px-4 py-2 bg-red-50 border border-red-300 rounded-lg max-w-md shadow-sm">
-          <AlertCircle className="h-4 w-4 text-red-600 flex-shrink-0" />
-          <span className="text-sm text-red-600">{error}</span>
-        </div>
-      )}
+        {/* General Error Display */}
+        {error && (
+          <div className="absolute top-36 left-4 z-50 flex items-center gap-2 px-4 py-2 bg-red-50 border border-red-300 rounded-lg max-w-md shadow-sm">
+            <AlertCircle className="h-4 w-4 text-red-600 flex-shrink-0" />
+            <span className="text-sm text-red-600">{error}</span>
+          </div>
+        )}
 
-      {/* Track Creation Error Display */}
-      {trackCreationError && (
-        <div className="absolute top-36 left-4 z-50 flex items-center gap-2 px-4 py-2 bg-red-50 border border-red-300 rounded-lg max-w-md shadow-sm">
+        {/* Track Creation Error Display */}
+        {trackCreationError && (
+          <div className="absolute top-36 left-4 z-50 flex items-center gap-2 px-4 py-2 bg-red-50 border border-red-300 rounded-lg max-w-md shadow-sm">
           <AlertCircle className="h-4 w-4 text-red-600 flex-shrink-0" />
           <div className="flex-1">
             <span className="text-sm text-red-600 font-medium block">Track Creation Failed</span>
-            <span className="text-sm text-red-600">{trackCreationError}</span>
+              <span className="text-sm text-red-600">{trackCreationError}</span>
+            </div>
+            <button
+              onClick={() => setTrackCreationError(null)}
+              className="text-red-600 hover:text-red-800"
+            >
+              ×
+            </button>
           </div>
-          <button
-            onClick={() => setTrackCreationError(null)}
-            className="text-red-600 hover:text-red-800"
-          >
-            ×
-          </button>
-        </div>
-      )}
+        )}
 
-      {/* Subtrack Creation Error Display */}
-      {subtrackCreationError && (
-        <div className="absolute top-36 left-4 z-50 flex items-center gap-2 px-4 py-2 bg-red-50 border border-red-300 rounded-lg max-w-md shadow-sm">
+        {/* Subtrack Creation Error Display */}
+        {subtrackCreationError && (
+          <div className="absolute top-36 left-4 z-50 flex items-center gap-2 px-4 py-2 bg-red-50 border border-red-300 rounded-lg max-w-md shadow-sm">
           <AlertCircle className="h-4 w-4 text-red-600 flex-shrink-0" />
           <div className="flex-1">
             <span className="text-sm text-red-600 font-medium block">Subtrack Creation Failed</span>
-            <span className="text-sm text-red-600">{subtrackCreationError}</span>
+              <span className="text-sm text-red-600">{subtrackCreationError}</span>
+            </div>
+            <button
+              onClick={() => setSubtrackCreationError(null)}
+              className="text-red-600 hover:text-red-800"
+            >
+              ×
+            </button>
           </div>
-          <button
-            onClick={() => setSubtrackCreationError(null)}
-            className="text-red-600 hover:text-red-800"
-          >
-            ×
-          </button>
-        </div>
-      )}
+        )}
 
-      {/* Port Connection Error Display */}
-      {portConnectionError && (
-        <div className="absolute top-36 left-4 z-50 flex items-center gap-2 px-4 py-2 bg-red-50 border border-red-300 rounded-lg max-w-md shadow-sm">
+        {/* Port Connection Error Display */}
+        {portConnectionError && (
+          <div className="absolute top-36 left-4 z-50 flex items-center gap-2 px-4 py-2 bg-red-50 border border-red-300 rounded-lg max-w-md shadow-sm">
           <AlertCircle className="h-4 w-4 text-red-600 flex-shrink-0" />
           <div className="flex-1">
             <span className="text-sm text-red-600 font-medium block">Port Connection Failed</span>
-            <span className="text-sm text-red-600">{portConnectionError}</span>
+              <span className="text-sm text-red-600">{portConnectionError}</span>
+            </div>
+            <button
+              onClick={() => setPortConnectionError(null)}
+              className="text-red-600 hover:text-red-800"
+            >
+              ×
+            </button>
           </div>
-          <button
-            onClick={() => setPortConnectionError(null)}
-            className="text-red-600 hover:text-red-800"
-          >
-            ×
-          </button>
-        </div>
-      )}
+        )}
 
-      {/* Connection Mode Help Banner */}
-      {relationshipCreationMode && !portConnectionError && (
-        <div className="absolute top-36 left-4 z-50 flex items-center gap-3 px-4 py-3 bg-green-50 border-2 border-green-400 rounded-lg max-w-lg shadow-lg">
+        {/* Connection Mode Help Banner */}
+        {relationshipCreationMode && !portConnectionError && (
+          <div className="absolute top-36 left-4 z-50 flex items-center gap-3 px-4 py-3 bg-green-50 border-2 border-green-400 rounded-lg max-w-lg shadow-lg">
           <Link className="h-5 w-5 text-green-600 flex-shrink-0 animate-pulse" />
           <div className="flex-1">
             <span className="text-sm text-green-800 font-semibold block">Connection Mode Active</span>
@@ -1720,37 +1737,37 @@ export function MindMeshCanvasV2({ workspaceId }: MindMeshCanvasV2Props) {
             onClick={handleCancelRelationshipCreation}
             className="text-green-700 hover:text-green-900 text-xs font-medium px-2 py-1 bg-green-100 hover:bg-green-200 rounded"
           >
-            Cancel (ESC or Right-Click)
-          </button>
-        </div>
-      )}
+              Cancel (ESC or Right-Click)
+            </button>
+          </div>
+        )}
 
-      {/* Empty Canvas Guide */}
-      {showEmptyGuide && (
-        <EmptyCanvasGuide onDismiss={() => setDismissedEmptyGuide(true)} />
-      )}
+        {/* Empty Canvas Guide */}
+        {showEmptyGuide && (
+          <EmptyCanvasGuide onDismiss={() => setDismissedEmptyGuide(true)} />
+        )}
 
-      {/* Ghost Explainer */}
-      {showGhostExplainer && firstGhost && (
-        <GhostExplainer
-          position={{
-            x: (firstGhost.x + firstGhost.width + 20) * viewport.scale + viewport.translateX,
-            y: firstGhost.y * viewport.scale + viewport.translateY,
-          }}
-          onDismiss={() => setDismissedGhostExplainer(true)}
-        />
-      )}
+        {/* Ghost Explainer */}
+        {showGhostExplainer && firstGhost && (
+          <GhostExplainer
+            position={{
+              x: (firstGhost.x + firstGhost.width + 20) * viewport.scale + viewport.translateX,
+              y: firstGhost.y * viewport.scale + viewport.translateY,
+            }}
+            onDismiss={() => setDismissedGhostExplainer(true)}
+          />
+        )}
 
-      {/* Locked Canvas Guide */}
-      {showLockedGuide && (
-        <LockedCanvasGuide
-          lockedBy={lock?.user_id}
-          onDismiss={() => setDismissedLockedGuide(true)}
-        />
-      )}
+        {/* Locked Canvas Guide */}
+        {showLockedGuide && (
+          <LockedCanvasGuide
+            lockedBy={lock?.user_id}
+            onDismiss={() => setDismissedLockedGuide(true)}
+          />
+        )}
 
-      {/* Canvas */}
-      <div
+        {/* Canvas */}
+        <div
         ref={canvasRef}
         className="relative w-full h-full"
         style={{
@@ -2648,7 +2665,10 @@ export function MindMeshCanvasV2({ workspaceId }: MindMeshCanvasV2Props) {
           onCancel={handleCancelRelationshipCreation}
         />
       )}
+      </div>
+      {/* End Main Canvas Area */}
 
+      {/* Modals - Outside canvas area for proper z-index */}
       {/* Delete Container Confirmation */}
       <ConfirmDialog
         isOpen={deleteContainerId !== null}

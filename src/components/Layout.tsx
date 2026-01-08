@@ -42,12 +42,21 @@ export function Layout({ children }: LayoutProps) {
   const [showMobileMenu, setShowMobileMenu] = useState(false);
   const [uiMode, setUIMode] = useState<UIMode>('fridge');
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
+  const [isMobile, setIsMobile] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
   const { isAdmin, role, isViewingAs, profile, user } = useAuth();
   const { clearViewAs } = useViewAs();
   const { config, updatePreferences } = useUIPreferences();
   const { toasts, dismissToast } = useToasts();
+
+  // Mobile detection for hiding AI chat widget
+  useEffect(() => {
+    const checkMobile = () => setIsMobile(window.innerWidth < 768);
+    checkMobile();
+    window.addEventListener('resize', checkMobile);
+    return () => window.removeEventListener('resize', checkMobile);
+  }, []);
 
   useEffect(() => {
     loadHousehold();
@@ -705,9 +714,10 @@ export function Layout({ children }: LayoutProps) {
 
       <ErrorIndicator />
       <RegulationNotificationBanner />
-      {/* Hide AI chat widget on planner and spaces routes */}
+      {/* Hide AI chat widget on planner, spaces routes, and mobile devices */}
       {!location.pathname.startsWith('/planner') && 
        !location.pathname.startsWith('/spaces') && 
+       !isMobile && 
        <FloatingAIChatWidget />}
       <OfflineIndicator />
       <AppUpdateBanner />

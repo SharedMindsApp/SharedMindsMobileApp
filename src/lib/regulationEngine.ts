@@ -1,4 +1,5 @@
 import { supabase } from './supabase';
+import { logError, logWarning, logInfo } from './errorLogger';
 import type {
   RegulationState,
   RegulationEvent,
@@ -146,35 +147,88 @@ export async function getRegulationState(
   userId?: string,
   projectId?: string | null
 ): Promise<RegulationState | null> {
-  const { data: { user } } = await supabase.auth.getUser();
-  const targetUserId = userId || user?.id;
+  try {
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    
+    if (authError) {
+      // Missing auth session is expected during initial load - log as info, not error
+      const isMissingSession = authError.message.includes('Auth session missing') || 
+                               authError.message.includes('JWT expired') ||
+                               authError.message.includes('session');
+      
+      if (isMissingSession) {
+        // Expected scenario - user not authenticated yet, just return null
+        return null;
+      }
+      
+      // Other auth errors are actual errors
+      logError(
+        'Failed to get user for regulation state',
+        new Error(`Auth error: ${authError.message}`),
+        {
+          component: 'RegulationEngine',
+          action: 'getRegulationState',
+          userId,
+          projectId: projectId || null,
+          authError: authError.message,
+        }
+      );
+      throw new Error(`Auth error: ${authError.message}`);
+    }
+    
+    const targetUserId = userId || user?.id;
 
-  if (!targetUserId) throw new Error('User not authenticated');
+    if (!targetUserId) {
+      // No user ID is expected when user is not authenticated - just return null
+      return null;
+    }
 
-  let query = supabase
-    .from('regulation_state')
-    .select('*')
-    .eq('user_id', targetUserId);
+    let query = supabase
+      .from('regulation_state')
+      .select('*')
+      .eq('user_id', targetUserId);
 
-  if (projectId) {
-    query = query.eq('master_project_id', projectId);
-  } else {
-    query = query.is('master_project_id', null);
+    if (projectId) {
+      query = query.eq('master_project_id', projectId);
+    } else {
+      query = query.is('master_project_id', null);
+    }
+
+    // Order by updated_at descending to get the most recent, then limit to 1
+    // This handles cases where there might be duplicate rows
+    query = query.order('updated_at', { ascending: false }).limit(1);
+
+    const { data, error } = await query.maybeSingle();
+
+    if (error) {
+      logError(
+        'Failed to fetch regulation state from database',
+        error,
+        {
+          component: 'RegulationEngine',
+          action: 'getRegulationState',
+          userId: targetUserId,
+          projectId: projectId || null,
+        }
+      );
+      throw error;
+    }
+
+    if (!data) {
+      logInfo('No regulation state found, initializing new state', {
+        component: 'RegulationEngine',
+        action: 'getRegulationState',
+        userId: targetUserId,
+        projectId: projectId || null,
+      });
+      return await initializeRegulationState(targetUserId, projectId);
+    }
+
+    return data;
+  } catch (error) {
+    // Re-throw after logging
+    throw error;
   }
-
-  // Order by updated_at descending to get the most recent, then limit to 1
-  // This handles cases where there might be duplicate rows
-  query = query.order('updated_at', { ascending: false }).limit(1);
-
-  const { data, error } = await query.maybeSingle();
-
-  if (error) throw error;
-
-  if (!data) {
-    return await initializeRegulationState(targetUserId, projectId);
-  }
-
-  return data;
 }
 
 export async function initializeRegulationState(

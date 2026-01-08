@@ -66,11 +66,18 @@ export function GuardrailsLayout({ children }: GuardrailsLayoutProps) {
     if (activeProjectId) {
       getMasterProjects().then((projects) => {
         const project = projects.find((p) => p.id === activeProjectId);
-        setActiveProject(project || null);
+        // Only update if project found - don't clear if not found (might be loading)
+        if (project) {
+          setActiveProject(project);
+        }
+        // If not found, keep the existing activeProject from localStorage
+        // This prevents clearing the project during page refresh while data is loading
+      }).catch((error) => {
+        console.error('[GuardrailsLayout] Failed to load projects:', error);
+        // Don't clear activeProject on error - keep what's stored
       });
-    } else {
-      setActiveProject(null);
     }
+    // Don't clear activeProject if activeProjectId becomes null - let user explicitly clear it
   }, [activeProjectId]);
 
   useEffect(() => {

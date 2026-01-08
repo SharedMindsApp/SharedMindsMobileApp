@@ -1,23 +1,34 @@
 /**
  * Connection Health Monitor
  * 
- * Monitors connection health, implements exponential backoff retry,
- * and proactively refreshes sessions before expiration.
+ * Event-driven connection health monitoring with low-frequency safety timer.
+ * Checks run on: app resume, network reconnect, realtime silence, or optional background timer.
+ * 
+ * Battery-friendly and network-efficient for mobile + realtime apps.
  */
 
 import { supabase } from './supabase';
 import { logError, logWarning, logInfo } from './errorLogger';
 
-const HEALTH_CHECK_INTERVAL = 30000; // 30 seconds
+// Timing constants
+const SAFETY_TIMER_INTERVAL = 4 * 60 * 1000; // 4 minutes (optional safety net)
+const MIN_COOLDOWN_MS = 60 * 1000; // 1 minute minimum between checks
+const REALTIME_SILENCE_THRESHOLD = 90 * 1000; // 90 seconds of silence before checking
 const SESSION_REFRESH_BEFORE_EXPIRY = 5 * 60 * 1000; // 5 minutes before expiry
 const MAX_RETRY_DELAY = 30000; // 30 seconds max delay
 const INITIAL_RETRY_DELAY = 1000; // 1 second initial delay
 
-let healthCheckInterval: NodeJS.Timeout | null = null;
+// State management
+let safetyTimerInterval: NodeJS.Timeout | null = null;
+let realtimeSilenceTimer: NodeJS.Timeout | null = null;
+let healthCheckCleanup: (() => void) | null = null;
 let isMonitoring = false;
+let isChecking = false; // Overlap protection
 let retryAttempts = 0;
 let lastHealthCheck: number | null = null;
+let lastSuccessfulCheck: number | null = null;
 let connectionStatus: 'healthy' | 'degraded' | 'offline' = 'healthy';
+let lastRealtimeActivity: number = Date.now(); // Track last realtime event
 
 export interface ConnectionHealthState {
   isHealthy: boolean;
@@ -32,21 +43,60 @@ const healthCheckCallbacks: Set<HealthCheckCallback> = new Set();
 
 /**
  * Notify all subscribers of health state change
+ * Only notifies if the status actually changed to prevent unnecessary re-renders
  */
-function notifyHealthState(state: ConnectionHealthState): void {
+function notifyHealthState(newState: ConnectionHealthState, previousStatus?: 'healthy' | 'degraded' | 'offline'): void {
+  // Only notify if status actually changed
+  if (previousStatus !== undefined && previousStatus === newState.status) {
+    return;
+  }
+
   healthCheckCallbacks.forEach(callback => {
     try {
-      callback(state);
+      callback(newState);
     } catch (error) {
-      console.error('[ConnectionHealth] Error in health check callback:', error);
+      logError(
+        'Error in health check callback',
+        error instanceof Error ? error : new Error(String(error)),
+        {
+          component: 'ConnectionHealth',
+          action: 'notifyHealthState',
+        }
+      );
     }
   });
 }
 
 /**
  * Perform a health check by attempting a lightweight API call
+ * Protected against overlaps and churn with cooldown and state change detection
  */
-async function performHealthCheck(): Promise<boolean> {
+async function performHealthCheck(trigger?: string): Promise<boolean> {
+  // Overlap protection: only one check at a time
+  if (isChecking) {
+    logInfo('Health check already in progress, skipping', {
+      component: 'ConnectionHealth',
+      action: 'performHealthCheck',
+      trigger: trigger || 'unknown',
+    });
+    return false;
+  }
+
+  // Cooldown protection: don't check too frequently
+  const now = Date.now();
+  if (lastHealthCheck !== null && (now - lastHealthCheck) < MIN_COOLDOWN_MS) {
+    logInfo('Health check skipped due to cooldown', {
+      component: 'ConnectionHealth',
+      action: 'performHealthCheck',
+      trigger: trigger || 'unknown',
+      timeSinceLastCheck: `${Math.floor((now - lastHealthCheck) / 1000)}s`,
+    });
+    return false;
+  }
+
+  isChecking = true;
+  const previousStatus = connectionStatus;
+
   try {
     // Use a lightweight check - get current session
     const { data, error } = await Promise.race([
@@ -60,8 +110,27 @@ async function performHealthCheck(): Promise<boolean> {
       logWarning('Health check failed', {
         component: 'ConnectionHealth',
         action: 'performHealthCheck',
+        trigger: trigger || 'unknown',
         error: error.message || String(error),
       });
+      
+      retryAttempts++;
+      const nextStatus = retryAttempts >= 3
+        ? (navigator.onLine ? 'degraded' : 'offline')
+        : 'degraded';
+      
+      lastHealthCheck = Date.now();
+      connectionStatus = nextStatus;
+      
+      // Only notify if status changed
+      notifyHealthState({
+        isHealthy: false,
+        lastCheck: lastHealthCheck,
+        retryAttempts,
+        status: nextStatus,
+      }, previousStatus);
+      
+      isChecking = false;
       return false;
     }
 
@@ -80,6 +149,7 @@ async function performHealthCheck(): Promise<boolean> {
             logInfo('Proactively refreshed session before expiry', {
               component: 'ConnectionHealth',
               action: 'refreshSession',
+              trigger: trigger || 'unknown',
               timeUntilExpiry: `${Math.floor(timeUntilExpiry / 1000)}s`,
             });
           } catch (refreshError) {
@@ -89,28 +159,50 @@ async function performHealthCheck(): Promise<boolean> {
               {
                 component: 'ConnectionHealth',
                 action: 'refreshSession',
+                trigger: trigger || 'unknown',
                 timeUntilExpiry: `${Math.floor(timeUntilExpiry / 1000)}s`,
               }
             );
+            
+            retryAttempts++;
+            const nextStatus = navigator.onLine ? 'degraded' : 'offline';
+            lastHealthCheck = Date.now();
+            connectionStatus = nextStatus;
+            notifyHealthState({
+              isHealthy: false,
+              lastCheck: lastHealthCheck,
+              retryAttempts,
+              status: nextStatus,
+            }, previousStatus);
+            
+            isChecking = false;
             return false;
           }
         }
       }
     }
 
+    // Success: reset retry attempts and update status
     lastHealthCheck = Date.now();
+    lastSuccessfulCheck = Date.now();
     retryAttempts = 0;
     connectionStatus = 'healthy';
+    
+    // Only notify if status changed
     notifyHealthState({
       isHealthy: true,
       lastCheck: lastHealthCheck,
       retryAttempts: 0,
       status: 'healthy',
-    });
+    }, previousStatus);
+    
     logInfo('Health check successful', {
       component: 'ConnectionHealth',
       action: 'performHealthCheck',
+      trigger: trigger || 'unknown',
     });
+    
+    isChecking = false;
     return true;
   } catch (error) {
     retryAttempts++;
@@ -120,24 +212,28 @@ async function performHealthCheck(): Promise<boolean> {
       {
         component: 'ConnectionHealth',
         action: 'performHealthCheck',
+        trigger: trigger || 'unknown',
         retryAttempts,
       }
     );
     
     // Determine connection status based on retry attempts
-    if (retryAttempts >= 3) {
-      connectionStatus = navigator.onLine ? 'degraded' : 'offline';
-    } else {
-      connectionStatus = 'degraded';
-    }
+    const nextStatus = retryAttempts >= 3
+      ? (navigator.onLine ? 'degraded' : 'offline')
+      : 'degraded';
 
+    lastHealthCheck = Date.now();
+    connectionStatus = nextStatus;
+
+    // Only notify if status changed
     notifyHealthState({
       isHealthy: false,
       lastCheck: lastHealthCheck,
       retryAttempts,
-      status: connectionStatus,
-    });
+      status: nextStatus,
+    }, previousStatus);
     
+    isChecking = false;
     return false;
   }
 }
@@ -209,7 +305,81 @@ export async function retryWithBackoff<T>(
 }
 
 /**
- * Start monitoring connection health
+ * Check if we should run the optional safety timer
+ * Only runs if app is active and no recent successful check occurred
+ */
+function shouldRunSafetyTimer(): boolean {
+  // Don't run if app is in background
+  if (typeof document !== 'undefined' && document.visibilityState !== 'visible') {
+    return false;
+  }
+
+  // Don't run if a check is already in progress
+  if (isChecking) {
+    return false;
+  }
+
+  // Don't run if we had a successful check recently (within safety timer interval)
+  const now = Date.now();
+  if (lastSuccessfulCheck !== null && (now - lastSuccessfulCheck) < SAFETY_TIMER_INTERVAL) {
+    return false;
+  }
+
+  // Don't run if we just checked recently (cooldown)
+  if (lastHealthCheck !== null && (now - lastHealthCheck) < MIN_COOLDOWN_MS) {
+    return false;
+  }
+
+  return true;
+}
+
+/**
+ * Safety timer handler (optional background check)
+ */
+function handleSafetyTimer(): void {
+  if (!shouldRunSafetyTimer()) {
+    return;
+  }
+
+  performHealthCheck('safety-timer');
+}
+
+/**
+ * Check for realtime silence and trigger health check if needed
+ */
+function checkRealtimeSilence(): void {
+  const now = Date.now();
+  const silenceDuration = now - lastRealtimeActivity;
+
+  if (silenceDuration >= REALTIME_SILENCE_THRESHOLD && connectionStatus !== 'healthy') {
+    logInfo('Realtime silence detected, performing health check', {
+      component: 'ConnectionHealth',
+      action: 'checkRealtimeSilence',
+      silenceDuration: `${Math.floor(silenceDuration / 1000)}s`,
+    });
+    performHealthCheck('realtime-silence');
+  }
+}
+
+/**
+ * Record realtime activity (call this when realtime events are received)
+ */
+export function recordRealtimeActivity(): void {
+  lastRealtimeActivity = Date.now();
+  
+  // Reset silence timer
+  if (realtimeSilenceTimer) {
+    clearInterval(realtimeSilenceTimer);
+  }
+  
+  // Check for silence periodically (but not too frequently)
+  realtimeSilenceTimer = setInterval(() => {
+    checkRealtimeSilence();
+  }, REALTIME_SILENCE_THRESHOLD);
+}
+
+/**
+ * Start monitoring connection health (event-driven, low-frequency)
  */
 export function startHealthMonitoring(): void {
   if (isMonitoring) {
@@ -222,53 +392,84 @@ export function startHealthMonitoring(): void {
 
   isMonitoring = true;
   retryAttempts = 0;
+  lastRealtimeActivity = Date.now();
   
-  logInfo('Connection health monitoring started', {
+  logInfo('Connection health monitoring started (event-driven)', {
     component: 'ConnectionHealth',
     action: 'startHealthMonitoring',
   });
   
   // Perform initial health check
-  performHealthCheck();
+  performHealthCheck('initial');
 
-  // Set up periodic health checks
-  healthCheckInterval = setInterval(() => {
-    performHealthCheck();
-  }, HEALTH_CHECK_INTERVAL);
+  // Optional safety timer: only runs if app is active and no recent successful check
+  // This is a "seatbelt" check, not the primary mechanism
+  safetyTimerInterval = setInterval(() => {
+    handleSafetyTimer();
+  }, SAFETY_TIMER_INTERVAL);
 
-  // Listen for online/offline events
+  // Event 1: App/Tab Resume (visibilitychange)
+  const handleVisibilityChange = () => {
+    if (document.visibilityState === 'visible') {
+      logInfo('App resumed, performing health check', {
+        component: 'ConnectionHealth',
+        action: 'visibilitychange',
+      });
+      performHealthCheck('app-resume');
+    }
+  };
+
+  // Event 2: Network Reconnect (online)
   const handleOnline = () => {
     logInfo('Network came online, performing health check', {
       component: 'ConnectionHealth',
       action: 'network.online',
     });
-    performHealthCheck();
+    performHealthCheck('network-reconnect');
   };
 
+  // Event 3: Network Offline (update status immediately, no check needed)
   const handleOffline = () => {
     logWarning('Network went offline', {
       component: 'ConnectionHealth',
       action: 'network.offline',
     });
+    const previousStatus = connectionStatus;
     connectionStatus = 'offline';
+    lastHealthCheck = Date.now();
     notifyHealthState({
       isHealthy: false,
       lastCheck: lastHealthCheck,
       retryAttempts,
       status: 'offline',
-    });
+    }, previousStatus);
   };
 
+  // Set up event listeners
+  if (typeof document !== 'undefined') {
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+  }
   window.addEventListener('online', handleOnline);
   window.addEventListener('offline', handleOffline);
 
-  // Cleanup function stored for later
-  (healthCheckInterval as any).cleanup = () => {
+  // Start realtime silence monitoring
+  realtimeSilenceTimer = setInterval(() => {
+    checkRealtimeSilence();
+  }, REALTIME_SILENCE_THRESHOLD);
+
+  // Store cleanup function separately
+  healthCheckCleanup = () => {
+    if (typeof document !== 'undefined') {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    }
     window.removeEventListener('online', handleOnline);
     window.removeEventListener('offline', handleOffline);
   };
 
-  console.log('[ConnectionHealth] Health monitoring started');
+  logInfo('Event-driven health monitoring initialized', {
+    component: 'ConnectionHealth',
+    action: 'startHealthMonitoring',
+  });
 }
 
 /**
@@ -279,15 +480,22 @@ export function stopHealthMonitoring(): void {
 
   isMonitoring = false;
   
-  if (healthCheckInterval) {
-    clearInterval(healthCheckInterval);
-    
-    // Run cleanup if stored
-    if ((healthCheckInterval as any).cleanup) {
-      (healthCheckInterval as any).cleanup();
-    }
-    
-    healthCheckInterval = null;
+  // Clear safety timer
+  if (safetyTimerInterval) {
+    clearInterval(safetyTimerInterval);
+    safetyTimerInterval = null;
+  }
+  
+  // Clear realtime silence timer
+  if (realtimeSilenceTimer) {
+    clearInterval(realtimeSilenceTimer);
+    realtimeSilenceTimer = null;
+  }
+  
+  // Run cleanup if stored
+  if (healthCheckCleanup) {
+    healthCheckCleanup();
+    healthCheckCleanup = null;
   }
 
   logInfo('Connection health monitoring stopped', {
@@ -329,9 +537,21 @@ export function getHealthState(): ConnectionHealthState {
 }
 
 /**
- * Force a health check immediately
+ * Force a health check immediately (bypasses cooldown)
+ * Use sparingly - for manual/user-initiated checks only
  */
 export async function forceHealthCheck(): Promise<boolean> {
-  return performHealthCheck();
+  // Reset cooldown to allow immediate check
+  const previousLastCheck = lastHealthCheck;
+  lastHealthCheck = null;
+  
+  try {
+    return await performHealthCheck('force');
+  } finally {
+    // Restore previous check time if force check fails
+    if (lastHealthCheck === null) {
+      lastHealthCheck = previousLastCheck;
+    }
+  }
 }
 

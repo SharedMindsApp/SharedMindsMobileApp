@@ -28,14 +28,21 @@ export function OffshootIdeasList() {
     console.log('[OffshootIdeasList] activeProjectId from ADC:', activeProjectId);
     async function loadProject() {
       if (activeProjectId) {
-        const projects = await getMasterProjects();
-        const project = projects.find(p => p.id === activeProjectId);
-        console.log('[OffshootIdeasList] Found project:', project);
-        setActiveProject(project || null);
-      } else {
-        console.log('[OffshootIdeasList] No activeProjectId');
-        setActiveProject(null);
+        try {
+          const projects = await getMasterProjects();
+          const project = projects.find(p => p.id === activeProjectId);
+          console.log('[OffshootIdeasList] Found project:', project);
+          // Only update if project found - don't clear if not found (might be loading)
+          if (project) {
+            setActiveProject(project);
+          }
+          // If not found, keep the existing activeProject from localStorage
+        } catch (error) {
+          console.error('[OffshootIdeasList] Failed to load projects:', error);
+          // Don't clear activeProject on error - keep what's stored
+        }
       }
+      // Don't clear activeProject if activeProjectId becomes null - let user explicitly clear it
     }
     loadProject();
   }, [activeProjectId]);

@@ -66,6 +66,23 @@ export function PlannerWeekly() {
     }
     return new Date();
   });
+  // IMPORTANT: weekDays must be defined before any hooks/effects that reference it.
+  // Otherwise React render can throw "Cannot access 'weekDays' before initialization".
+  const weekDays = useMemo(() => {
+    const dayOfWeek = selectedDate.getDay();
+    const monday = new Date(selectedDate);
+    // Normalize time to avoid DST/timezone edge cases in comparisons
+    monday.setHours(0, 0, 0, 0);
+    monday.setDate(selectedDate.getDate() - (dayOfWeek === 0 ? 6 : dayOfWeek - 1));
+
+    const days: Date[] = [];
+    for (let i = 0; i < 7; i++) {
+      const day = new Date(monday);
+      day.setDate(monday.getDate() + i);
+      days.push(day);
+    }
+    return days;
+  }, [selectedDate]);
   const [entry, setEntry] = useState<WeeklyPlannerEntry | null>(null);
   const [events, setEvents] = useState<PersonalCalendarEvent[]>([]);
   const [loading, setLoading] = useState(true);
@@ -293,22 +310,6 @@ export function PlannerWeekly() {
       }
     }
   };
-
-  const getWeekDays = () => {
-    const dayOfWeek = selectedDate.getDay();
-    const monday = new Date(selectedDate);
-    monday.setDate(selectedDate.getDate() - (dayOfWeek === 0 ? 6 : dayOfWeek - 1));
-
-    const days = [];
-    for (let i = 0; i < 7; i++) {
-      const day = new Date(monday);
-      day.setDate(monday.getDate() + i);
-      days.push(day);
-    }
-    return days;
-  };
-
-  const weekDays = getWeekDays();
   const weekStart = weekDays[0].toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
   const weekEnd = weekDays[6].toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
   
