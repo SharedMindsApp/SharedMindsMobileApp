@@ -47,6 +47,9 @@ import {
   type RoadmapItemForSync,
 } from './guardrailsCalendarSync';
 
+// Phase 6/7: New resolver-based execution (imported dynamically to avoid circular deps)
+import { executeCalendarSyncForRoadmapItem } from './calendarSync/calendarSyncExecution';
+
 const TABLE_NAME = 'roadmap_items';
 
 export function isTimelineEligible(type: RoadmapItemType): boolean {
@@ -107,6 +110,7 @@ function transformKeysFromDb(row: any): RoadmapItem {
     id: row.id,
     masterProjectId: row.master_project_id,
     trackId: row.track_id,
+    subtrackId: row.subtrack_id,
     type: row.type || 'task',
     title: row.title,
     description: row.description,
@@ -187,8 +191,8 @@ export async function createRoadmapItem(input: CreateRoadmapItemInput): Promise<
 
   await syncRoadmapItemToTaskFlow(createdItem);
 
-  // PROMPT 2: Sync to calendar (non-blocking)
-  await tryCalendarSync(createdItem);
+  // Phase 6: Execute calendar sync using resolver (non-blocking)
+  await executeCalendarSyncForRoadmapItem(createdItem);
 
   return createdItem;
 }
@@ -263,8 +267,8 @@ export async function updateRoadmapItem(
 
   await syncRoadmapItemToTaskFlow(updatedItem);
 
-  // PROMPT 2: Sync to calendar (non-blocking)
-  await tryCalendarSync(updatedItem);
+  // Phase 6: Execute calendar sync using resolver (non-blocking)
+  await executeCalendarSyncForRoadmapItem(updatedItem);
 
   return updatedItem;
 }
@@ -338,6 +342,20 @@ export async function getRoadmapItemsByTrack(trackId: string): Promise<RoadmapIt
     .from(TABLE_NAME)
     .select('*')
     .eq('track_id', trackId)
+    .order('start_date', { ascending: true });
+
+  if (error) throw error;
+  return (data || []).map(transformKeysFromDb);
+}
+
+/**
+ * Get roadmap items for a specific subtrack
+ */
+export async function getRoadmapItemsBySubtrack(subtrackId: string): Promise<RoadmapItem[]> {
+  const { data, error } = await supabase
+    .from(TABLE_NAME)
+    .select('*')
+    .eq('subtrack_id', subtrackId)
     .order('start_date', { ascending: true });
 
   if (error) throw error;

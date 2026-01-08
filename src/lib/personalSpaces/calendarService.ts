@@ -1,7 +1,9 @@
 import { supabase } from '../supabase';
 import { getCalendarExtrasForRange, type CalendarExtras } from '../calendar/calendarExtras';
-
 import { FEATURE_CALENDAR_EXTRAS } from '../featureFlags';
+import {
+  resolvePersonalCalendarAccess,
+} from './personalCalendarAccessResolver';
 
 /**
  * Feature flag for context-sovereign calendar integration
@@ -42,7 +44,7 @@ export type CalendarEventType =
 
 export interface PersonalCalendarEvent {
   id: string;
-  userId: string;
+  userId: string; // Owner of the event
   title: string;
   description: string | null;
   startAt: string;
@@ -96,6 +98,19 @@ export interface PersonalCalendarEvent {
   activity_id?: string;
   schedule_id?: string;
   local_date?: string; // YYYY-MM-DD for habit instances
+
+  /**
+   * Personal Calendar Sharing metadata (Phase 8)
+   * Only present when event is visible via sharing (not owned by viewer)
+   */
+  sharingMetadata?: {
+    ownerUserId: string;
+    ownerName?: string;
+    accessSource: 'owner' | 'global_share' | 'project_share';
+    accessLevel: 'read' | 'write';
+    canEdit: boolean;
+    canDelete: boolean;
+  };
 }
 
 export interface CreatePersonalEventInput {
@@ -116,13 +131,36 @@ export interface UpdatePersonalEventInput {
   event_type?: CalendarEventType;
 }
 
-export async function getPersonalCalendarEvents(userId: string): Promise<PersonalCalendarEvent[]> {
+/**
+ * Get all personal calendar events
+ * 
+ * Phase 8: Now supports viewing other users' personal calendars if shared.
+ * 
+ * @param ownerUserId - User ID whose calendar to fetch (can be different from viewer)
+ * @param viewerUserId - User ID requesting access (for permission checks, defaults to ownerUserId)
+ */
+export async function getPersonalCalendarEvents(
+  ownerUserId: string,
+  viewerUserId?: string
+): Promise<PersonalCalendarEvent[]> {
+  const effectiveViewerId = viewerUserId || ownerUserId;
+  const isOwner = ownerUserId === effectiveViewerId;
+
+  // Phase 8: Check access if viewing someone else's calendar
+  if (!isOwner) {
+    const access = await resolvePersonalCalendarAccess(ownerUserId, effectiveViewerId, null);
+    if (!access.canRead) {
+      // No access - return empty
+      return [];
+    }
+  }
+
   // Fetch existing calendar_events (existing behavior)
   // Filter out hidden/removed projections (only show active projections)
   const { data, error } = await supabase
     .from('calendar_events')
     .select('*')
-    .eq('user_id', userId)
+    .eq('user_id', ownerUserId)
     .or('projection_state.is.null,projection_state.eq.active')
     .order('start_at', { ascending: true });
 
@@ -131,16 +169,29 @@ export async function getPersonalCalendarEvents(userId: string): Promise<Persona
     throw error;
   }
 
-  const existingEvents = data.map(mapDbToPersonalEvent);
+  // Phase 8: Check access if viewing someone else's calendar
+  if (!isOwner) {
+    const access = await resolvePersonalCalendarAccess(ownerUserId, effectiveViewerId, null);
+    if (!access.canRead) {
+      // No access - return empty
+      return [];
+    }
+  }
+
+  const existingEvents = data.map((eventData) => mapDbToPersonalEvent(eventData, effectiveViewerId));
 
   // If context calendar feature is disabled, return existing events only
   if (!CONTEXT_CALENDAR_ENABLED) {
     return existingEvents;
   }
 
-  // Fetch accepted context projections
+  // Fetch accepted context projections (only for owner)
+  if (!isOwner || !CONTEXT_CALENDAR_ENABLED) {
+    return existingEvents; // Non-owners don't see context projections
+  }
+
   try {
-    const projectedEvents = await fetchAcceptedProjections(userId);
+    const projectedEvents = await fetchAcceptedProjections(ownerUserId);
     
     // Merge and deduplicate (existing events take precedence)
     const eventMap = new Map<string, PersonalCalendarEvent>();
@@ -291,15 +342,28 @@ async function fetchAcceptedProjections(userId: string): Promise<PersonalCalenda
     });
 }
 
+/**
+ * Get a single personal calendar event
+ * 
+ * Phase 8: Now supports viewing events from other users' calendars if shared.
+ * 
+ * @param ownerUserId - User ID who owns the calendar (where event exists)
+ * @param eventId - Event ID
+ * @param viewerUserId - User ID requesting access (for permission checks, defaults to ownerUserId)
+ */
 export async function getPersonalCalendarEvent(
-  userId: string,
-  eventId: string
+  ownerUserId: string,
+  eventId: string,
+  viewerUserId?: string
 ): Promise<PersonalCalendarEvent | null> {
+  const effectiveViewerId = viewerUserId || ownerUserId;
+  const isOwner = ownerUserId === effectiveViewerId;
+
   const { data, error } = await supabase
     .from('calendar_events')
     .select('*')
     .eq('id', eventId)
-    .eq('user_id', userId)
+    .eq('user_id', ownerUserId) // Always check ownership
     .maybeSingle();
 
   if (error) {
@@ -311,17 +375,65 @@ export async function getPersonalCalendarEvent(
     return null;
   }
 
-  return mapDbToPersonalEvent(data, userId);
+  const event = mapDbToPersonalEvent(data, effectiveViewerId);
+
+  // Phase 8: Check access and add sharing metadata if not owner
+  if (!isOwner) {
+    const access = await resolvePersonalCalendarAccess(
+      ownerUserId,
+      effectiveViewerId,
+      data.source_project_id || null
+    );
+    
+    if (!access.canRead) {
+      // No access - return null
+      return null;
+    }
+    
+      // Add sharing metadata (only if access is granted)
+      if (access.source !== 'none') {
+        event.sharingMetadata = {
+          ownerUserId,
+          accessSource: access.source as 'owner' | 'global_share' | 'project_share',
+          accessLevel: access.accessLevel || 'read',
+          canEdit: access.canWrite,
+          canDelete: access.canWrite,
+        };
+      }
+  }
+
+  return event;
 }
 
+/**
+ * Create a personal calendar event
+ * 
+ * Phase 8: Now supports creating events on behalf of another user if write access is granted.
+ * 
+ * @param ownerUserId - User ID who owns the calendar (where event will be created)
+ * @param input - Event data
+ * @param actorUserId - User ID creating the event (for permission checks, defaults to ownerUserId)
+ */
 export async function createPersonalCalendarEvent(
-  userId: string,
-  input: CreatePersonalEventInput
+  ownerUserId: string,
+  input: CreatePersonalEventInput,
+  actorUserId?: string
 ): Promise<PersonalCalendarEvent> {
+  const effectiveActorId = actorUserId || ownerUserId;
+  const isOwner = ownerUserId === effectiveActorId;
+
+  // Phase 8: Check write permission if not owner
+  if (!isOwner) {
+    const access = await resolvePersonalCalendarAccess(ownerUserId, effectiveActorId, null);
+    if (!access.canWrite) {
+      throw new Error('You do not have write access to this calendar');
+    }
+  }
+
   const { data, error } = await supabase
     .from('calendar_events')
     .insert({
-      user_id: userId,
+      user_id: ownerUserId, // Always owned by the calendar owner
       title: input.title,
       description: input.description || null,
       start_at: input.startAt,
@@ -331,6 +443,8 @@ export async function createPersonalCalendarEvent(
       source_type: 'personal',
       source_entity_id: null,
       source_project_id: null,
+      // Phase 8: Track who created the event (for auditing)
+      created_by: effectiveActorId, // This should already exist in schema, but we're explicit
     })
     .select()
     .single();
@@ -340,14 +454,57 @@ export async function createPersonalCalendarEvent(
     throw error;
   }
 
-  return mapDbToPersonalEvent(data, userId);
+  // Phase 8: Log if created by non-owner
+  if (!isOwner) {
+    console.log(`[calendarService] Event created by ${effectiveActorId} on ${ownerUserId}'s calendar (shared write access)`, {
+      event_id: data.id,
+      owner_user_id: ownerUserId,
+      actor_user_id: effectiveActorId,
+      action: 'create',
+      timestamp: new Date().toISOString(),
+    });
+  }
+
+  return mapDbToPersonalEvent(data, effectiveActorId);
 }
 
+/**
+ * Update a personal calendar event
+ * 
+ * Phase 8: Now supports updating events on behalf of another user if write access is granted.
+ * 
+ * @param ownerUserId - User ID who owns the calendar (where event exists)
+ * @param eventId - Event ID to update
+ * @param input - Update data
+ * @param actorUserId - User ID updating the event (for permission checks, defaults to ownerUserId)
+ */
 export async function updatePersonalCalendarEvent(
-  userId: string,
+  ownerUserId: string,
   eventId: string,
-  input: UpdatePersonalEventInput
+  input: UpdatePersonalEventInput,
+  actorUserId?: string
 ): Promise<PersonalCalendarEvent> {
+  const effectiveActorId = actorUserId || ownerUserId;
+  const isOwner = ownerUserId === effectiveActorId;
+
+  // Phase 8: Check write permission if not owner
+  if (!isOwner) {
+    // First, get the event to check project scope
+    const event = await getPersonalCalendarEvent(ownerUserId, eventId, effectiveActorId);
+    if (!event) {
+      throw new Error('Event not found');
+    }
+
+    const access = await resolvePersonalCalendarAccess(
+      ownerUserId,
+      effectiveActorId,
+      event.sourceProjectId || null
+    );
+    if (!access.canWrite) {
+      throw new Error('You do not have write access to this event');
+    }
+  }
+
   const updates: Record<string, any> = {
     updated_at: new Date().toISOString(),
   };
@@ -363,7 +520,7 @@ export async function updatePersonalCalendarEvent(
     .from('calendar_events')
     .update(updates)
     .eq('id', eventId)
-    .eq('user_id', userId)
+    .eq('user_id', ownerUserId) // Always check ownership
     .select()
     .single();
 
@@ -372,19 +529,68 @@ export async function updatePersonalCalendarEvent(
     throw error;
   }
 
-  return mapDbToPersonalEvent(data, userId);
+  // Phase 8: Log if updated by non-owner
+  if (!isOwner) {
+    console.log(`[calendarService] Event ${eventId} updated by ${effectiveActorId} on ${ownerUserId}'s calendar (shared write access)`, {
+      event_id: eventId,
+      owner_user_id: ownerUserId,
+      actor_user_id: effectiveActorId,
+      action: 'update',
+      updates: Object.keys(updates),
+      timestamp: new Date().toISOString(),
+    });
+  }
+
+  return mapDbToPersonalEvent(data, effectiveActorId);
 }
 
+/**
+ * Delete a personal calendar event
+ * 
+ * Phase 8: Now supports deleting events on behalf of another user if write access is granted.
+ * 
+ * @param ownerUserId - User ID who owns the calendar (where event exists)
+ * @param eventId - Event ID to delete
+ * @param actorUserId - User ID deleting the event (for permission checks, defaults to ownerUserId)
+ */
 export async function deletePersonalCalendarEvent(
-  userId: string,
-  eventId: string
+  ownerUserId: string,
+  eventId: string,
+  actorUserId?: string
 ): Promise<void> {
+  const effectiveActorId = actorUserId || ownerUserId;
+  const isOwner = ownerUserId === effectiveActorId;
+
+  // Phase 8: Check write permission if not owner
+  if (!isOwner) {
+    // First, get the event to check project scope
+    const event = await getPersonalCalendarEvent(ownerUserId, eventId, effectiveActorId);
+    if (!event) {
+      throw new Error('Event not found');
+    }
+
+    const access = await resolvePersonalCalendarAccess(
+      ownerUserId,
+      effectiveActorId,
+      event.sourceProjectId || null
+    );
+    if (!access.canWrite) {
+      throw new Error('You do not have write access to this event');
+    }
+    console.log(`[calendarService] Event ${eventId} deleted by ${effectiveActorId} on ${ownerUserId}'s calendar (shared write access)`, {
+      event_id: eventId,
+      owner_user_id: ownerUserId,
+      actor_user_id: effectiveActorId,
+      action: 'delete',
+      timestamp: new Date().toISOString(),
+    });
+  }
   // Check if this is an activity projection
   const { data: event } = await supabase
     .from('calendar_events')
     .select('activity_id, projection_state')
     .eq('id', eventId)
-    .eq('user_id', userId)
+    .eq('user_id', ownerUserId)
     .maybeSingle();
 
   if (event?.activity_id) {
@@ -396,7 +602,7 @@ export async function deletePersonalCalendarEvent(
         updated_at: new Date().toISOString(),
       })
       .eq('id', eventId)
-      .eq('user_id', userId);
+      .eq('user_id', ownerUserId);
 
     if (error) {
       console.error('[calendarService] Error hiding activity projection:', error);
@@ -408,7 +614,7 @@ export async function deletePersonalCalendarEvent(
       .from('calendar_events')
       .delete()
       .eq('id', eventId)
-      .eq('user_id', userId);
+      .eq('user_id', ownerUserId);
 
     if (error) {
       console.error('[calendarService] Error deleting personal event:', error);
@@ -419,27 +625,58 @@ export async function deletePersonalCalendarEvent(
 
 /**
  * Get personal events for date range with optional calendar extras
+ * 
+ * Phase 8: Now supports viewing other users' personal calendars if shared.
+ * 
+ * @param userId - User ID whose calendar to fetch (can be different from viewer)
+ * @param viewerUserId - User ID requesting access (for permission checks)
+ * @param startDate - Start date (ISO string)
+ * @param endDate - End date (ISO string)
  */
 export async function getPersonalEventsForDateRange(
   userId: string,
   startDate: string,
-  endDate: string
+  endDate: string,
+  viewerUserId?: string
 ): Promise<PersonalCalendarEvent[]> {
-  const result = await getPersonalEventsForDateRangeWithExtras(userId, startDate, endDate);
+  const result = await getPersonalEventsForDateRangeWithExtras(userId, startDate, endDate, viewerUserId);
   return result.events;
 }
 
 /**
  * Get personal events with calendar extras (habits/goals)
+ * 
+ * Phase 8: Now supports viewing other users' personal calendars if shared.
+ * 
+ * @param userId - User ID whose calendar to fetch (can be different from viewer)
+ * @param startDate - Start date (ISO string)
+ * @param endDate - End date (ISO string)
+ * @param viewerUserId - User ID requesting access (for permission checks, defaults to userId)
  */
 export async function getPersonalEventsForDateRangeWithExtras(
   userId: string,
   startDate: string,
-  endDate: string
+  endDate: string,
+  viewerUserId?: string
 ): Promise<{
   events: PersonalCalendarEvent[];
   extras?: CalendarExtras;
 }> {
+  const effectiveViewerId = viewerUserId || userId;
+  const isOwner = userId === effectiveViewerId;
+
+  // Phase 8: Check access if viewing someone else's calendar
+  if (!isOwner) {
+    // For now, we'll filter events based on sharing permissions
+    // This is a simplified approach - in production, you might want to
+    // fetch all events and filter in memory for better performance
+    const access = await resolvePersonalCalendarAccess(userId, effectiveViewerId, null);
+    if (!access.canRead) {
+      // No access - return empty
+      return { events: [] };
+    }
+  }
+
   // Fetch existing calendar_events (existing behavior)
   // Filter out hidden/removed projections (only show active projections)
   const { data, error } = await supabase
@@ -456,13 +693,45 @@ export async function getPersonalEventsForDateRangeWithExtras(
     throw error;
   }
 
-  const existingEvents = data.map(mapDbToPersonalEvent);
+  // Phase 8: Add sharing metadata and filter based on permissions
+  const eventsWithSharing: PersonalCalendarEvent[] = [];
+  
+  for (const eventData of data) {
+    const event = mapDbToPersonalEvent(eventData, effectiveViewerId);
+    
+    // If viewing someone else's calendar, add sharing metadata
+    if (!isOwner) {
+      const eventAccess = await resolvePersonalCalendarAccess(
+        userId,
+        effectiveViewerId,
+        eventData.source_project_id || null
+      );
+      
+      if (!eventAccess.canRead) {
+        // Skip events without read access
+        continue;
+      }
+      
+      // Add sharing metadata (only if access is granted)
+      if (eventAccess.source !== 'none') {
+        event.sharingMetadata = {
+          ownerUserId: userId,
+          accessSource: eventAccess.source as 'owner' | 'global_share' | 'project_share',
+          accessLevel: eventAccess.accessLevel || 'read',
+          canEdit: eventAccess.canWrite,
+          canDelete: eventAccess.canWrite, // Write access includes delete
+        };
+      }
+    }
+    
+    eventsWithSharing.push(event);
+  }
 
   // If context calendar feature is disabled, return existing events only
   if (!CONTEXT_CALENDAR_ENABLED) {
-    // Get calendar extras if enabled
+    // Get calendar extras if enabled (only for owner)
     let extras: CalendarExtras | undefined;
-    if (FEATURE_CALENDAR_EXTRAS) {
+    if (FEATURE_CALENDAR_EXTRAS && isOwner) {
       try {
         extras = await getCalendarExtrasForRange(userId, startDate, endDate);
       } catch (extrasError) {
@@ -470,34 +739,41 @@ export async function getPersonalEventsForDateRangeWithExtras(
       }
     }
     return {
-      events: existingEvents,
+      events: eventsWithSharing,
       extras,
     };
   }
 
-  // Fetch accepted context projections for date range
-  try {
-    const projectedEvents = await fetchAcceptedProjectionsForDateRange(userId, startDate, endDate);
-    
-    // Merge and deduplicate
-    const eventMap = new Map<string, PersonalCalendarEvent>();
-    
-    existingEvents.forEach(event => {
-      eventMap.set(event.id, event);
-    });
-    
-    projectedEvents.forEach(event => {
-      if (!eventMap.has(event.id)) {
+  // Fetch accepted context projections for date range (only for owner)
+  let sortedEvents = eventsWithSharing;
+  let extras: CalendarExtras | undefined;
+  
+  if (isOwner) {
+    try {
+      const projectedEvents = await fetchAcceptedProjectionsForDateRange(userId, startDate, endDate);
+      
+      // Merge and deduplicate
+      const eventMap = new Map<string, PersonalCalendarEvent>();
+      
+      eventsWithSharing.forEach(event => {
         eventMap.set(event.id, event);
-      }
-    });
-    
-    const sortedEvents = Array.from(eventMap.values()).sort((a, b) => {
-      return new Date(a.startAt).getTime() - new Date(b.startAt).getTime();
-    });
+      });
+      
+      projectedEvents.forEach(event => {
+        if (!eventMap.has(event.id)) {
+          eventMap.set(event.id, event);
+        }
+      });
+      
+      sortedEvents = Array.from(eventMap.values()).sort((a, b) => {
+        return new Date(a.startAt).getTime() - new Date(b.startAt).getTime();
+      });
+    } catch (projectionError) {
+      console.error('[calendarService] Error fetching projections (non-fatal):', projectionError);
+    }
 
-    // Get calendar extras if enabled (even with context calendar)
-    if (FEATURE_CALENDAR_EXTRAS && !extras) {
+    // Get calendar extras if enabled (only for owner)
+    if (FEATURE_CALENDAR_EXTRAS) {
       try {
         extras = await getCalendarExtrasForRange(userId, startDate, endDate);
       } catch (extrasError) {
@@ -507,7 +783,7 @@ export async function getPersonalEventsForDateRangeWithExtras(
 
     // Convert habit instances to PersonalCalendarEvent format (derived instances)
     if (FEATURE_CALENDAR_EXTRAS && extras) {
-      const derivedEvents: PersonalCalendarEvent[] = extras.habits.map(habit => ({
+      const derivedEvents: PersonalCalendarEvent[] = extras.habits.map((habit: any) => ({
         id: habit.id,
         userId,
         title: habit.title,
@@ -540,28 +816,12 @@ export async function getPersonalEventsForDateRangeWithExtras(
       sortedEvents.push(...derivedEvents);
       sortedEvents.sort((a, b) => new Date(a.startAt).getTime() - new Date(b.startAt).getTime());
     }
-
-    return {
-      events: sortedEvents,
-      extras,
-    };
-  } catch (projectionError) {
-    console.error('[calendarService] Error fetching projections for date range (non-fatal):', projectionError);
-    
-    // Get calendar extras even on error
-    if (FEATURE_CALENDAR_EXTRAS && !extras) {
-      try {
-        extras = await getCalendarExtrasForRange(userId, startDate, endDate);
-      } catch (extrasError) {
-        console.error('[calendarService] Error fetching calendar extras (non-fatal):', extrasError);
-      }
-    }
-    
-    return {
-      events: existingEvents,
-      extras,
-    };
   }
+
+  return {
+    events: sortedEvents,
+    extras,
+  };
 }
 
 /**

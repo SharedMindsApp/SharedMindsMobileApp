@@ -1,19 +1,23 @@
 import { useEffect, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
-import { Loader2, LayoutGrid, Smartphone, Home, Users, User, ChevronDown, Target, MessageCircle, Settings, ArrowLeft } from 'lucide-react';
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { Loader2, LayoutGrid, Smartphone, Home, Users, User, ChevronDown, Target, MessageCircle, Settings, ArrowLeft, Menu } from 'lucide-react';
 import { FridgeCanvas } from './fridge-canvas/FridgeCanvas';
 import { SpacesOSLauncher } from './spaces/SpacesOSLauncher';
 import { getSpaceById, Household } from '../lib/household';
 import { isStandaloneApp } from '../lib/appContext';
 import { loadHouseholdWidgets } from '../lib/fridgeCanvas';
 import { WidgetWithLayout } from '../lib/fridgeCanvasTypes';
+import { NotificationBell } from './notifications/NotificationBell';
 
 export function SpaceViewPage() {
   const { spaceId } = useParams<{ spaceId: string }>();
+  const [searchParams] = useSearchParams();
+  const widgetParam = searchParams.get('widget');
   const [household, setHousehold] = useState<Household | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showSpacesMenu, setShowSpacesMenu] = useState(false);
+  const [showMobileMenu, setShowMobileMenu] = useState(false);
   const [widgets, setWidgets] = useState<WidgetWithLayout[]>([]);
   const [isMobile, setIsMobile] = useState(false);
   const navigate = useNavigate();
@@ -97,35 +101,233 @@ export function SpaceViewPage() {
     );
   }
 
-  // Phase 9A: On mobile/installed app, show OS launcher
-  if (isMobile && household) {
-    return <SpacesOSLauncher widgets={widgets} householdId={household.id} householdName={household.name} />;
+  // Phase 9A: Check if user wants canvas view on mobile
+  const viewParam = searchParams.get('view');
+  const showCanvasOnMobile = viewParam === 'canvas' || widgetParam;
+
+  // Phase 9A: On mobile/installed app, default to OS launcher UNLESS canvas view is requested
+  if (isMobile && household && !showCanvasOnMobile) {
+    return (
+      <SpacesOSLauncher
+        widgets={widgets}
+        householdId={household.id}
+        householdName={household.name}
+        onWidgetsChange={loadWidgets}
+      />
+    );
   }
 
   // Phase 9A: Desktop - show canvas (mode toggle removed, desktop-only if needed)
+  // On mobile with widget param or canvas view, also show canvas but with back button to launcher
   return (
     <div className="min-h-screen bg-gradient-to-br from-amber-50 via-orange-50 to-rose-50">
-      <div className="bg-white border-b border-gray-200 shadow-sm">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between h-16">
-            <div className="flex items-center gap-6">
-              <div>
-                {/* Desktop: show back link above title */}
-                <button
-                  onClick={() => navigate('/spaces/shared')}
-                  className="hidden md:block text-gray-600 hover:text-gray-900 text-xs font-medium mb-1 flex items-center gap-1"
-                >
-                  <ArrowLeft size={14} />
-                  Back
-                </button>
-                <h1 className="text-lg font-bold text-gray-900">{household.name}</h1>
-                <p className="text-xs text-gray-500">Shared Space</p>
+      {/* Mobile Header */}
+      {isMobile && showCanvasOnMobile ? (
+        <div className="sticky top-0 z-50 bg-white border-b border-gray-200 shadow-sm safe-top relative">
+          <div className="px-4 h-14 flex items-center justify-between relative">
+            <div className="flex items-center gap-3 flex-1 min-w-0">
+              <button
+                onClick={() => {
+                  const newParams = new URLSearchParams(searchParams);
+                  newParams.delete('view');
+                  newParams.delete('widget');
+                  navigate(`/spaces/${household.id}?${newParams.toString()}`, { replace: true });
+                }}
+                className="p-2 text-gray-700 active:bg-gray-100 rounded-lg transition-colors min-h-[44px] min-w-[44px] flex items-center justify-center flex-shrink-0"
+                aria-label="Back to Apps"
+              >
+                <ArrowLeft size={20} />
+              </button>
+              <div className="flex-1 min-w-0">
+                <h1 className="text-base font-semibold text-gray-900 truncate">{household.name}</h1>
+                <p className="text-xs text-gray-500 truncate">Shared Space</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2 flex-shrink-0">
+              <NotificationBell />
+              <button
+                onClick={() => {
+                  const newParams = new URLSearchParams(searchParams);
+                  newParams.delete('view');
+                  navigate(`/spaces/${household.id}?${newParams.toString()}`, { replace: true });
+                }}
+                className="p-2 text-gray-700 active:bg-gray-100 rounded-lg transition-colors min-h-[44px] min-w-[44px] flex items-center justify-center"
+                aria-label="Switch to App View"
+                title="Switch to App View"
+              >
+                <LayoutGrid size={20} />
+              </button>
+              <button
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  setShowMobileMenu(!showMobileMenu);
+                }}
+                onTouchStart={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  setShowMobileMenu(!showMobileMenu);
+                }}
+                className="p-2 text-gray-700 active:bg-gray-100 rounded-lg transition-colors min-h-[44px] min-w-[44px] flex items-center justify-center relative z-50"
+                aria-label="Menu"
+                type="button"
+              >
+                <Menu size={20} />
+              </button>
+            </div>
+          </div>
+          
+          {/* Mobile Menu Dropdown */}
+          {showMobileMenu && (
+            <>
+              <div
+                className="fixed inset-0 z-40 bg-black/20"
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  setShowMobileMenu(false);
+                }}
+                onTouchStart={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  setShowMobileMenu(false);
+                }}
+              />
+              <div className="absolute top-full left-0 right-0 bg-white border-b border-gray-200 shadow-lg z-[60]">
+                <div className="py-2">
+                  <button
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      setShowMobileMenu(false);
+                      navigate('/dashboard');
+                    }}
+                    onTouchStart={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                    }}
+                    className="w-full text-left px-4 py-3 text-sm text-gray-700 hover:bg-gray-50 active:bg-gray-100 flex items-center gap-3 min-h-[44px]"
+                    type="button"
+                  >
+                    <Home size={18} />
+                    Dashboard
+                  </button>
+                  <button
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      setShowMobileMenu(false);
+                      navigate('/spaces/personal');
+                    }}
+                    onTouchStart={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                    }}
+                    className="w-full text-left px-4 py-3 text-sm text-gray-700 hover:bg-gray-50 active:bg-gray-100 flex items-center gap-3 min-h-[44px]"
+                    type="button"
+                  >
+                    <User size={18} />
+                    Personal Space
+                  </button>
+                  <button
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      setShowMobileMenu(false);
+                      navigate('/spaces');
+                    }}
+                    onTouchStart={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                    }}
+                    className="w-full text-left px-4 py-3 text-sm text-gray-700 hover:bg-gray-50 active:bg-gray-100 flex items-center gap-3 min-h-[44px]"
+                    type="button"
+                  >
+                    <Users size={18} />
+                    Shared Spaces
+                  </button>
+                  <button
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      setShowMobileMenu(false);
+                      navigate('/guardrails');
+                    }}
+                    onTouchStart={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                    }}
+                    className="w-full text-left px-4 py-3 text-sm text-gray-700 hover:bg-gray-50 active:bg-gray-100 flex items-center gap-3 min-h-[44px]"
+                    type="button"
+                  >
+                    <Target size={18} />
+                    Guardrails
+                  </button>
+                  <button
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      setShowMobileMenu(false);
+                      navigate('/messages');
+                    }}
+                    onTouchStart={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                    }}
+                    className="w-full text-left px-4 py-3 text-sm text-gray-700 hover:bg-gray-50 active:bg-gray-100 flex items-center gap-3 min-h-[44px]"
+                    type="button"
+                  >
+                    <MessageCircle size={18} />
+                    Messages
+                  </button>
+                  <button
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      setShowMobileMenu(false);
+                      navigate('/settings');
+                    }}
+                    onTouchStart={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                    }}
+                    className="w-full text-left px-4 py-3 text-sm text-gray-700 hover:bg-gray-50 active:bg-gray-100 flex items-center gap-3 min-h-[44px]"
+                    type="button"
+                  >
+                    <Settings size={18} />
+                    Settings
+                  </button>
+                </div>
+              </div>
+            </>
+          )}
+        </div>
+      ) : (
+        /* Desktop Header */
+        <div className="bg-white border-b border-gray-200 shadow-sm">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div className="flex items-center justify-between h-16">
+              <div className="flex items-center gap-6 flex-1">
+                <div className="flex-1">
+                  {/* Desktop: show back link above title */}
+                  <button
+                    onClick={() => navigate('/spaces')}
+                    className="hidden md:block text-gray-600 hover:text-gray-900 text-xs font-medium mb-1 flex items-center gap-1"
+                  >
+                    <ArrowLeft size={14} />
+                    Back
+                  </button>
+                  <h1 className="text-lg font-bold text-gray-900">{household.name}</h1>
+                  <p className="text-xs text-gray-500">Shared Space</p>
+                </div>
               </div>
 
+              {/* Desktop: Show full menu */}
               <div className="hidden md:flex items-center gap-2">
+                <NotificationBell />
                 <button
                   onClick={() => navigate('/dashboard')}
-                  className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium text-gray-600 hover:bg-gray-50 transition-colors"
+                  className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium text-gray-600 hover:bg-gray-50 transition-colors min-h-[44px]"
                 >
                   <Home size={18} />
                   Dashboard
@@ -134,7 +336,7 @@ export function SpaceViewPage() {
                 <div className="relative">
                   <button
                     onClick={() => setShowSpacesMenu(!showSpacesMenu)}
-                    className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium bg-amber-50 text-amber-700 transition-colors"
+                    className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium bg-amber-50 text-amber-700 hover:bg-amber-100 transition-colors min-h-[44px]"
                   >
                     <Users size={18} />
                     Spaces
@@ -153,7 +355,7 @@ export function SpaceViewPage() {
                             setShowSpacesMenu(false);
                             navigate('/spaces/personal');
                           }}
-                          className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2"
+                          className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2 min-h-[44px]"
                         >
                           <User size={16} />
                           Personal Space
@@ -161,9 +363,9 @@ export function SpaceViewPage() {
                         <button
                           onClick={() => {
                             setShowSpacesMenu(false);
-                            navigate('/spaces/shared');
+                            navigate('/spaces');
                           }}
-                          className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2"
+                          className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2 min-h-[44px]"
                         >
                           <Users size={16} />
                           Shared Spaces
@@ -175,7 +377,7 @@ export function SpaceViewPage() {
 
                 <button
                   onClick={() => navigate('/guardrails')}
-                  className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium text-gray-600 hover:bg-gray-50 transition-colors"
+                  className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium text-gray-600 hover:bg-gray-50 transition-colors min-h-[44px]"
                 >
                   <Target size={18} />
                   Guardrails
@@ -183,7 +385,7 @@ export function SpaceViewPage() {
 
                 <button
                   onClick={() => navigate('/messages')}
-                  className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium text-gray-600 hover:bg-gray-50 transition-colors"
+                  className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium text-gray-600 hover:bg-gray-50 transition-colors min-h-[44px]"
                 >
                   <MessageCircle size={18} />
                   Messages
@@ -191,7 +393,7 @@ export function SpaceViewPage() {
 
                 <button
                   onClick={() => navigate('/settings')}
-                  className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium text-gray-600 hover:bg-gray-50 transition-colors"
+                  className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium text-gray-600 hover:bg-gray-50 transition-colors min-h-[44px]"
                 >
                   <Settings size={18} />
                   Settings
@@ -200,7 +402,7 @@ export function SpaceViewPage() {
             </div>
           </div>
         </div>
-      </div>
+      )}
 
       <FridgeCanvas householdId={household.id} />
       {/* AI chat widget disabled for shared spaces */}

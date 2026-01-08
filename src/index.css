@@ -1492,20 +1492,30 @@
     glitchFlicker 650ms steps(20) !important;
 }
 
-/* Apply Displacement to Interactive Elements */
-.theme-transitioning button,
-.theme-transitioning a,
-.theme-transitioning input,
-.theme-transitioning select,
-.theme-transitioning textarea {
+/* Exclude SpacesOSLauncher and its children from glitch effects (mobile OS launcher) */
+[data-no-glitch],
+[data-no-glitch] * {
+  animation: none !important;
+  filter: none !important;
+  text-shadow: none !important;
+  clip-path: none !important;
+  transform: none !important;
+}
+
+/* Apply Displacement to Interactive Elements (excluding no-glitch elements) */
+.theme-transitioning:not([data-no-glitch]) button:not([data-no-glitch] *),
+.theme-transitioning:not([data-no-glitch]) a:not([data-no-glitch] *),
+.theme-transitioning:not([data-no-glitch]) input:not([data-no-glitch] *),
+.theme-transitioning:not([data-no-glitch]) select:not([data-no-glitch] *),
+.theme-transitioning:not([data-no-glitch]) textarea:not([data-no-glitch] *) {
   animation:
     glitchTextChromatic 650ms cubic-bezier(0.25, 0.46, 0.45, 0.94),
     glitchPixelShift 650ms ease-in-out !important;
 }
 
-/* Enhanced Effects for Images and SVG */
-.theme-transitioning img,
-.theme-transitioning svg {
+/* Enhanced Effects for Images and SVG (excluding no-glitch elements) */
+.theme-transitioning:not([data-no-glitch]) img:not([data-no-glitch] *),
+.theme-transitioning:not([data-no-glitch]) svg:not([data-no-glitch] *) {
   animation:
     glitchRGBSplit 650ms cubic-bezier(0.25, 0.46, 0.45, 0.94),
     glitchFlicker 650ms steps(15) !important;
@@ -1514,12 +1524,65 @@
     drop-shadow(0 0 25px rgba(255, 0, 255, 0.4)) !important;
 }
 
-/* Cards and Panels get extra displacement */
-.theme-transitioning [class*="bg-white"],
-.theme-transitioning [class*="bg-gray"],
-.theme-transitioning [class*="rounded"],
-.theme-transitioning .card {
+/* Cards and Panels get extra displacement (excluding no-glitch elements) */
+.theme-transitioning:not([data-no-glitch]) [class*="bg-white"]:not([data-no-glitch]),
+.theme-transitioning:not([data-no-glitch]) [class*="bg-white"]:not([data-no-glitch] *),
+.theme-transitioning:not([data-no-glitch]) [class*="bg-gray"]:not([data-no-glitch]),
+.theme-transitioning:not([data-no-glitch]) [class*="bg-gray"]:not([data-no-glitch] *),
+.theme-transitioning:not([data-no-glitch]) [class*="rounded"]:not([data-no-glitch]),
+.theme-transitioning:not([data-no-glitch]) [class*="rounded"]:not([data-no-glitch] *),
+.theme-transitioning:not([data-no-glitch]) .card:not([data-no-glitch] *) {
   animation: glitchPixelShift 650ms ease-in-out;
+}
+
+/* ============================================
+   OS-LIKE ANIMATIONS
+   Native mobile OS feel for SpacesOSLauncher
+   ============================================ */
+
+@keyframes fadeInScale {
+  from {
+    opacity: 0;
+    transform: scale(0.8);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes slideInFromRight {
+  from {
+    opacity: 0;
+    transform: translateX(100%);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes slideInFromLeft {
+  from {
+    opacity: 0;
+    transform: translateX(-100%);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes appIconTap {
+  0% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(0.85);
+  }
+  100% {
+    transform: scale(1);
+  }
 }
 
 /* ============================================
@@ -1528,6 +1591,38 @@
    ============================================ */
 
 @media (prefers-reduced-motion: reduce) {
+  @keyframes fadeInScale {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+  
+  @keyframes slideInFromRight {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+  
+  @keyframes slideInFromLeft {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+  
+  @keyframes appIconTap {
+    0%, 100% {
+      transform: scale(1);
+    }
+  }
   .theme-transitioning,
   .theme-transitioning *,
   .theme-transitioning::before,

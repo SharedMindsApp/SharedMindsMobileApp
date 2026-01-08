@@ -25,8 +25,9 @@ import { HouseholdMembersManager } from './HouseholdMembersManager';
 import { ManageMembers } from './ManageMembers';
 import { CategoryColorSettings } from './tags/CategoryColorSettings';
 import { FEATURE_CONTEXT_TAGGING } from '../lib/featureFlags';
+import { NotificationSettings } from './notifications/NotificationSettings';
 
-type Tab = 'profile' | 'security' | 'household' | 'members' | 'preferences' | 'danger';
+type Tab = 'profile' | 'security' | 'household' | 'members' | 'preferences' | 'notifications' | 'danger';
 
 export function ProfileSettings() {
   const { user } = useAuth();
@@ -229,6 +230,7 @@ export function ProfileSettings() {
 
   const additionalTabs = [
     { id: 'preferences' as Tab, label: 'UI Preferences', icon: Palette },
+    { id: 'notifications' as Tab, label: 'Notifications', icon: Shield },
     { id: 'danger' as Tab, label: 'Danger Zone', icon: AlertTriangle },
   ];
 
@@ -568,6 +570,8 @@ export function ProfileSettings() {
               )}
             </div>
           )}
+
+          {activeTab === 'notifications' && <NotificationSettings />}
 
           {activeTab === 'danger' && (
             <div className="space-y-6 max-w-2xl">

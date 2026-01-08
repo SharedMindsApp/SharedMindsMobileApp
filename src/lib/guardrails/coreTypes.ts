@@ -215,6 +215,7 @@ export interface RoadmapItem {
   id: string;
   masterProjectId: string;
   trackId: string;
+  subtrackId?: string | null;
   type: RoadmapItemType;
   title: string;
   description?: string;

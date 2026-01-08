@@ -11,6 +11,10 @@ import type { TaskFlowTask } from '../../../lib/guardrails/taskFlowTypes';
 import { BottomSheet } from '../../shared/BottomSheet';
 import { ConfirmDialogInline } from '../../ConfirmDialogInline';
 import { showToast } from '../../Toast';
+import { EventCalendarSyncControls } from '../settings/EventCalendarSyncControls';
+import { useActiveProject } from '../../../contexts/ActiveProjectContext';
+import { getSubTracksForTrack } from '../../../lib/guardrails/subtracks';
+import type { SubTrack } from '../../../lib/guardrails/subtracksTypes';
 
 interface ItemDrawerProps {
   item: RoadmapItem;
@@ -39,6 +43,9 @@ export function ItemDrawer({ item, isOpen, onClose, onUpdate, tracks = [] }: Ite
   const [taskFlowTask, setTaskFlowTask] = useState<TaskFlowTask | null>(null);
   const [isMobile, setIsMobile] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const { activeProjectId, activeProject } = useActiveProject();
+  const [trackName, setTrackName] = useState<string | undefined>();
+  const [subtrackName, setSubtrackName] = useState<string | undefined>();
 
   useEffect(() => {
     const checkMobile = () => setIsMobile(window.innerWidth < 768);
@@ -66,8 +73,33 @@ export function ItemDrawer({ item, isOpen, onClose, onUpdate, tracks = [] }: Ite
       } else {
         setTaskFlowTask(null);
       }
+
+      // Load track and subtrack names for calendar sync
+      const loadTrackAndSubtrackNames = async () => {
+        if (item.trackId) {
+          const track = tracks.find(t => t.id === item.trackId);
+          setTrackName(track?.name);
+          
+          if (item.subtrackId) {
+            try {
+              const subtracks = await getSubTracksForTrack(item.trackId);
+              const subtrack = subtracks.find(st => st.id === item.subtrackId);
+              setSubtrackName(subtrack?.name);
+            } catch (error) {
+              console.error('Failed to load subtrack name:', error);
+            }
+          } else {
+            setSubtrackName(undefined);
+          }
+        } else {
+          setTrackName(undefined);
+          setSubtrackName(undefined);
+        }
+      };
+
+      loadTrackAndSubtrackNames();
     }
-  }, [item, isOpen]);
+  }, [item, isOpen, tracks]);
 
   const handleSave = async () => {
     if (!title.trim() || loading) return;
@@ -211,6 +243,21 @@ export function ItemDrawer({ item, isOpen, onClose, onUpdate, tracks = [] }: Ite
               />
             </div>
           </div>
+
+          {/* Calendar Sync Controls */}
+          {activeProjectId && activeProject && (
+            <EventCalendarSyncControls
+              eventId={item.id}
+              eventName={item.title}
+              entityType="roadmap_event"
+              projectId={activeProjectId}
+              projectName={activeProject.name}
+              trackId={item.trackId || null}
+              trackName={trackName}
+              subtrackId={item.subtrackId || null}
+              subtrackName={subtrackName}
+            />
+          )}
 
           {tracks.length > 0 && (
             <TrackDropdown

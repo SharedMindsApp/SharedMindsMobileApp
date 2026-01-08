@@ -1,11 +1,13 @@
 import { useState, useEffect } from 'react';
-import { ChevronDown, ChevronUp, Layers } from 'lucide-react';
+import { ChevronDown, ChevronUp, Layers, MoreHorizontal, Calendar } from 'lucide-react';
 import { useActiveDataContext } from '../../state/useActiveDataContext';
 import { setActiveTrackId, setActiveSubtrackId, resetTrackContext } from '../../state/activeDataContext';
 import { getTracksForProject } from '../../lib/guardrails/tracks';
 import { getSubTracksForTrack } from '../../lib/guardrails/subtracks';
 import type { Track } from '../../lib/guardrails/tracksTypes';
 import type { SubTrack } from '../../lib/guardrails/subtracksTypes';
+import { SubtrackCalendarSyncModal } from './settings/SubtrackCalendarSyncModal';
+import { useActiveDataContext as useADC } from '../../contexts/ActiveDataContext';
 
 interface TrackSelectorProps {
   compact?: boolean;
@@ -13,10 +15,21 @@ interface TrackSelectorProps {
 
 export function TrackSelector({ compact = false }: TrackSelectorProps) {
   const { activeProjectId, activeTrackId, activeSubtrackId } = useActiveDataContext();
+  const { activeProjectId: adcProjectId, activeProject } = useADC();
   const [tracks, setTracks] = useState<Track[]>([]);
   const [subtracks, setSubtracks] = useState<SubTrack[]>([]);
   const [showSubtracks, setShowSubtracks] = useState(true);
   const [loading, setLoading] = useState(false);
+  const [subtrackMenuOpen, setSubtrackMenuOpen] = useState<string | null>(null);
+  const [calendarSyncModal, setCalendarSyncModal] = useState<{
+    trackId: string;
+    trackName: string;
+    subtrackId: string;
+    subtrackName: string;
+  } | null>(null);
+
+  const effectiveProjectId = activeProjectId || adcProjectId || '';
+  const effectiveProjectName = activeProject?.name || '';
 
   useEffect(() => {
     if (!activeProjectId) {
@@ -161,21 +174,65 @@ export function TrackSelector({ compact = false }: TrackSelectorProps) {
           {subtracks.map((subtrack) => {
             const isActive = subtrack.id === activeSubtrackId;
             const trackColor = activeTrack.color || '#6B7280';
+            const isMenuOpen = subtrackMenuOpen === subtrack.id;
 
             return (
-              <button
-                key={subtrack.id}
-                onClick={() => handleSelectSubtrack(subtrack.id)}
-                className={`flex-shrink-0 px-3 py-1 rounded-full text-xs font-medium transition-all ${
-                  isActive
-                    ? 'text-white'
-                    : 'bg-gray-50 text-gray-600 hover:bg-gray-100'
-                }`}
-                style={isActive ? { backgroundColor: trackColor, opacity: 0.8 } : undefined}
-                title={subtrack.description || subtrack.name}
-              >
-                {subtrack.name}
-              </button>
+              <div key={subtrack.id} className="relative flex-shrink-0 flex items-center gap-1">
+                <button
+                  onClick={() => handleSelectSubtrack(subtrack.id)}
+                  className={`px-3 py-1 rounded-full text-xs font-medium transition-all ${
+                    isActive
+                      ? 'text-white'
+                      : 'bg-gray-50 text-gray-600 hover:bg-gray-100'
+                  }`}
+                  style={isActive ? { backgroundColor: trackColor, opacity: 0.8 } : undefined}
+                  title={subtrack.description || subtrack.name}
+                >
+                  {subtrack.name}
+                </button>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setSubtrackMenuOpen(isMenuOpen ? null : subtrack.id);
+                  }}
+                  className={`p-1 rounded transition-colors ${
+                    isMenuOpen
+                      ? 'bg-gray-200 text-gray-700'
+                      : 'text-gray-400 hover:text-gray-600 hover:bg-gray-100'
+                  }`}
+                  title="Subtrack options"
+                >
+                  <MoreHorizontal size={12} />
+                </button>
+                {isMenuOpen && (
+                  <>
+                    <div
+                      className="fixed inset-0 z-10"
+                      onClick={() => setSubtrackMenuOpen(null)}
+                    />
+                    <div className="absolute right-0 top-full mt-1 w-48 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-20">
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (activeTrack && effectiveProjectId && effectiveProjectName) {
+                            setCalendarSyncModal({
+                              trackId: activeTrack.id,
+                              trackName: activeTrack.name,
+                              subtrackId: subtrack.id,
+                              subtrackName: subtrack.name,
+                            });
+                          }
+                          setSubtrackMenuOpen(null);
+                        }}
+                        className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2"
+                      >
+                        <Calendar size={14} />
+                        Calendar Sync Settings
+                      </button>
+                    </div>
+                  </>
+                )}
+              </div>
             );
           })}
         </div>
@@ -201,6 +258,20 @@ export function TrackSelector({ compact = false }: TrackSelectorProps) {
             </button>
           </div>
         </div>
+      )}
+
+      {/* Subtrack Calendar Sync Modal */}
+      {calendarSyncModal && effectiveProjectId && effectiveProjectName && (
+        <SubtrackCalendarSyncModal
+          isOpen={!!calendarSyncModal}
+          onClose={() => setCalendarSyncModal(null)}
+          projectId={effectiveProjectId}
+          projectName={effectiveProjectName}
+          trackId={calendarSyncModal.trackId}
+          trackName={calendarSyncModal.trackName}
+          subtrackId={calendarSyncModal.subtrackId}
+          subtrackName={calendarSyncModal.subtrackName}
+        />
       )}
     </div>
   );

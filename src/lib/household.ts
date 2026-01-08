@@ -335,12 +335,30 @@ export async function getSharedSpaces(): Promise<Household[]> {
 }
 
 export async function getSpaceById(spaceId: string): Promise<Household | null> {
-  const { data, error } = await supabase
-    .from('spaces')
-    .select('*')
-    .eq('id', spaceId)
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) return null;
+
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('id')
+    .eq('user_id', user.id)
     .maybeSingle();
 
-  if (error) throw error;
-  return data;
+  if (!profile) return null;
+
+  // Check if user is a member of this space
+  const { data: membership } = await supabase
+    .from('space_members')
+    .select('space_id, spaces!inner(*)')
+    .eq('user_id', profile.id)
+    .eq('space_id', spaceId)
+    .eq('status', 'active')
+    .maybeSingle();
+
+  if (!membership || !membership.spaces) return null;
+
+  return membership.spaces as unknown as Household;
 }

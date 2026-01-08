@@ -11,9 +11,10 @@ import { supabase } from './supabase';
 import { logError, logWarning, logInfo } from './errorLogger';
 
 // Timing constants
-const SAFETY_TIMER_INTERVAL = 4 * 60 * 1000; // 4 minutes (optional safety net)
-const MIN_COOLDOWN_MS = 60 * 1000; // 1 minute minimum between checks
-const REALTIME_SILENCE_THRESHOLD = 90 * 1000; // 90 seconds of silence before checking
+const SAFETY_TIMER_INTERVAL = 5 * 60 * 1000; // 5 minutes (optional safety net - very slow)
+const MIN_COOLDOWN_MS = 2 * 60 * 1000; // 2 minutes minimum between checks (increased from 1 minute)
+const REALTIME_SILENCE_THRESHOLD = 2 * 60 * 1000; // 2 minutes of silence before checking (increased from 90s)
+const REALTIME_SILENCE_CHECK_INTERVAL = 3 * 60 * 1000; // Check for silence every 3 minutes (not every threshold)
 const SESSION_REFRESH_BEFORE_EXPIRY = 5 * 60 * 1000; // 5 minutes before expiry
 const MAX_RETRY_DELAY = 30000; // 30 seconds max delay
 const INITIAL_RETRY_DELAY = 1000; // 1 second initial delay
@@ -189,6 +190,7 @@ async function performHealthCheck(trigger?: string): Promise<boolean> {
     connectionStatus = 'healthy';
     
     // Only notify if status changed
+    const statusChanged = previousStatus !== 'healthy';
     notifyHealthState({
       isHealthy: true,
       lastCheck: lastHealthCheck,
@@ -196,11 +198,15 @@ async function performHealthCheck(trigger?: string): Promise<boolean> {
       status: 'healthy',
     }, previousStatus);
     
-    logInfo('Health check successful', {
-      component: 'ConnectionHealth',
-      action: 'performHealthCheck',
-      trigger: trigger || 'unknown',
-    });
+    // Only log if status changed (recovered from degraded/offline) or in dev mode
+    if (statusChanged || import.meta.env.DEV) {
+      logInfo('Health check successful', {
+        component: 'ConnectionHealth',
+        action: 'performHealthCheck',
+        trigger: trigger || 'unknown',
+        statusChanged,
+      });
+    }
     
     isChecking = false;
     return true;
@@ -335,27 +341,47 @@ function shouldRunSafetyTimer(): boolean {
 
 /**
  * Safety timer handler (optional background check)
+ * Only runs if all conditions are met (app visible, not checking, no recent successful check)
  */
 function handleSafetyTimer(): void {
   if (!shouldRunSafetyTimer()) {
     return;
   }
 
+  logInfo('Safety timer triggered health check', {
+    component: 'ConnectionHealth',
+    action: 'handleSafetyTimer',
+    timeSinceLastCheck: lastHealthCheck ? `${Math.floor((Date.now() - lastHealthCheck) / 1000)}s` : 'never',
+    timeSinceLastSuccess: lastSuccessfulCheck ? `${Math.floor((Date.now() - lastSuccessfulCheck) / 1000)}s` : 'never',
+  });
+  
   performHealthCheck('safety-timer');
 }
 
 /**
  * Check for realtime silence and trigger health check if needed
+ * Only triggers if connection is not healthy AND we've had silence for the threshold
  */
 function checkRealtimeSilence(): void {
+  // Don't check if already checking or if cooldown hasn't passed
+  if (isChecking) {
+    return;
+  }
+
   const now = Date.now();
+  if (lastHealthCheck !== null && (now - lastHealthCheck) < MIN_COOLDOWN_MS) {
+    return;
+  }
+
   const silenceDuration = now - lastRealtimeActivity;
 
+  // Only check if we've had silence AND connection is not healthy
   if (silenceDuration >= REALTIME_SILENCE_THRESHOLD && connectionStatus !== 'healthy') {
     logInfo('Realtime silence detected, performing health check', {
       component: 'ConnectionHealth',
       action: 'checkRealtimeSilence',
       silenceDuration: `${Math.floor(silenceDuration / 1000)}s`,
+      currentStatus: connectionStatus,
     });
     performHealthCheck('realtime-silence');
   }
@@ -366,16 +392,7 @@ function checkRealtimeSilence(): void {
  */
 export function recordRealtimeActivity(): void {
   lastRealtimeActivity = Date.now();
-  
-  // Reset silence timer
-  if (realtimeSilenceTimer) {
-    clearInterval(realtimeSilenceTimer);
-  }
-  
-  // Check for silence periodically (but not too frequently)
-  realtimeSilenceTimer = setInterval(() => {
-    checkRealtimeSilence();
-  }, REALTIME_SILENCE_THRESHOLD);
+  // Don't set up a new timer here - the timer is already set up in startHealthMonitoring
 }
 
 /**
@@ -404,6 +421,7 @@ export function startHealthMonitoring(): void {
 
   // Optional safety timer: only runs if app is active and no recent successful check
   // This is a "seatbelt" check, not the primary mechanism
+  // Run the timer check less frequently than the interval itself
   safetyTimerInterval = setInterval(() => {
     handleSafetyTimer();
   }, SAFETY_TIMER_INTERVAL);
@@ -452,10 +470,10 @@ export function startHealthMonitoring(): void {
   window.addEventListener('online', handleOnline);
   window.addEventListener('offline', handleOffline);
 
-  // Start realtime silence monitoring
+  // Start realtime silence monitoring (check less frequently than the threshold)
   realtimeSilenceTimer = setInterval(() => {
     checkRealtimeSilence();
-  }, REALTIME_SILENCE_THRESHOLD);
+  }, REALTIME_SILENCE_CHECK_INTERVAL);
 
   // Store cleanup function separately
   healthCheckCleanup = () => {

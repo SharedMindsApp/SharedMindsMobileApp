@@ -13,6 +13,7 @@ import { ActiveDataProvider } from './contexts/ActiveDataContext';
 import { ForegroundTriggersProvider } from './contexts/ForegroundTriggersContext';
 import { NetworkStatusProvider } from './contexts/NetworkStatusContext';
 import { AppBootProvider, useAppBoot } from './contexts/AppBootContext';
+import { NotificationProvider } from './contexts/NotificationContext';
 import { AppErrorBoundary } from './components/AppErrorBoundary';
 import { AppBootScreen } from './components/AppBootScreen';
 import { startHealthMonitoring } from './lib/connectionHealth';
@@ -100,6 +101,8 @@ import { PersonalSpacePage } from './components/PersonalSpacePage';
 import { PersonalCalendarPage } from './components/personal-spaces/PersonalCalendarPage';
 import { SharedSpacesListPage } from './components/SharedSpacesListPage';
 import { SpaceViewPage } from './components/SpaceViewPage';
+import { SpacesIndexPage } from './components/SpacesIndexPage';
+import { WidgetAppView } from './components/spaces/WidgetAppView';
 import { FocusModeStart } from './components/guardrails/focus/FocusModeStart';
 import { FocusModeLive } from './components/guardrails/focus/FocusModeLive';
 import { SessionSummaryPage } from './components/guardrails/focus/SessionSummaryPage';
@@ -265,18 +268,19 @@ function AppContent() {
       )}
     <BrowserRouter>
       <AuthProvider>
-        <ViewAsProvider>
-          <ActiveDataProvider>
-            <UIPreferencesProvider>
-              <ActiveProjectProvider>
-                <ActiveTrackProvider>
-                  <RegulationProvider>
-                    <FocusSessionProvider>
-                      <EncryptionProvider>
-                        <AIChatWidgetProvider>
-                      <ForegroundTriggersProvider>
-                        <NetworkStatusProvider>
-                          <AppRouteGuard>
+        <NotificationProvider>
+          <ViewAsProvider>
+            <ActiveDataProvider>
+              <UIPreferencesProvider>
+                <ActiveProjectProvider>
+                  <ActiveTrackProvider>
+                    <RegulationProvider>
+                      <FocusSessionProvider>
+                        <EncryptionProvider>
+                          <AIChatWidgetProvider>
+                        <ForegroundTriggersProvider>
+                          <NetworkStatusProvider>
+                            <AppRouteGuard>
                             <RouteGlitchEffect />
                               <Routes>
           {/* Phase 8C: Root route is redirect-only, no UI rendered */}
@@ -362,6 +366,16 @@ function AppContent() {
             }
           />
           <Route
+            path="/spaces"
+            element={
+              <AuthGuard>
+                <Layout>
+                  <SpacesIndexPage />
+                </Layout>
+              </AuthGuard>
+            }
+          />
+          <Route
             path="/spaces/personal"
             element={
               <AuthGuard>
@@ -382,6 +396,14 @@ function AppContent() {
             element={
               <AuthGuard>
                 <SpaceViewPage />
+              </AuthGuard>
+            }
+          />
+          <Route
+            path="/spaces/:spaceId/app/:widgetId"
+            element={
+              <AuthGuard>
+                <WidgetAppView />
               </AuthGuard>
             }
           />
@@ -1946,6 +1968,7 @@ function AppContent() {
             </UIPreferencesProvider>
           </ActiveDataProvider>
         </ViewAsProvider>
+        </NotificationProvider>
       </AuthProvider>
     </BrowserRouter>
     </>

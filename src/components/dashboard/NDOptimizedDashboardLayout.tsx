@@ -5,6 +5,7 @@ import {
   FileText,
   BookOpen,
   Lightbulb,
+  Compass,
 } from 'lucide-react';
 import { Section, Member, Progress } from '../../lib/supabase';
 import { Household } from '../../lib/household';
@@ -15,7 +16,10 @@ import { BrainProfileWidget } from './BrainProfileWidget';
 import { LockedFeaturesJourney } from '../features/LockedFeaturesJourney';
 import { DailyAlignmentEntryCard } from '../regulation/DailyAlignmentEntryCard';
 import { getDailyAlignmentEnabled } from '../../lib/regulation/dailyAlignmentService';
+import { PersonalCalendarCard } from '../calendar/PersonalCalendarCard';
+import { SharedCalendarCard } from '../calendar/SharedCalendarCard';
 import { isStandaloneApp } from '../../lib/appContext';
+import { AppReferenceGuide } from '../reference/AppReferenceGuide';
 
 interface NDOptimizedDashboardLayoutProps {
   members: Member[];
@@ -44,6 +48,7 @@ export function NDOptimizedDashboardLayout({
 
   const [dailyAlignmentEnabled, setDailyAlignmentEnabled] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
+  const [showReferenceGuide, setShowReferenceGuide] = useState(false);
 
   useEffect(() => {
     if (currentMember?.user_id) {
@@ -68,12 +73,32 @@ export function NDOptimizedDashboardLayout({
   return (
     <div className={`max-w-3xl mx-auto ${densityClass} ${lineHeight}`} style={{ fontSize: `${fontScale}rem` }}>
       <div className="text-center mb-8">
-        <h1 className="text-3xl font-bold text-gray-900 mb-2">
-          Welcome{currentMember ? `, ${currentMember.name}` : ''}
-        </h1>
-        <p className="text-gray-600">
-          {household?.name && `${household.name}`}
-        </p>
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex-1" />
+          <div className="flex-1 text-center">
+            <h1 className="text-3xl font-bold text-gray-900 mb-2">
+              Welcome{currentMember ? `, ${currentMember.name}` : ''}
+            </h1>
+            <p className="text-gray-600">
+              {household?.name && `${household.name}`}
+            </p>
+          </div>
+          <div className="flex-1 flex justify-end">
+            <button
+              onClick={() => setShowReferenceGuide(true)}
+              className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-700 hover:text-gray-900 hover:bg-blue-50 border border-gray-200 hover:border-blue-300 rounded-lg transition-colors shadow-sm"
+              title="How Everything Fits Together"
+            >
+              <Compass size={18} className="text-blue-600" />
+              <span>App Guide</span>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div className="mb-6 space-y-4">
+        <PersonalCalendarCard />
+        <SharedCalendarCard />
       </div>
 
       {dailyAlignmentEnabled && currentMember?.user_id && (
@@ -203,6 +228,12 @@ export function NDOptimizedDashboardLayout({
           </div>
         </div>
       </div>
+
+      {/* Phase 9: App Reference Guide */}
+      <AppReferenceGuide
+        isOpen={showReferenceGuide}
+        onClose={() => setShowReferenceGuide(false)}
+      />
     </div>
   );
 }

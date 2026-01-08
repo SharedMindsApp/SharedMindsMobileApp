@@ -153,6 +153,48 @@ export async function loadHouseholdWidgets(
 }
 
 /* ======================================================================
+   GET SINGLE WIDGET BY ID
+   ====================================================================== */
+export async function getWidgetById(widgetId: string): Promise<WidgetWithLayout | null> {
+  const profileId = await getProfileId();
+
+  const sb = await getSupabaseClient();
+
+  // Load widget
+  const { data: widget, error: wErr } = await sb
+    .from("fridge_widgets")
+    .select("*")
+    .eq("id", widgetId)
+    .is("deleted_at", null)
+    .maybeSingle();
+
+  if (wErr) throw wErr;
+  if (!widget) return null;
+
+  // Load layout for this user
+  const { data: layout, error: layoutErr } = await sb
+    .from("fridge_widget_layouts")
+    .select("*")
+    .eq("widget_id", widgetId)
+    .eq("member_id", profileId)
+    .maybeSingle();
+
+  if (layoutErr) throw layoutErr;
+
+  let widgetLayout = layout;
+  if (!widgetLayout) {
+    widgetLayout = await createDefaultLayout(widget.id, profileId);
+  }
+
+  // Defensive defaults
+  if (!widgetLayout.size_mode) widgetLayout.size_mode = "mini";
+  if (widgetLayout.position_x == null) widgetLayout.position_x = 200;
+  if (widgetLayout.position_y == null) widgetLayout.position_y = 200;
+
+  return { ...widget, layout: widgetLayout };
+}
+
+/* ======================================================================
    CREATE WIDGET — NOW FIXED TO USE profile.id (NOT auth.uid)
    ====================================================================== */
 // lib/fridgeCanvas.ts
@@ -208,12 +250,37 @@ export async function createWidget(
     } as StackCardContent;
   }
 
+  // Map widget type to proper display name
+  const widgetTypeNames: Record<WidgetType, string> = {
+    note: 'Note',
+    task: 'Task',
+    reminder: 'Reminder',
+    calendar: 'Calendar',
+    goal: 'Goal',
+    habit: 'Habit',
+    habit_tracker: 'Habit Tracker',
+    achievements: 'Achievements',
+    photo: 'Photo',
+    insight: 'Insight',
+    agreement: 'Agreement',
+    meal_planner: 'Meal Planner',
+    grocery_list: 'Grocery List',
+    stack_card: 'Stack Cards',
+    files: 'Files',
+    collections: 'Collections',
+    tables: 'Tables',
+    todos: 'Todos',
+    custom: 'Custom Widget',
+  };
+
+  const widgetName = widgetTypeNames[widgetType] || 'Widget';
+
   // 4️⃣ Build exact payload Supabase will receive
   const insertPayload = {
     space_id: householdId,
     created_by: profileId,
     widget_type: widgetType,
-    title: "New Widget",
+    title: widgetName,
     content: widgetContent,
     color: "yellow",
     icon: "StickyNote",

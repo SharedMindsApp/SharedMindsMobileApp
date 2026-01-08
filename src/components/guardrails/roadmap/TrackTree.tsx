@@ -9,9 +9,12 @@ import {
   Palette,
   Check,
   X,
+  Calendar,
 } from 'lucide-react';
 import type { TrackTreeNode } from '../../../lib/guardrails/tracksHierarchy';
 import { TrackColorPicker } from '../tracks/TrackColorPicker';
+import { TrackCalendarSyncModal } from '../settings/TrackCalendarSyncModal';
+import { useActiveDataContext } from '../../../contexts/ActiveDataContext';
 
 interface TrackTreeProps {
   tracks: TrackTreeNode[];
@@ -22,6 +25,8 @@ interface TrackTreeProps {
   onDeleteTrack: (trackId: string) => void;
   onChangeColor: (trackId: string, color: string) => void;
   trackItemCounts: Map<string, number>;
+  projectId?: string;
+  projectName?: string;
 }
 
 interface TreeNodeProps {
@@ -37,7 +42,10 @@ interface TreeNodeProps {
   expandedNodes: Set<string>;
   onToggleExpand: (nodeId: string) => void;
   maxDepthReached: boolean;
-  renderChildren: (children: TrackTreeNode[], level: number) => React.ReactNode;
+  renderChildren: (children: TrackTreeNode[], level: number, projId?: string, projName?: string, onOpenSync?: (trackId: string, trackName: string) => void) => React.ReactNode;
+  projectId?: string;
+  projectName?: string;
+  onOpenCalendarSync?: (trackId: string, trackName: string) => void;
 }
 
 function TreeNode({
@@ -54,6 +62,9 @@ function TreeNode({
   onToggleExpand,
   maxDepthReached,
   renderChildren,
+  projectId,
+  projectName,
+  onOpenCalendarSync,
 }: TreeNodeProps) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [editing, setEditing] = useState(false);
@@ -214,6 +225,19 @@ function TreeNode({
                         Add Child Track
                       </button>
                     )}
+                    {onOpenCalendarSync && projectId && projectName && (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onOpenCalendarSync(node.id, node.name);
+                          setMenuOpen(false);
+                        }}
+                        className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2"
+                      >
+                        <Calendar size={14} />
+                        Calendar Sync Settings
+                      </button>
+                    )}
                     <div className="border-t border-gray-100 my-1" />
                     <button
                       onClick={(e) => {
@@ -245,7 +269,7 @@ function TreeNode({
         />
       )}
 
-      {hasChildren && isExpanded && renderChildren(node.children, level + 1)}
+      {hasChildren && isExpanded && renderChildren(node.children, level + 1, projectId, projectName, onOpenCalendarSync)}
     </div>
   );
 }
@@ -259,7 +283,26 @@ export function TrackTree({
   onDeleteTrack,
   onChangeColor,
   trackItemCounts,
+  projectId,
+  projectName,
 }: TrackTreeProps) {
+  const { activeProjectId, activeProject } = useActiveDataContext();
+  const [calendarSyncModal, setCalendarSyncModal] = useState<{
+    trackId: string;
+    trackName: string;
+  } | null>(null);
+
+  // Use props if provided, otherwise fall back to context
+  const effectiveProjectId = projectId || activeProjectId || '';
+  const effectiveProjectName = projectName || activeProject?.name || '';
+
+  function handleOpenCalendarSync(trackId: string, trackName: string) {
+    setCalendarSyncModal({ trackId, trackName });
+  }
+
+  function handleCloseCalendarSync() {
+    setCalendarSyncModal(null);
+  }
   const [expandedNodes, setExpandedNodes] = useState<Set<string>>(() => {
     const expanded = new Set<string>();
     const expandToDepth = (nodes: TrackTreeNode[], currentDepth: number, maxDepth: number) => {
@@ -300,7 +343,16 @@ export function TrackTree({
 
   const allTracks = useMemo(() => flattenTracks(tracks), [tracks]);
 
-  const renderTreeNodes = (nodes: TrackTreeNode[], level: number): React.ReactNode => {
+  const renderTreeNodes = (
+    nodes: TrackTreeNode[],
+    level: number,
+    projId?: string,
+    projName?: string,
+    onOpenSync?: (trackId: string, trackName: string) => void
+  ): React.ReactNode => {
+    const effectiveProjId = projId || effectiveProjectId;
+    const effectiveProjName = projName || effectiveProjectName;
+    const effectiveOnOpenSync = onOpenSync || handleOpenCalendarSync;
     return nodes.map((node) => (
       <TreeNode
         key={node.id}
@@ -317,6 +369,9 @@ export function TrackTree({
         onToggleExpand={toggleExpand}
         maxDepthReached={level >= 10}
         renderChildren={renderTreeNodes}
+        projectId={effectiveProjId}
+        projectName={effectiveProjName}
+        onOpenCalendarSync={effectiveOnOpenSync}
       />
     ));
   };
@@ -363,10 +418,22 @@ export function TrackTree({
               All Tracks
             </button>
 
-            {renderTreeNodes(tracks, 0)}
+            {renderTreeNodes(tracks, 0, effectiveProjectId, effectiveProjectName, handleOpenCalendarSync)}
           </>
         )}
       </div>
+
+      {/* Track Calendar Sync Modal */}
+      {calendarSyncModal && effectiveProjectId && effectiveProjectName && (
+        <TrackCalendarSyncModal
+          isOpen={!!calendarSyncModal}
+          onClose={handleCloseCalendarSync}
+          projectId={effectiveProjectId}
+          projectName={effectiveProjectName}
+          trackId={calendarSyncModal.trackId}
+          trackName={calendarSyncModal.trackName}
+        />
+      )}
     </div>
   );
 }

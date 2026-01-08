@@ -217,8 +217,6 @@ export function SharedSpacesListPage() {
           )
         )}
       </div>
-
-      <FloatingAIChatWidget />
     </div>
   );
 }

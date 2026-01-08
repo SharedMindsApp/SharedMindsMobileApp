@@ -1,11 +1,12 @@
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { Map, Network, Kanban, Target, Activity, Zap, Share2 } from 'lucide-react';
+import { Map, Network, Kanban, Target, Activity, Zap, Share2, Settings } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { useSharingDrawer } from '../../hooks/useSharingDrawer';
 import { SharingDrawer } from '../sharing/SharingDrawer';
 import { PermissionIndicator } from '../sharing/PermissionIndicator';
 import { getUserProjectPermissions } from '../../lib/guardrails/projectUserService';
+import { ProjectSettingsDrawer } from './settings/ProjectSettingsDrawer';
 
 interface ProjectHeaderTabsProps {
   masterProjectId: string;
@@ -20,6 +21,7 @@ export function ProjectHeaderTabs({ masterProjectId, projectName }: ProjectHeade
   const { isOpen: isSharingOpen, adapter: sharingAdapter, openDrawer: openSharing, closeDrawer: closeSharing } = useSharingDrawer('project', masterProjectId);
   const [canManageProject, setCanManageProject] = useState(false);
   const [projectPermissionFlags, setProjectPermissionFlags] = useState<any>(null);
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
 
   useEffect(() => {
     if (user && masterProjectId) {
@@ -70,6 +72,12 @@ export function ProjectHeaderTabs({ masterProjectId, projectName }: ProjectHeade
       name: 'Reality Check',
       path: `/guardrails/projects/${masterProjectId}/reality`,
       icon: Activity,
+    },
+    {
+      name: 'Settings',
+      path: null, // Settings opens drawer, not a route
+      icon: Settings,
+      onClick: () => setIsSettingsOpen(true),
     },
   ];
 
@@ -123,10 +131,38 @@ export function ProjectHeaderTabs({ masterProjectId, projectName }: ProjectHeade
           )}
         </div>
 
+        {/* Project Settings Drawer */}
+        <ProjectSettingsDrawer
+          isOpen={isSettingsOpen}
+          onClose={() => setIsSettingsOpen(false)}
+          projectId={masterProjectId}
+          projectName={projectName}
+        />
+
         <nav className="flex gap-1">
           {tabs.map((tab) => {
             const Icon = tab.icon;
-            const isActive = currentPath.includes(tab.path);
+            const isActive = tab.path ? currentPath.includes(tab.path) : isSettingsOpen;
+
+            if (tab.onClick) {
+              return (
+                <button
+                  key={tab.name}
+                  onClick={tab.onClick}
+                  className={`
+                    flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors
+                    ${
+                      isActive
+                        ? 'bg-blue-50 text-blue-700 border border-blue-200'
+                        : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
+                    }
+                  `}
+                >
+                  <Icon size={16} />
+                  {tab.name}
+                </button>
+              );
+            }
 
             return (
               <Link

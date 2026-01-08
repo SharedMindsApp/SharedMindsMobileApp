@@ -16,11 +16,14 @@ import {
   Palette,
   UtensilsCrossed,
   Calendar,
+  Bug,
 } from 'lucide-react';
 import { getUserHousehold, Household, getCurrentMembership, HouseholdMember } from '../lib/household';
 import { signOut } from '../lib/auth';
 import { supabase } from '../lib/supabase';
 import { getDailyAlignmentEnabled, setDailyAlignmentEnabled } from '../lib/regulation/dailyAlignmentService';
+import { DebugPanel } from './system/DebugPanel';
+import { getErrorCounts } from '../lib/errorLogger';
 
 export function Settings() {
   const [household, setHousehold] = useState<Household | null>(null);
@@ -33,6 +36,7 @@ export function Settings() {
   const [copiedHouseholdId, setCopiedHouseholdId] = useState(false);
   const [dailyAlignmentEnabled, setDailyAlignmentEnabledState] = useState(false);
   const [userId, setUserId] = useState<string | null>(null);
+  const [showDebugPanel, setShowDebugPanel] = useState(false);
   const navigate = useNavigate();
 
   const isOwner = membership?.role === 'owner';
@@ -384,6 +388,27 @@ export function Settings() {
               </div>
               <ArrowRight size={20} className="text-gray-400" />
             </button>
+
+            <button
+              onClick={() => setShowDebugPanel(true)}
+              className="w-full flex items-center justify-between p-4 rounded-lg border border-gray-200 hover:bg-gray-50 transition-colors text-left"
+            >
+              <div className="flex items-center gap-3">
+                <Bug size={20} className="text-gray-600" />
+                <div>
+                  <p className="font-medium text-gray-900">Debug Panel</p>
+                  <p className="text-sm text-gray-600">
+                    View app logs and debug information
+                    {(() => {
+                      const counts = getErrorCounts();
+                      const total = counts.error + counts.warn;
+                      return total > 0 ? ` (${total} issues)` : '';
+                    })()}
+                  </p>
+                </div>
+              </div>
+              <ArrowRight size={20} className="text-gray-400" />
+            </button>
           </div>
         </div>
 
@@ -410,6 +435,9 @@ export function Settings() {
           Log Out
         </button>
       </div>
+
+      {/* Debug Panel */}
+      <DebugPanel isOpen={showDebugPanel} onClose={() => setShowDebugPanel(false)} />
     </div>
   );
 }

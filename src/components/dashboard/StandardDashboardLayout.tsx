@@ -8,6 +8,7 @@ import {
   Lock,
   Home,
   LayoutGrid,
+  Compass,
 } from 'lucide-react';
 import { Section, Member, Progress } from '../../lib/supabase';
 import { Household } from '../../lib/household';
@@ -21,6 +22,8 @@ import { HouseholdInsightMatchViewer } from '../household/HouseholdInsightMatchV
 import { HouseholdMatchUnlockCelebration } from '../household/HouseholdMatchUnlockCelebration';
 import { DailyAlignmentEntryCard } from '../regulation/DailyAlignmentEntryCard';
 import { getDailyAlignmentEnabled } from '../../lib/regulation/dailyAlignmentService';
+import { PersonalCalendarCard } from '../calendar/PersonalCalendarCard';
+import { SharedCalendarCard } from '../calendar/SharedCalendarCard';
 import {
   checkHouseholdMatchReady,
   generateHouseholdMatch,
@@ -30,6 +33,7 @@ import {
   HouseholdInsightMatch,
 } from '../../lib/householdInsightMatch';
 import { isStandaloneApp } from '../../lib/appContext';
+import { AppReferenceGuide } from '../reference/AppReferenceGuide';
 
 interface StandardDashboardLayoutProps {
   sections: Section[];
@@ -69,6 +73,7 @@ export function StandardDashboardLayout({
   const [isCheckingMatch, setIsCheckingMatch] = useState(true);
   const [dailyAlignmentEnabled, setDailyAlignmentEnabled] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
+  const [showReferenceGuide, setShowReferenceGuide] = useState(false);
 
   useEffect(() => {
     checkForHouseholdMatch();
@@ -142,14 +147,24 @@ export function StandardDashboardLayout({
 
   return (
     <div className={`${densityClass} ${lineHeight}`} style={{ fontSize: `${fontScale}rem` }}>
-      <div>
-        <h1 className="text-3xl font-bold text-gray-900 mb-2">
-          Welcome{currentMember ? `, ${currentMember.name}` : ''}
-        </h1>
-        <p className="text-gray-600">
-          {household?.name ? `${household.name} · ` : ''}
-          {members.length} member{members.length !== 1 ? 's' : ''} · {sections.length} sections
-        </p>
+      <div className="flex items-start justify-between mb-6">
+        <div>
+          <h1 className="text-3xl font-bold text-gray-900 mb-2">
+            Welcome{currentMember ? `, ${currentMember.name}` : ''}
+          </h1>
+          <p className="text-gray-600">
+            {household?.name ? `${household.name} · ` : ''}
+            {members.length} member{members.length !== 1 ? 's' : ''} · {sections.length} sections
+          </p>
+        </div>
+        <button
+          onClick={() => setShowReferenceGuide(true)}
+          className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-700 hover:text-gray-900 hover:bg-blue-50 border border-gray-200 hover:border-blue-300 rounded-lg transition-colors shadow-sm"
+          title="How Everything Fits Together"
+        >
+          <Compass size={18} className="text-blue-600" />
+          <span>App Guide</span>
+        </button>
       </div>
 
       {household && (
@@ -183,6 +198,11 @@ export function StandardDashboardLayout({
           </div>
         </div>
       )}
+
+      <div className="mb-6 space-y-4">
+        <PersonalCalendarCard />
+        <SharedCalendarCard />
+      </div>
 
       {dailyAlignmentEnabled && currentMember?.user_id && (
         <div className="mb-6">
@@ -406,6 +426,12 @@ export function StandardDashboardLayout({
           </div>
         </div>
       </div>
+
+      {/* Phase 9: App Reference Guide */}
+      <AppReferenceGuide
+        isOpen={showReferenceGuide}
+        onClose={() => setShowReferenceGuide(false)}
+      />
     </div>
   );
 }
