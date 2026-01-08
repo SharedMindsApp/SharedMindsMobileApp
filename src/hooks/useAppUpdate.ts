@@ -6,7 +6,7 @@
  */
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { checkForUpdate, CURRENT_APP_VERSION } from '../lib/appVersion';
+import { checkForUpdate, CURRENT_APP_VERSION, getLatestVersion, isVersionNewer } from '../lib/appVersion';
 
 export interface AppUpdateState {
   updateAvailable: boolean;
@@ -19,6 +19,58 @@ export interface AppUpdateState {
 
 const CHECK_INTERVAL = 30 * 60 * 1000; // 30 minutes
 const FOREGROUND_CHECK_DELAY = 1000; // 1 second after returning to foreground
+const DISMISSED_VERSION_KEY = 'app_update_dismissed_version';
+const LAST_APPLIED_VERSION_KEY = 'app_update_last_applied_version';
+
+// Get dismissed version from localStorage
+function getDismissedVersion(): string | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    return localStorage.getItem(DISMISSED_VERSION_KEY);
+  } catch {
+    return null;
+  }
+}
+
+// Get last applied version from localStorage
+function getLastAppliedVersion(): string | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    return localStorage.getItem(LAST_APPLIED_VERSION_KEY);
+  } catch {
+    return null;
+  }
+}
+
+// Store dismissed version in localStorage
+function setDismissedVersion(version: string): void {
+  if (typeof window === 'undefined') return;
+  try {
+    localStorage.setItem(DISMISSED_VERSION_KEY, version);
+  } catch {
+    // Ignore localStorage errors
+  }
+}
+
+// Store last applied version in localStorage
+function setLastAppliedVersion(version: string): void {
+  if (typeof window === 'undefined') return;
+  try {
+    localStorage.setItem(LAST_APPLIED_VERSION_KEY, version);
+  } catch {
+    // Ignore localStorage errors
+  }
+}
+
+// Clear dismissed version (for new updates)
+function clearDismissedVersion(): void {
+  if (typeof window === 'undefined') return;
+  try {
+    localStorage.removeItem(DISMISSED_VERSION_KEY);
+  } catch {
+    // Ignore localStorage errors
+  }
+}
 
 export function useAppUpdate() {
   const [state, setState] = useState<AppUpdateState>({
@@ -44,26 +96,50 @@ export function useAppUpdate() {
       serviceWorkerRegistrationRef.current = registration;
 
       // Check if there's a waiting service worker (already installed, waiting to activate)
+      // Only show if we haven't dismissed/applied this update
       if (registration.waiting && navigator.serviceWorker.controller) {
-        setState((prev) => ({
-          ...prev,
-          updateReady: true,
-          updateAvailable: true,
-        }));
+        const lastApplied = getLastAppliedVersion();
+        const dismissed = getDismissedVersion();
+        const latestVersion = await getLatestVersion();
+        
+        // Only show if there's actually a newer version and we haven't dismissed/applied it
+        if (latestVersion && 
+            isVersionNewer(latestVersion, CURRENT_APP_VERSION) &&
+            dismissed !== latestVersion &&
+            lastApplied !== latestVersion) {
+          setState((prev) => ({
+            ...prev,
+            updateReady: true,
+            updateAvailable: true,
+            latestVersion,
+          }));
+        }
         return;
       }
 
       // Check if there's an installing service worker
       if (registration.installing) {
         const installingWorker = registration.installing;
-        const handleStateChange = () => {
+        const handleStateChange = async () => {
           if (installingWorker.state === 'installed' && navigator.serviceWorker.controller) {
             // Service worker is installed but not yet activated (waiting for skipWaiting)
-            setState((prev) => ({
-              ...prev,
-              updateReady: true,
-              updateAvailable: true,
-            }));
+            // Only show if we haven't dismissed/applied this update
+            const lastApplied = getLastAppliedVersion();
+            const dismissed = getDismissedVersion();
+            const latestVersion = await getLatestVersion();
+            
+            // Only show if there's actually a newer version and we haven't dismissed/applied it
+            if (latestVersion && 
+                isVersionNewer(latestVersion, CURRENT_APP_VERSION) &&
+                dismissed !== latestVersion &&
+                lastApplied !== latestVersion) {
+              setState((prev) => ({
+                ...prev,
+                updateReady: true,
+                updateAvailable: true,
+                latestVersion,
+              }));
+            }
           }
         };
         installingWorker.addEventListener('statechange', handleStateChange);
@@ -83,13 +159,52 @@ export function useAppUpdate() {
     if (!state.isOnline) return;
 
     try {
-      const updateAvailable = await checkForUpdate();
-      if (updateAvailable) {
+      const latestVersion = await getLatestVersion();
+      if (!latestVersion) {
+        // No latest version available, clear update state
         setState((prev) => ({
           ...prev,
-          updateAvailable: true,
+          updateAvailable: false,
+          latestVersion: null,
         }));
+        return;
       }
+
+      // Check if we're on the latest version
+      const isNewerVersion = isVersionNewer(latestVersion, CURRENT_APP_VERSION);
+      const dismissedVersion = getDismissedVersion();
+      const lastAppliedVersion = getLastAppliedVersion();
+
+      // If we're on the latest version (no newer version available), we've successfully applied the update
+      // Clear any update state and mark current version as applied
+      if (!isNewerVersion) {
+        // If we haven't stored that we're on this version, do so now
+        if (lastAppliedVersion !== CURRENT_APP_VERSION) {
+          setLastAppliedVersion(CURRENT_APP_VERSION);
+        }
+        // Clear dismissed state when we're up to date
+        clearDismissedVersion();
+        // Clear update available state
+        setState((prev) => ({
+          ...prev,
+          updateAvailable: false,
+          latestVersion,
+        }));
+        return; // No update available, exit early
+      }
+
+      // We have a newer version available
+      // Only show update if:
+      // 1. We haven't dismissed this specific version
+      // 2. We haven't already applied this version (i.e., we're still on old version)
+      const shouldShowUpdate = dismissedVersion !== latestVersion &&
+                               lastAppliedVersion !== latestVersion;
+
+      setState((prev) => ({
+        ...prev,
+        updateAvailable: shouldShowUpdate,
+        latestVersion,
+      }));
     } catch (error) {
       console.warn('[useAppUpdate] Error checking version:', error);
     }
@@ -102,13 +217,26 @@ export function useAppUpdate() {
 
   // Listen for service worker update events
   useEffect(() => {
-    const handleUpdateAvailable = (event: Event) => {
+    const handleUpdateAvailable = async (event: Event) => {
       const customEvent = event as CustomEvent;
-      setState((prev) => ({
-        ...prev,
-        updateReady: true,
-        updateAvailable: true,
-      }));
+      
+      // Only show if we haven't dismissed/applied this update
+      const lastApplied = getLastAppliedVersion();
+      const dismissed = getDismissedVersion();
+      const latestVersion = await getLatestVersion();
+      
+      // Only show if there's actually a newer version and we haven't dismissed/applied it
+      if (latestVersion && 
+          isVersionNewer(latestVersion, CURRENT_APP_VERSION) &&
+          dismissed !== latestVersion &&
+          lastApplied !== latestVersion) {
+        setState((prev) => ({
+          ...prev,
+          updateReady: true,
+          updateAvailable: true,
+          latestVersion,
+        }));
+      }
       
       // Also check registration to ensure we have the latest state
       checkServiceWorkerUpdate();
@@ -154,6 +282,21 @@ export function useAppUpdate() {
 
   // Initial check on mount (only once)
   useEffect(() => {
+    // On mount, verify we're not showing an update for a version we already have
+    const lastApplied = getLastAppliedVersion();
+    const dismissed = getDismissedVersion();
+    
+    // If we just applied an update and we're on that version now, clear update state
+    if (lastApplied && !isVersionNewer(lastApplied, CURRENT_APP_VERSION) && lastApplied === CURRENT_APP_VERSION) {
+      setState((prev) => ({
+        ...prev,
+        updateAvailable: false,
+        dismissed: false, // Reset dismissed so we can see future updates
+      }));
+      // Clear dismissed version since we're up to date
+      clearDismissedVersion();
+    }
+
     // Small delay to avoid checking during app boot
     const timeoutId = setTimeout(() => {
       performUpdateCheck();
@@ -180,15 +323,31 @@ export function useAppUpdate() {
 
   // Dismiss update banner
   const dismissUpdate = useCallback(() => {
-    setState((prev) => ({ ...prev, dismissed: true }));
+    setState((prev) => {
+      // Store the version we're dismissing so we don't show it again
+      if (prev.latestVersion) {
+        setDismissedVersion(prev.latestVersion);
+      }
+      return { ...prev, dismissed: true };
+    });
   }, []);
 
   // Apply update (reload app)
   const applyUpdate = useCallback(async () => {
     try {
-      // Service worker update scenario
       const registration = serviceWorkerRegistrationRef.current;
       
+      // Store the version we're applying so we don't show the banner again after reload
+      setState((prev) => {
+        if (prev.latestVersion) {
+          setLastAppliedVersion(prev.latestVersion);
+          // Clear dismissed state since we're applying the update
+          clearDismissedVersion();
+        }
+        return prev;
+      });
+
+      // Service worker update scenario
       if (registration && registration.waiting) {
         // Send skipWaiting message to waiting service worker
         registration.waiting.postMessage({ type: 'SKIP_WAITING' });

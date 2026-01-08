@@ -3,13 +3,26 @@
  * 
  * In-app update notification banner for PWA users.
  * Shows when a new version is available and allows one-tap updates.
+ * Mobile-only: Only shown on mobile devices (< 768px) as replacement for App Store updates.
  */
 
+import { useState, useEffect } from 'react';
 import { RefreshCw, X } from 'lucide-react';
 import { useAppUpdate } from '../../hooks/useAppUpdate';
 
 export function AppUpdateBanner() {
   const { updateAvailable, updateReady, dismissed, isOnline, applyUpdate, dismissUpdate } = useAppUpdate();
+  const [isMobile, setIsMobile] = useState(false);
+
+  useEffect(() => {
+    const checkMobile = () => setIsMobile(window.innerWidth < 768);
+    checkMobile();
+    window.addEventListener('resize', checkMobile);
+    return () => window.removeEventListener('resize', checkMobile);
+  }, []);
+
+  // Mobile-only: Don't show on desktop
+  if (!isMobile) return null;
 
   // Don't render if no update available or dismissed
   if (!updateAvailable || dismissed) return null;
