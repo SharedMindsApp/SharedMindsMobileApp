@@ -98,15 +98,32 @@ self.addEventListener('fetch', (event) => {
     return; // Don't process navigation requests further
   }
 
-  // Never cache API requests or auth endpoints
+  // Phase 11: Never cache API requests or auth endpoints - ensure they always go to network
   if (
     url.pathname.startsWith('/api/') ||
     url.pathname.startsWith('/auth/') ||
     url.hostname.includes('supabase') ||
+    url.hostname.includes('supabase.co') ||
+    url.hostname.includes('supabase.in') ||
     url.hostname.includes('vercel') ||
     request.method !== 'GET'
   ) {
-    // Always go to network for API/auth, no caching
+    // Always go to network for API/auth, no caching, no service worker interference
+    // Explicitly handle these requests to prevent service worker from interfering
+    event.respondWith(
+      fetch(request).catch((error) => {
+        // If network fails, return error - don't serve stale cache for API calls
+        console.error('[Service Worker] API request failed:', error);
+        return new Response(
+          JSON.stringify({ error: 'Network error', offline: true }),
+          { 
+            status: 503, 
+            statusText: 'Service Unavailable',
+            headers: { 'Content-Type': 'application/json' }
+          }
+        );
+      })
+    );
     return;
   }
 

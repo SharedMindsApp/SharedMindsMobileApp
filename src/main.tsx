@@ -4,6 +4,7 @@ import { createRoot } from 'react-dom/client';
 import App from './App.tsx';
 import './index.css';
 import './lib/offlineInit'; // Phase 4B: Initialize offline action handlers
+import { initGlobalErrorHandlers } from './lib/globalErrorHandlers'; // Phase 11: Initialize global error handlers
 
 // 👉 Import Supabase and expose it for debugging
 import { supabase } from './lib/supabase';
@@ -118,6 +119,9 @@ if (isStandaloneApp()) {
   // Phase 8B: Initialize pull-to-refresh guard
   initPullToRefreshGuard();
 }
+
+// Phase 11: Initialize global error handlers for mobile debugging
+initGlobalErrorHandlers();
 
 // ---- Mount App ----
 const rootElement = document.getElementById('root');

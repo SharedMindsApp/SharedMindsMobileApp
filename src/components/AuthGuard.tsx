@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
 import { Loader2, LogOut, AlertCircle } from 'lucide-react';
 import { supabase } from '../lib/supabase';
+import { retryWithBackoff } from '../lib/connectionHealth';
 
 type AuthGuardProps = {
   children: React.ReactNode;
@@ -42,8 +43,12 @@ export function AuthGuard({ children }: AuthGuardProps) {
 
   const checkInitialSession = async () => {
     try {
-      // Phase 3C: Use getSession which is fast for cached sessions
-      const { data: { session }, error } = await supabase.auth.getSession();
+      // Phase 11: Use retry with backoff for session check
+      const { data: { session }, error } = await retryWithBackoff(
+        () => supabase.auth.getSession(),
+        3, // Max 3 retries
+        1000 // Initial 1s delay
+      );
 
       if (error) {
         console.error('Session check error:', error);

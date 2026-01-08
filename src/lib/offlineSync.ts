@@ -12,6 +12,7 @@
 
 import { getQueuedActions, removeQueuedAction, incrementRetryCount } from './offlineQueue';
 import { supabase } from './supabase';
+import { logError, logWarning, logInfo } from './errorLogger';
 
 export interface SyncResult {
   success: boolean;
@@ -50,9 +51,23 @@ async function executeAction(action: { type: string; payload: Record<string, unk
 
   try {
     await handler(action.payload);
+    logInfo(`Successfully executed queued action: ${action.type}`, {
+      component: 'OfflineSync',
+      action: 'executeAction',
+      actionType: action.type,
+    });
     return true;
   } catch (error) {
-    console.error(`[OfflineSync] Error executing action ${action.type}:`, error);
+    logError(
+      `Error executing queued action: ${action.type}`,
+      error instanceof Error ? error : new Error(String(error)),
+      {
+        component: 'OfflineSync',
+        action: 'executeAction',
+        actionType: action.type,
+        actionId: action.id,
+      }
+    );
     throw error;
   }
 }
@@ -63,9 +78,23 @@ async function executeAction(action: { type: string; payload: Record<string, unk
 async function checkAuth(): Promise<boolean> {
   try {
     const { data: { session } } = await supabase.auth.getSession();
-    return !!session;
+    const authenticated = !!session;
+    if (!authenticated) {
+      logWarning('Not authenticated when attempting sync', {
+        component: 'OfflineSync',
+        action: 'checkAuth',
+      });
+    }
+    return authenticated;
   } catch (error) {
-    console.error('[OfflineSync] Error checking auth:', error);
+    logError(
+      'Error checking auth for sync',
+      error instanceof Error ? error : new Error(String(error)),
+      {
+        component: 'OfflineSync',
+        action: 'checkAuth',
+      }
+    );
     return false;
   }
 }
@@ -84,8 +113,18 @@ export async function syncQueuedActions(): Promise<SyncResult> {
   const totalCount = actions.length;
   
   if (actions.length === 0) {
+    logInfo('No queued actions to sync', {
+      component: 'OfflineSync',
+      action: 'syncQueuedActions',
+    });
     return { success: true, syncedCount: 0, totalCount: 0 };
   }
+
+  logInfo(`Starting sync of ${totalCount} queued actions`, {
+    component: 'OfflineSync',
+    action: 'syncQueuedActions',
+    totalCount,
+  });
 
   // Check auth first
   const isAuthenticated = await checkAuth();
@@ -110,10 +149,28 @@ export async function syncQueuedActions(): Promise<SyncResult> {
       if (success) {
         removeQueuedAction(action.id);
         syncedCount++;
+        logInfo(`Successfully synced action ${syncedCount}/${totalCount}: ${action.type}`, {
+          component: 'OfflineSync',
+          action: 'syncQueuedActions',
+          actionType: action.type,
+          progress: `${syncedCount}/${totalCount}`,
+        });
       } else {
         failedActionId = action.id;
         failedActionType = action.type;
         error = `Failed to execute action: ${action.type}`;
+        logError(
+          `Failed to execute queued action: ${action.type}`,
+          new Error(error),
+          {
+            component: 'OfflineSync',
+            action: 'syncQueuedActions',
+            actionType: action.type,
+            actionId: action.id,
+            syncedCount,
+            totalCount,
+          }
+        );
         break;
       }
     } catch (err) {
@@ -121,6 +178,14 @@ export async function syncQueuedActions(): Promise<SyncResult> {
       const errorMessage = err instanceof Error ? err.message : String(err);
       if (errorMessage.includes('auth') || errorMessage.includes('session') || errorMessage.includes('token')) {
         error = 'Authentication expired. Please log in to continue syncing.';
+        logWarning('Sync failed due to auth error', {
+          component: 'OfflineSync',
+          action: 'syncQueuedActions',
+          actionType: action.type,
+          actionId: action.id,
+          syncedCount,
+          totalCount,
+        });
       } else {
         error = errorMessage;
       }
@@ -128,11 +193,26 @@ export async function syncQueuedActions(): Promise<SyncResult> {
       failedActionId = action.id;
       failedActionType = action.type;
       incrementRetryCount(action.id);
+      
+      logError(
+        `Sync failed on action: ${action.type}`,
+        err instanceof Error ? err : new Error(String(err)),
+        {
+          component: 'OfflineSync',
+          action: 'syncQueuedActions',
+          actionType: action.type,
+          actionId: action.id,
+          syncedCount,
+          totalCount,
+          errorType: errorMessage.includes('auth') ? 'auth' : 'network',
+        }
+      );
+      
       break; // Stop on first failure
     }
   }
 
-  return {
+  const result = {
     success: syncedCount === totalCount,
     syncedCount,
     totalCount,
@@ -140,5 +220,25 @@ export async function syncQueuedActions(): Promise<SyncResult> {
     failedActionType,
     error,
   };
+
+  if (result.success) {
+    logInfo(`Successfully synced all ${totalCount} queued actions`, {
+      component: 'OfflineSync',
+      action: 'syncQueuedActions',
+      totalCount,
+    });
+  } else {
+    logWarning(`Sync incomplete: ${syncedCount}/${totalCount} actions synced`, {
+      component: 'OfflineSync',
+      action: 'syncQueuedActions',
+      syncedCount,
+      totalCount,
+      failedActionId,
+      failedActionType,
+      error,
+    });
+  }
+
+  return result;
 }
 

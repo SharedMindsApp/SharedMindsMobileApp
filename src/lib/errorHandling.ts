@@ -2,6 +2,8 @@
 // Handles network failures gracefully without offline-first logic
 // Ensures app never crashes or shows blank screens
 
+import { logError } from './errorLogger';
+
 /**
  * Phase 3C: Check if error is a network error
  */
@@ -54,15 +56,23 @@ export function getUserFriendlyErrorMessage(error: unknown): string {
 
 /**
  * Phase 3C: Handle API error gracefully
+ * Phase 11: Logs error for mobile debugging
  * Logs error for debugging but returns user-friendly message
  */
 export function handleAPIError(error: unknown, context?: string): string {
   const userMessage = getUserFriendlyErrorMessage(error);
   
-  // Phase 3C: Log full error for debugging (only in dev or with context)
-  if (import.meta.env.DEV || context) {
-    console.error(`API Error${context ? ` in ${context}` : ''}:`, error);
-  }
+  // Phase 11: Always log errors for mobile debugging
+  logError(
+    `API Error${context ? ` in ${context}` : ''}`,
+    error instanceof Error ? error : new Error(String(error)),
+    {
+      component: 'ErrorHandling',
+      action: 'handleAPIError',
+      context: context || 'unknown',
+      userMessage,
+    }
+  );
   
   return userMessage;
 }

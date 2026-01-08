@@ -7,6 +7,7 @@
 
 import { Component, ReactNode, ErrorInfo } from 'react';
 import { AlertCircle, RefreshCw, RotateCcw } from 'lucide-react';
+import { logError } from '../lib/errorLogger';
 
 interface Props {
   children: ReactNode;
@@ -57,16 +58,25 @@ export class AppErrorBoundary extends Component<Props, State> {
       errorInfo,
     });
 
+    // Phase 11: Comprehensive error logging for mobile debugging
+    logError(
+      `App Error Boundary: ${error.message}`,
+      error,
+      {
+        component: 'AppErrorBoundary',
+        action: 'componentDidCatch',
+        errorCode: this.state.errorCode || 'UNKNOWN_ERROR',
+        componentStack: errorInfo.componentStack,
+        userAgent: navigator.userAgent,
+        url: window.location.href,
+        timestamp: new Date().toISOString(),
+      }
+    );
+
     // Phase 8: Developer logging (no user-facing technical details)
     if (import.meta.env.DEV) {
       console.error('[AppErrorBoundary] Error caught:', error);
       console.error('[AppErrorBoundary] Component stack:', errorInfo.componentStack);
-    }
-
-    // Phase 8: Optional remote logging hook (for production)
-    if (import.meta.env.PROD) {
-      // TODO: Add remote logging service integration if needed
-      // logErrorToService(error, errorInfo, this.state.errorCode);
     }
   }
 
@@ -125,8 +135,13 @@ export class AppErrorBoundary extends Component<Props, State> {
               Something went wrong while loading the app.
             </p>
             {this.state.errorCode && (
-              <p className="text-xs text-gray-500 mb-6">
+              <p className="text-xs text-gray-500 mb-2">
                 Error code: {this.state.errorCode}
+              </p>
+            )}
+            {this.state.error && (
+              <p className="text-xs text-gray-400 mb-6 font-mono break-all px-2">
+                {this.state.error.message}
               </p>
             )}
             <div className="flex flex-col gap-3">

@@ -2,6 +2,8 @@ import { createContext, useContext, useEffect, useState, useMemo, useCallback, u
 import { supabase } from '../lib/supabase';
 import type { User } from '@supabase/supabase-js';
 import { isStandaloneApp } from '../lib/appContext';
+import { startHealthMonitoring, subscribeToHealthState, retryWithBackoff } from '../lib/connectionHealth';
+import { logError, logWarning, logInfo } from '../lib/errorLogger';
 
 let getViewAsProfile: (() => any) | null = null;
 
@@ -61,8 +63,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       if (error) throw error;
       setProfile(data);
+      if (data) {
+        logInfo('Profile loaded successfully', {
+          component: 'AuthContext',
+          action: 'fetchProfile',
+          userId,
+        });
+      }
     } catch (error) {
-      console.error('Error fetching profile:', error);
+      logError(
+        'Failed to fetch profile',
+        error instanceof Error ? error : new Error(String(error)),
+        {
+          component: 'AuthContext',
+          action: 'fetchProfile',
+          userId,
+        }
+      );
       setProfile(null);
     }
   }, []);
@@ -78,17 +95,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     const initAuth = async () => {
       try {
-        // Phase 10: Reduced timeout from 10s to 5s for faster failure recovery
-        const timeoutPromise = new Promise((_, reject) =>
-          setTimeout(() => reject(new Error('Session check timeout')), 5000)
+        // Phase 11: Use retry with backoff for session check with timeout
+        const { data: { session }, error } = await retryWithBackoff(
+          async () => {
+            const timeoutPromise = new Promise<never>((_, reject) =>
+              setTimeout(() => reject(new Error('Session check timeout')), 5000)
+            );
+
+            const sessionPromise = supabase.auth.getSession();
+
+            return Promise.race([
+              sessionPromise,
+              timeoutPromise,
+            ]) as Promise<{ data: { session: any }; error: any }>;
+          },
+          3, // Max 3 retries
+          1000 // Initial 1s delay
         );
-
-        const sessionPromise = supabase.auth.getSession();
-
-        const { data: { session }, error } = await Promise.race([
-          sessionPromise,
-          timeoutPromise,
-        ]) as any;
 
         if (error) throw error;
 
@@ -104,14 +127,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             });
           }
         }
-      } catch (error) {
-        console.error('Auth initialization error:', error);
-        if (mounted) {
-          setUser(null);
-          setProfile(null);
-          setLoading(false);
+        } catch (error) {
+          logError(
+            'Auth initialization failed',
+            error instanceof Error ? error : new Error(String(error)),
+            {
+              component: 'AuthContext',
+              action: 'initAuth',
+              userId: user?.id,
+            }
+          );
+          if (mounted) {
+            setUser(null);
+            setProfile(null);
+            setLoading(false);
+          }
         }
-      }
     };
 
     initAuth();
@@ -151,16 +182,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             // Phase 3C: Session valid - ensure profile is loaded
             // Only fetch if profile is missing or user changed
             // Phase 10: Use ref to check profile without dependency
+            // Phase 11: Use retry with backoff for session validation
             const currentProfile = profileRef.current;
             if (!currentProfile || currentProfile.user_id !== session.user.id) {
-              // Fetch in background, don't block
-              fetchProfile(session.user.id).catch(err => {
+              // Fetch in background with retry, don't block
+              retryWithBackoff(
+                () => fetchProfile(session.user.id),
+                2, // Max 2 retries for profile fetch
+                500 // Initial 500ms delay
+              ).catch(err => {
                 console.error('Visibility change profile fetch error:', err);
               });
             }
           }
         } catch (error) {
-          console.error('Session check on visibility change failed:', error);
+          logError(
+            'Session check on visibility change failed',
+            error instanceof Error ? error : new Error(String(error)),
+            {
+              component: 'AuthContext',
+              action: 'handleVisibilityChange',
+              userId: user?.id,
+            }
+          );
         } finally {
           isCheckingVisibility = false;
         }

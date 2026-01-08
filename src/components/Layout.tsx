@@ -15,6 +15,8 @@ import { RegulationNotificationBanner } from './guardrails/regulation/Regulation
 import { FloatingAIChatWidget } from './ai-chat/FloatingAIChatWidget';
 import { OfflineIndicator } from './OfflineIndicator';
 import { AppUpdateBanner } from './system/AppUpdateBanner';
+import { DebugTrigger } from './system/DebugTrigger';
+import { ErrorIndicator } from './system/ErrorIndicator';
 
 type LayoutProps = {
   children: React.ReactNode;
@@ -701,6 +703,7 @@ export function Layout({ children }: LayoutProps) {
         {children}
       </main>
 
+      <ErrorIndicator />
       <RegulationNotificationBanner />
       {/* Hide AI chat widget on planner and spaces routes */}
       {!location.pathname.startsWith('/planner') && 
@@ -708,6 +711,7 @@ export function Layout({ children }: LayoutProps) {
        <FloatingAIChatWidget />}
       <OfflineIndicator />
       <AppUpdateBanner />
+      <DebugTrigger />
       <ToastContainer toasts={toasts} onDismiss={dismissToast} />
       {showLogoutConfirm && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">

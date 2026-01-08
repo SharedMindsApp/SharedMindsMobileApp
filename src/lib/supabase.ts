@@ -5,13 +5,29 @@ import { createClient } from '@supabase/supabase-js';
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
-// 🔥 Create a fully configured Supabase client
+// 🔥 Create a fully configured Supabase client with connection resilience
 export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   auth: {
     persistSession: true,        // Keep user logged in after refresh
     autoRefreshToken: true,      // Refresh JWT automatically
     detectSessionInUrl: true,    // Needed for OAuth callback redirect
     storage: localStorage,       // Use browser localStorage for session
+    storageKey: 'supabase.auth.token', // Explicit storage key
+    flowType: 'pkce',           // Use PKCE flow for better security
+  },
+  global: {
+    headers: {
+      'X-Client-Info': 'shared-minds-web',
+    },
+  },
+  // Enable realtime but with reconnection handling
+  realtime: {
+    params: {
+      eventsPerSecond: 10,
+    },
+  },
+  db: {
+    schema: 'public',
   },
 });
 

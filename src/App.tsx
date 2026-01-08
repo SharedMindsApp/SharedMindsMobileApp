@@ -15,6 +15,7 @@ import { NetworkStatusProvider } from './contexts/NetworkStatusContext';
 import { AppBootProvider, useAppBoot } from './contexts/AppBootContext';
 import { AppErrorBoundary } from './components/AppErrorBoundary';
 import { AppBootScreen } from './components/AppBootScreen';
+import { startHealthMonitoring } from './lib/connectionHealth';
 import { NotFoundRedirect } from './components/NotFoundRedirect';
 import { RootRedirect } from './components/RootRedirect';
 import { Layout } from './components/Layout';
@@ -240,6 +241,16 @@ function AppContent() {
       setStatus('ready');
     }
   }, [state.status, setStatus]);
+
+  // Phase 11: Start connection health monitoring when app is ready
+  useEffect(() => {
+    if (state.status === 'ready') {
+      startHealthMonitoring();
+      return () => {
+        // Cleanup will be handled when component unmounts
+      };
+    }
+  }, [state.status]);
 
   // Phase 10: Render app immediately, boot screen is shown as overlay during auth loading
   // This allows contexts to start initializing in parallel rather than sequentially
