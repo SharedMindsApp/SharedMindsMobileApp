@@ -5,10 +5,10 @@
  * Shows step-based messages and recovery options when loading exceeds thresholds.
  */
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useContext } from 'react';
 import { Loader2, AlertCircle, WifiOff, RefreshCw, RotateCcw, CheckCircle2, LogOut } from 'lucide-react';
 import { useAppBoot, LONG_LOADING_THRESHOLD_MS_EXPORT, FATAL_ERROR_THRESHOLD_MS_EXPORT } from '../contexts/AppBootContext';
-import { useAuth } from '../contexts/AuthContext';
+import { AuthContext } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
 
 const BOOT_STEPS = [
@@ -22,7 +22,10 @@ export function AppBootScreen() {
   const { state, retryBoot, resetApp, setStatus } = useAppBoot();
   const [currentStepIndex, setCurrentStepIndex] = useState(0);
   const [authStuck, setAuthStuck] = useState(false);
-  const authContext = useAuth();
+  
+  // FIXED: Make useAuth optional - AppBootScreen can be rendered outside AuthProvider
+  // Use useContext directly - it will return undefined if not inside provider (which is fine)
+  const authContext = useContext(AuthContext);
 
   // Phase 8: Progress through boot steps based on status
   useEffect(() => {
@@ -32,15 +35,17 @@ export function AppBootScreen() {
     }
   }, [state.status]);
 
-  // Detect stuck authentication state
+  // Detect stuck authentication state (only if auth context is available)
   useEffect(() => {
+    if (!authContext) return; // Skip if not inside AuthProvider
+    
     // If boot is ready but auth is still loading for too long, mark as stuck
     if (state.status === 'ready' && authContext.loading && state.elapsedTime > 10000) {
       setAuthStuck(true);
     } else {
       setAuthStuck(false);
     }
-  }, [state.status, state.elapsedTime, authContext.loading]);
+  }, [state.status, state.elapsedTime, authContext]);
 
   // Handle clearing auth and redirecting to login
   const handleClearAuthAndLogin = async () => {
@@ -180,7 +185,7 @@ export function AppBootScreen() {
   }
 
   // Phase 8: Stuck authentication state (boot ready but auth still loading)
-  if (authStuck || (state.status === 'ready' && authContext.loading && state.elapsedTime > 10000)) {
+  if (authStuck || (authContext && state.status === 'ready' && authContext.loading && state.elapsedTime > 10000)) {
     return (
       <div className="fixed inset-0 bg-gradient-to-br from-red-50 via-rose-50 to-pink-50 flex items-center justify-center p-4 z-50">
         <div className="max-w-md w-full bg-white rounded-xl shadow-lg p-6 text-center">
@@ -250,7 +255,7 @@ export function AppBootScreen() {
               >
                 Reload App
               </button>
-              {authContext.loading && state.elapsedTime > 8000 && (
+              {authContext && authContext.loading && state.elapsedTime > 8000 && (
                 <button
                   onClick={handleClearAuthAndLogin}
                   className="px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors text-sm font-medium flex items-center justify-center gap-2"

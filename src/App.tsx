@@ -283,10 +283,10 @@ function AppContent() {
           <AppBootScreen />
         </div>
       )}
-      {/* AppBootScreen also shows when auth is stuck, handled inside the component */}
-      <AppBootScreenWrapper />
     <BrowserRouter>
       <AuthProvider>
+        {/* AppBootScreen also shows when auth is stuck, must be inside AuthProvider */}
+        <AppBootScreenWrapper />
         <NotificationProvider>
           <ViewAsProvider>
             <ActiveDataProvider>

@@ -261,117 +261,116 @@ const handleAddWidget = async (type: WidgetType) => {
     return;
   }
 
-  try {
-    // --------------------------------------
-    // Generate initial content
-    // --------------------------------------
-    const content = getDefaultWidgetContent(type);
-    console.log("• Default widget content:", content);
+  // --------------------------------------
+  // Generate initial content
+  // --------------------------------------
+  const content = getDefaultWidgetContent(type);
+  console.log("• Default widget content:", content);
 
-    // --------------------------------------
-    // Build the creation payload explicitly
-    // (This lets us see exactly what Supabase will receive)
-    // --------------------------------------
-    const payloadPreview = {
-      household_id: householdId,
-      widget_type: type,
-      content,
-    };
+  // --------------------------------------
+  // Build the creation payload explicitly
+  // (This lets us see exactly what Supabase will receive)
+  // --------------------------------------
+  const payloadPreview = {
+    household_id: householdId,
+    widget_type: type,
+    content,
+  };
 
-    console.log("📦 Widget INSERT PAYLOAD:", payloadPreview);
+  console.log("📦 Widget INSERT PAYLOAD:", payloadPreview);
 
-    // Phase 5: State Management Resilience - Use optimistic update with rollback
-    // Map widget type to proper display name (same as in fridgeCanvas.ts)
-    const widgetTypeNames: Record<WidgetType, string> = {
-      note: 'Note',
-      task: 'Task',
-      reminder: 'Reminder',
-      calendar: 'Calendar',
-      goal: 'Goal',
-      habit: 'Habit',
-      habit_tracker: 'Habit Tracker',
-      achievements: 'Achievements',
-      photo: 'Photo',
-      insight: 'Insight',
-      agreement: 'Agreement',
-      meal_planner: 'Meal Planner',
-      grocery_list: 'Grocery List',
-      stack_card: 'Stack Cards',
-      files: 'Files',
-      collections: 'Collections',
-      tables: 'Tables',
-      todos: 'Todos',
-      custom: 'Custom Widget',
-    };
-    
-    const optimisticWidget: WidgetWithLayout = {
-      id: `temp-${Date.now()}`,
-      space_id: householdId,
-      created_by: '',
-      widget_type: type,
-      title: widgetTypeNames[type] || 'Widget',
-      content,
-      color: 'yellow',
-      icon: 'StickyNote',
+  // Phase 5: State Management Resilience - Use optimistic update with rollback
+  // Map widget type to proper display name (same as in fridgeCanvas.ts)
+  const widgetTypeNames: Record<WidgetType, string> = {
+    note: 'Note',
+    task: 'Task',
+    reminder: 'Reminder',
+    calendar: 'Calendar',
+    goal: 'Goal',
+    habit: 'Habit',
+    habit_tracker: 'Habit Tracker',
+    achievements: 'Achievements',
+    photo: 'Photo',
+    insight: 'Insight',
+    agreement: 'Agreement',
+    meal_planner: 'Meal Planner',
+    grocery_list: 'Grocery List',
+    stack_card: 'Stack Cards',
+    files: 'Files',
+    collections: 'Collections',
+    tables: 'Tables',
+    todos: 'Todos',
+    custom: 'Custom Widget',
+  };
+  
+  const optimisticWidget: WidgetWithLayout = {
+    id: `temp-${Date.now()}`,
+    space_id: householdId,
+    created_by: '',
+    widget_type: type,
+    title: widgetTypeNames[type] || 'Widget',
+    content,
+    color: 'yellow',
+    icon: 'StickyNote',
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+    deleted_at: null,
+    group_id: null,
+    layout: {
+      id: `temp-layout-${Date.now()}`,
+      widget_id: `temp-${Date.now()}`,
+      member_id: '',
+      position_x: 200,
+      position_y: 200,
+      size_mode: 'mini',
+      z_index: 1,
+      rotation: 0,
+      is_collapsed: false,
+      group_id: null,
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
-      deleted_at: null,
-      group_id: null,
-      layout: {
-        id: `temp-layout-${Date.now()}`,
-        widget_id: `temp-${Date.now()}`,
-        member_id: '',
-        position_x: 200,
-        position_y: 200,
-        size_mode: 'mini',
-        z_index: 1,
-        rotation: 0,
-        is_collapsed: false,
-        group_id: null,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      },
-    };
+    },
+  };
 
-    const result = await executeOptimisticUpdate(
-      `widget-create-${Date.now()}`,
-      widgets,
-      [...widgets, optimisticWidget],
-      setWidgets,
-      async () => {
-        const widget = await createWidget(householdId, type, content);
-        console.log("✅ Widget created successfully:", widget);
-        
-        // Replace optimistic widget with real widget
-        setWidgets((prev) => {
-          const filtered = prev.filter(w => w.id !== optimisticWidget.id);
-          return [...filtered, widget];
-        });
-        
-        // Phase 5: Validate state after creation
-        checkStateConsistency('widgets', [...filtered, widget], [
-          (w) => w.every(widget => widget.id && widget.layout?.id) || 'All widgets must have valid IDs',
-          (w) => {
-            const ids = w.map(widget => widget.id);
-            const uniqueIds = new Set(ids);
-            return ids.length === uniqueIds.size || 'Widget IDs must be unique';
-          },
-        ], { component: 'FridgeCanvas', action: 'createWidget' });
-      },
-      { component: 'FridgeCanvas', action: 'createWidget' }
-    );
-
-    if (!result.success) {
-      const message =
-        result.error?.message ||
-        "Failed to create widget due to an unknown error.";
-      console.error("❌ Error message returned:", message);
-      setError(message);
+  const result = await executeOptimisticUpdate(
+    `widget-create-${Date.now()}`,
+    widgets,
+    [...widgets, optimisticWidget],
+    setWidgets,
+    async () => {
+      const widget = await createWidget(householdId, type, content);
+      console.log("✅ Widget created successfully:", widget);
       
-      if (result.rolledBack) {
-        showToast('error', 'Widget creation failed. Changes have been reverted.');
-      }
+      // Replace optimistic widget with real widget
+      setWidgets((prev) => {
+        const filtered = prev.filter(w => w.id !== optimisticWidget.id);
+        return [...filtered, widget];
+      });
+      
+      // Phase 5: Validate state after creation
+      checkStateConsistency('widgets', [...filtered, widget], [
+        (w) => w.every(widget => widget.id && widget.layout?.id) || 'All widgets must have valid IDs',
+        (w) => {
+          const ids = w.map(widget => widget.id);
+          const uniqueIds = new Set(ids);
+          return ids.length === uniqueIds.size || 'Widget IDs must be unique';
+        },
+      ], { component: 'FridgeCanvas', action: 'createWidget' });
+    },
+    { component: 'FridgeCanvas', action: 'createWidget' }
+  );
+
+  if (!result.success) {
+    const message =
+      result.error?.message ||
+      "Failed to create widget due to an unknown error.";
+    console.error("❌ Error message returned:", message);
+    setError(message);
+    
+    if (result.rolledBack) {
+      showToast('error', 'Widget creation failed. Changes have been reverted.');
     }
+  }
 
   console.log("──────────────────────────────");
 };
