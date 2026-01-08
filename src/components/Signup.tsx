@@ -76,7 +76,7 @@ export function Signup() {
               <UserPlus size={32} className="text-blue-600" />
             </div>
             <h1 className="text-3xl font-bold text-gray-900 mb-2">Create Account</h1>
-            <p className="text-gray-600">Join SharedMind to get started</p>
+            <p className="text-gray-600">Join SharedMinds to get started</p>
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-5">

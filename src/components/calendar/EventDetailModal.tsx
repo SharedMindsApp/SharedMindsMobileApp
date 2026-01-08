@@ -10,7 +10,7 @@
  * Respects PermissionFlags for visibility, detail redaction, and editability.
  */
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { X, Edit2, Trash2, Lock, Share2, Calendar, Clock, MapPin, Eye, EyeOff } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { showToast } from '../Toast';
@@ -27,6 +27,7 @@ import { PermissionIndicator } from '../sharing/PermissionIndicator';
 import { PersonalEventModal } from '../personal-spaces/PersonalEventModal';
 import { TagPicker } from '../tags/TagPicker';
 import type { PermissionFlags } from '../../lib/permissions/types';
+import { BottomSheet } from '../shared/BottomSheet';
 
 export type EventDetailModalMode = 'month' | 'week' | 'day' | 'personalSpaces';
 
@@ -53,6 +54,15 @@ export function EventDetailModal({
   const [isEditing, setIsEditing] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [isMobile, setIsMobile] = useState(false);
+
+  // Mobile detection
+  useEffect(() => {
+    const checkMobile = () => setIsMobile(window.innerWidth < 768);
+    checkMobile();
+    window.addEventListener('resize', checkMobile);
+    return () => window.removeEventListener('resize', checkMobile);
+  }, []);
 
   const permissions = event.permissions;
   const canEdit = permissions?.can_edit ?? true;
@@ -208,201 +218,297 @@ export function EventDetailModal({
     );
   }
 
-  return (
+  // Render event content (shared between mobile and desktop)
+  const renderEventContent = () => (
     <>
-      {/* Phase 7A: Inline delete confirmation */}
-      {confirmDeleteDialog}
-      <div
-        className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
-        onClick={onClose}
-      >
-        <div
-          className="bg-white rounded-lg shadow-xl max-w-lg w-full max-h-[90vh] overflow-y-auto"
-          onClick={(e) => e.stopPropagation()}
-        >
-          {/* Header */}
-          <div className="sticky top-0 bg-white border-b border-gray-200 px-6 py-4 flex items-start justify-between z-10">
-            <div className="flex-1 min-w-0">
-              <h2 className="text-2xl font-bold text-gray-900 mb-2 truncate">{event.title}</h2>
-              
-              {/* Permission Banner */}
-              {permissionBanner && (
-                <div className={`flex items-center gap-1.5 text-sm ${permissionBanner.color} mb-2`}>
-                  <permissionBanner.icon size={14} />
-                  <span>{permissionBanner.text}</span>
-                  {isContextEvent && <Share2 size={12} className="ml-1" />}
-                </div>
-              )}
-
-              {/* Source Badge */}
-              <div className="flex items-center gap-2 flex-wrap">
-                {event.contextType && (
-                  <span className="px-2 py-1 bg-blue-100 text-blue-700 rounded text-xs font-medium">
-                    {event.contextType}
-                  </span>
-                )}
-                {event.sourceType === 'guardrails' && (
-                  <span className="px-2 py-1 bg-purple-100 text-purple-700 rounded text-xs font-medium">
-                    Guardrails
-                  </span>
-                )}
-                {event.event_scope === 'container' && (
-                  <span className="px-2 py-1 bg-gray-100 text-gray-700 rounded text-xs font-medium">
-                    Container
-                  </span>
-                )}
-                {event.event_scope === 'item' && (
-                  <span className="px-2 py-1 bg-gray-100 text-gray-700 rounded text-xs font-medium">
-                    Nested
-                  </span>
-                )}
-              </div>
-            </div>
-            {/* Phase 2D: Ensure close button is reachable and clear */}
-            <button
-              onClick={onClose}
-              className="text-gray-400 hover:text-gray-600 active:text-gray-700 ml-4 flex-shrink-0 p-2 rounded-lg hover:bg-gray-100 active:bg-gray-200 transition-colors min-w-[44px] min-h-[44px] flex items-center justify-center"
-              aria-label="Close event details"
-            >
-              <X size={24} />
-            </button>
-          </div>
-
-          {/* Content */}
-          <div className="px-6 py-4 space-y-4">
-            {/* Date/Time */}
-            <div className="space-y-2">
-              <div className="flex items-start gap-3">
-                <Calendar size={18} className="text-gray-400 mt-0.5 flex-shrink-0" />
-                <div className="flex-1">
-                  <div className="text-sm font-medium text-gray-700">Date & Time</div>
-                  <div className="text-sm text-gray-900 mt-1">
-                    {isAllDay ? (
-                      <>
-                        {formatDate(startDate)}
-                        {isMultiDay && endDate && (
-                          <> - {formatDate(endDate)}</>
-                        )}
-                        <span className="text-gray-500 ml-2">(All day)</span>
-                      </>
-                    ) : (
-                      <>
-                        {formatDate(startDate)} at {formatTime(startDate)}
-                        {endDate && (
-                          <> - {formatTime(endDate)}</>
-                        )}
-                      </>
-                    )}
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Description (redacted if overview) */}
-            {detailLevel === 'detailed' && event.description && (
-              <div className="space-y-2">
-                <div className="text-sm font-medium text-gray-700">Description</div>
-                <p className="text-sm text-gray-600 whitespace-pre-wrap">{event.description}</p>
-              </div>
-            )}
-
-            {detailLevel === 'overview' && (
-              <div className="text-sm text-gray-500 italic">
-                Detailed information is not available with your current access level.
-              </div>
-            )}
-
-            {/* Tags (read-only display) */}
-            {FEATURE_CONTEXT_TAGGING && event.is_derived_instance && event.activity_id && (
-              <div className="space-y-2">
-                <div className="text-sm font-medium text-gray-700">Tags</div>
-                <TagPicker
-                  userId={userId}
-                  entityType={
-                    event.derived_type === 'habit_instance' ? 'habit' :
-                    event.derived_type === 'goal_marker' ? 'goal' :
-                    'activity'
-                  }
-                  entityId={event.activity_id}
-                  permissions={{
-                    ...permissions,
-                    can_edit: false, // Read-only in calendar
-                    can_manage: false,
-                  }}
-                  compact={true}
-                />
-              </div>
-            )}
-
-            {/* Error Message */}
-            {error && (
-              <div className="bg-red-50 border border-red-200 rounded-lg p-3">
-                <div className="text-sm text-red-800">{error}</div>
-              </div>
-            )}
-
-            {/* Actions */}
-            <div className="flex items-center gap-2 pt-4 border-t border-gray-200">
-              {canEdit && (
-                <button
-                  onClick={handleEdit}
-                  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center gap-2"
-                >
-                  <Edit2 size={16} />
-                  Edit
-                </button>
-              )}
-              {canManage && (
-                <button
-                  onClick={handleDelete}
-                  disabled={isDeleting}
-                  className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50 flex items-center gap-2"
-                >
-                  <Trash2 size={16} />
-                  {isDeleting ? 'Deleting...' : 'Delete'}
-                </button>
-              )}
-              {isContextEvent && isOwner && (
-                <button
-                  onClick={openSharing}
-                  className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 flex items-center gap-2"
-                >
-                  <Share2 size={16} />
-                  Share
-                </button>
-              )}
-              {!canEdit && (
-                <div className="flex items-center gap-2 text-sm text-gray-500">
-                  <Lock size={14} />
-                  <span>Read-only access</span>
-                </div>
+      {/* Date/Time */}
+      <div className="space-y-2">
+        <div className="flex items-start gap-3">
+          <Calendar size={18} className="text-gray-400 mt-0.5 flex-shrink-0" />
+          <div className="flex-1">
+            <div className="text-sm font-medium text-gray-700">Date & Time</div>
+            <div className="text-sm text-gray-900 mt-1">
+              {isAllDay ? (
+                <>
+                  {formatDate(startDate)}
+                  {isMultiDay && endDate && (
+                    <> - {formatDate(endDate)}</>
+                  )}
+                  <span className="text-gray-500 ml-2">(All day)</span>
+                </>
+              ) : (
+                <>
+                  {formatDate(startDate)} at {formatTime(startDate)}
+                  {endDate && (
+                    <> - {formatTime(endDate)}</>
+                  )}
+                </>
               )}
             </div>
-
-            {/* Navigation Actions */}
-            {mode !== 'day' && (
-              <div className="flex items-center gap-2 pt-2 border-t border-gray-100">
-                <button
-                  onClick={handleGoToDay}
-                  className="text-sm text-blue-600 hover:text-blue-700 flex items-center gap-1"
-                >
-                  <Clock size={14} />
-                  Go to Day View
-                </button>
-                {mode !== 'week' && (
-                  <button
-                    onClick={handleGoToWeek}
-                    className="text-sm text-blue-600 hover:text-blue-700 flex items-center gap-1"
-                  >
-                    <Calendar size={14} />
-                    Go to Week View
-                  </button>
-                )}
-              </div>
-            )}
           </div>
         </div>
       </div>
+
+      {/* Description (redacted if overview) */}
+      {detailLevel === 'detailed' && event.description && (
+        <div className="space-y-2">
+          <div className="text-sm font-medium text-gray-700">Description</div>
+          <p className="text-sm text-gray-600 whitespace-pre-wrap">{event.description}</p>
+        </div>
+      )}
+
+      {detailLevel === 'overview' && (
+        <div className="text-sm text-gray-500 italic">
+          Detailed information is not available with your current access level.
+        </div>
+      )}
+
+      {/* Tags (read-only display) */}
+      {FEATURE_CONTEXT_TAGGING && event.is_derived_instance && event.activity_id && (
+        <div className="space-y-2">
+          <div className="text-sm font-medium text-gray-700">Tags</div>
+          <TagPicker
+            userId={userId}
+            entityType={
+              event.derived_type === 'habit_instance' ? 'habit' :
+              event.derived_type === 'goal_marker' ? 'goal' :
+              'activity'
+            }
+            entityId={event.activity_id}
+            permissions={{
+              ...permissions,
+              can_edit: false, // Read-only in calendar
+              can_manage: false,
+            }}
+            compact={true}
+          />
+        </div>
+      )}
+
+      {/* Error Message */}
+      {error && (
+        <div className="bg-red-50 border border-red-200 rounded-lg p-3">
+          <div className="text-sm text-red-800">{error}</div>
+        </div>
+      )}
+
+      {/* Navigation Actions */}
+      {mode !== 'day' && (
+        <div className="flex items-center gap-2 pt-2 border-t border-gray-100">
+          <button
+            onClick={handleGoToDay}
+            className="text-sm text-blue-600 hover:text-blue-700 flex items-center gap-1"
+          >
+            <Clock size={14} />
+            Go to Day View
+          </button>
+          {mode !== 'week' && (
+            <button
+              onClick={handleGoToWeek}
+              className="text-sm text-blue-600 hover:text-blue-700 flex items-center gap-1"
+            >
+              <Calendar size={14} />
+              Go to Week View
+            </button>
+          )}
+        </div>
+      )}
+    </>
+  );
+
+  // Render header (shared between mobile and desktop)
+  const renderHeader = () => (
+    <div className="flex-1 min-w-0">
+      <h2 className={`${isMobile ? 'text-xl' : 'text-2xl'} font-bold text-gray-900 mb-2 truncate`}>{event.title}</h2>
+      
+      {/* Time display in header for mobile */}
+      {isMobile && (
+        <div className="text-sm text-gray-600 mb-2">
+          {isAllDay ? (
+            <>
+              {formatDate(startDate)}
+              {isMultiDay && endDate && <> - {formatDate(endDate)}</>}
+              <span className="text-gray-500 ml-2">(All day)</span>
+            </>
+          ) : (
+            <>
+              {formatDate(startDate)} at {formatTime(startDate)}
+              {endDate && <> - {formatTime(endDate)}</>}
+            </>
+          )}
+        </div>
+      )}
+      
+      {/* Permission Banner */}
+      {permissionBanner && (
+        <div className={`flex items-center gap-1.5 text-sm ${permissionBanner.color} mb-2`}>
+          <permissionBanner.icon size={14} />
+          <span>{permissionBanner.text}</span>
+          {isContextEvent && <Share2 size={12} className="ml-1" />}
+        </div>
+      )}
+
+      {/* Source Badge */}
+      <div className="flex items-center gap-2 flex-wrap">
+        {event.contextType && (
+          <span className="px-2 py-1 bg-blue-100 text-blue-700 rounded text-xs font-medium">
+            {event.contextType}
+          </span>
+        )}
+        {event.sourceType === 'guardrails' && (
+          <span className="px-2 py-1 bg-purple-100 text-purple-700 rounded text-xs font-medium">
+            Guardrails
+          </span>
+        )}
+        {event.event_scope === 'container' && (
+          <span className="px-2 py-1 bg-gray-100 text-gray-700 rounded text-xs font-medium">
+            Container
+          </span>
+        )}
+        {event.event_scope === 'item' && (
+          <span className="px-2 py-1 bg-gray-100 text-gray-700 rounded text-xs font-medium">
+            Nested
+          </span>
+        )}
+      </div>
+    </div>
+  );
+
+  // Render footer actions (shared between mobile and desktop)
+  const renderFooter = () => (
+    <div className="flex items-center gap-2 flex-wrap">
+      {canEdit && (
+        <button
+          onClick={handleEdit}
+          className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center gap-2 min-h-[44px] flex-1 justify-center"
+        >
+          <Edit2 size={16} />
+          Edit
+        </button>
+      )}
+      {canManage && (
+        <button
+          onClick={handleDelete}
+          disabled={isDeleting}
+          className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50 flex items-center gap-2 min-h-[44px] flex-1 justify-center"
+        >
+          <Trash2 size={16} />
+          {isDeleting ? 'Deleting...' : 'Delete'}
+        </button>
+      )}
+      {isContextEvent && isOwner && (
+        <button
+          onClick={openSharing}
+          className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 flex items-center gap-2 min-h-[44px] flex-1 justify-center"
+        >
+          <Share2 size={16} />
+          Share
+        </button>
+      )}
+      {!canEdit && (
+        <div className="flex items-center gap-2 text-sm text-gray-500 w-full justify-center">
+          <Lock size={14} />
+          <span>Read-only access</span>
+        </div>
+      )}
+    </div>
+  );
+
+  return (
+    <>
+      {/* Phase 7A: Inline delete confirmation */}
+      <ConfirmDialogInline
+        isOpen={showDeleteConfirm}
+        message="Are you sure you want to delete this event? This action cannot be undone."
+        confirmText="Delete"
+        cancelText="Cancel"
+        variant="danger"
+        onConfirm={confirmDelete}
+        onCancel={() => setShowDeleteConfirm(false)}
+      />
+
+      {/* Mobile: Use BottomSheet */}
+      {isMobile ? (
+        <BottomSheet
+          isOpen={isOpen}
+          onClose={onClose}
+          title={event.title}
+          header={renderHeader()}
+          footer={renderFooter()}
+          maxHeight="90vh"
+        >
+          <div className="space-y-4">
+            {renderEventContent()}
+          </div>
+        </BottomSheet>
+      ) : (
+        /* Desktop: Use existing modal */
+        <div
+          className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
+          onClick={onClose}
+        >
+          <div
+            className="bg-white rounded-lg shadow-xl max-w-lg w-full max-h-[90vh] overflow-y-auto"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div className="sticky top-0 bg-white border-b border-gray-200 px-6 py-4 flex items-start justify-between z-10">
+              {renderHeader()}
+              {/* Phase 2D: Ensure close button is reachable and clear */}
+              <button
+                onClick={onClose}
+                className="text-gray-400 hover:text-gray-600 active:text-gray-700 ml-4 flex-shrink-0 p-2 rounded-lg hover:bg-gray-100 active:bg-gray-200 transition-colors min-w-[44px] min-h-[44px] flex items-center justify-center"
+                aria-label="Close event details"
+              >
+                <X size={24} />
+              </button>
+            </div>
+
+            {/* Content */}
+            <div className="px-6 py-4 space-y-4">
+              {renderEventContent()}
+              
+              {/* Actions (desktop: inline) */}
+              <div className="flex items-center gap-2 pt-4 border-t border-gray-200">
+                {canEdit && (
+                  <button
+                    onClick={handleEdit}
+                    className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center gap-2"
+                  >
+                    <Edit2 size={16} />
+                    Edit
+                  </button>
+                )}
+                {canManage && (
+                  <button
+                    onClick={handleDelete}
+                    disabled={isDeleting}
+                    className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50 flex items-center gap-2"
+                  >
+                    <Trash2 size={16} />
+                    {isDeleting ? 'Deleting...' : 'Delete'}
+                  </button>
+                )}
+                {isContextEvent && isOwner && (
+                  <button
+                    onClick={openSharing}
+                    className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 flex items-center gap-2"
+                  >
+                    <Share2 size={16} />
+                    Share
+                  </button>
+                )}
+                {!canEdit && (
+                  <div className="flex items-center gap-2 text-sm text-gray-500">
+                    <Lock size={14} />
+                    <span>Read-only access</span>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Sharing Drawer */}
       {isSharingOpen && sharingAdapter && (

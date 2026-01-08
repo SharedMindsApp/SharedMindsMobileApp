@@ -23,3 +23,4 @@ CHECK (domain_type IN ('work', 'personal', 'passion', 'startup', 'creative', 'he
 
 
 
+

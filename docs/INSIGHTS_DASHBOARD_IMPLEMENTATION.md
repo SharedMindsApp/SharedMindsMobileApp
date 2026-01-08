@@ -2,7 +2,7 @@
 
 ## Overview
 
-The Insights Dashboard is the emotional center of SharedMind - a beautiful, visual analytics hub that shows how your household is growing, improving, and supporting each other. This creates the "wow" moment that makes families fall in love with the app.
+The Insights Dashboard is the emotional center of SharedMinds - a beautiful, visual analytics hub that shows how your household is growing, improving, and supporting each other. This creates the "wow" moment that makes families fall in love with the app.
 
 ## Visual Design Philosophy
 

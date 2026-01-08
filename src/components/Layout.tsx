@@ -14,6 +14,7 @@ import { ALL_NAVIGATION_TABS, DEFAULT_FAVOURITE_NAV_TABS } from '../lib/uiPrefer
 import { RegulationNotificationBanner } from './guardrails/regulation/RegulationNotificationBanner';
 import { FloatingAIChatWidget } from './ai-chat/FloatingAIChatWidget';
 import { OfflineIndicator } from './OfflineIndicator';
+import { AppUpdateBanner } from './system/AppUpdateBanner';
 
 type LayoutProps = {
   children: React.ReactNode;
@@ -234,7 +235,7 @@ export function Layout({ children }: LayoutProps) {
               </button>
 
               <div>
-                <h1 className="text-lg md:text-xl font-bold text-gray-900">SharedMind</h1>
+                <h1 className="text-lg md:text-xl font-bold text-gray-900">SharedMinds</h1>
                 {household && (
                   <p className="text-xs text-gray-500">{household.name}</p>
                 )}
@@ -701,8 +702,12 @@ export function Layout({ children }: LayoutProps) {
       </main>
 
       <RegulationNotificationBanner />
-      <FloatingAIChatWidget />
+      {/* Hide AI chat widget on planner and spaces routes */}
+      {!location.pathname.startsWith('/planner') && 
+       !location.pathname.startsWith('/spaces') && 
+       <FloatingAIChatWidget />}
       <OfflineIndicator />
+      <AppUpdateBanner />
       <ToastContainer toasts={toasts} onDismiss={dismissToast} />
       {showLogoutConfirm && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">

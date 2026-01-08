@@ -7,6 +7,7 @@ import { getTracksTree } from '../../../lib/guardrails/tracksHierarchy';
 import { useActiveTrack } from '../../../contexts/ActiveTrackContext';
 import { ProjectHeaderTabs } from '../ProjectHeaderTabs';
 import { TaskFlowBoardWithTracks } from './TaskFlowBoardWithTracks';
+import { TaskFlowMobileList } from './TaskFlowMobileList';
 
 interface TaskFlowPageProps {
   masterProjectId: string;
@@ -20,6 +21,7 @@ export function TaskFlowPage({ masterProjectId, masterProjectName }: TaskFlowPag
   const [tracks, setTracks] = useState<TrackTreeNode[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [isMobile, setIsMobile] = useState(false);
 
   const loadData = async () => {
     setLoading(true);
@@ -51,6 +53,14 @@ export function TaskFlowPage({ masterProjectId, masterProjectName }: TaskFlowPag
   useEffect(() => {
     loadData();
   }, [masterProjectId]);
+
+  // Mobile detection
+  useEffect(() => {
+    const checkMobile = () => setIsMobile(window.innerWidth < 768);
+    checkMobile();
+    window.addEventListener('resize', checkMobile);
+    return () => window.removeEventListener('resize', checkMobile);
+  }, []);
 
   const filteredItems = useMemo(() => {
     if (!activeTrackId) return items;
@@ -174,20 +184,33 @@ export function TaskFlowPage({ masterProjectId, masterProjectName }: TaskFlowPag
         </div>
       )}
 
-      <div className="bg-white border-b border-gray-200 px-6 py-2">
-        <p className="text-sm text-gray-600">
-          {activeTrackId
-            ? `Showing ${filteredItems.length} task${filteredItems.length !== 1 ? 's' : ''} in this track`
-            : 'Drag tasks between tracks to organize your work'}
-        </p>
-      </div>
+      {/* Desktop-only header text */}
+      {!isMobile && (
+        <div className="bg-white border-b border-gray-200 px-6 py-2">
+          <p className="text-sm text-gray-600">
+            {activeTrackId
+              ? `Showing ${filteredItems.length} task${filteredItems.length !== 1 ? 's' : ''} in this track`
+              : 'Drag tasks between tracks to organize your work'}
+          </p>
+        </div>
+      )}
 
-      <TaskFlowBoardWithTracks
-        items={filteredItems}
-        sections={sections}
-        onRefresh={loadData}
-        masterProjectId={masterProjectId}
-      />
+      {/* Desktop: Kanban Board with Tracks */}
+      {!isMobile ? (
+        <TaskFlowBoardWithTracks
+          items={filteredItems}
+          sections={sections}
+          onRefresh={loadData}
+          masterProjectId={masterProjectId}
+        />
+      ) : (
+        /* Mobile: Single-column Status-first View */
+        <TaskFlowMobileList
+          items={filteredItems}
+          sections={sections}
+          onRefresh={loadData}
+        />
+      )}
     </div>
   );
 }

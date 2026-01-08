@@ -56,7 +56,8 @@ export function MobileHomeScreen({ onAppOpen }: MobileHomeScreenProps) {
           color: metadata?.color || 'bg-gray-500',
           widgetId: item.widget_id || undefined,
           folderId: item.folder_id || undefined,
-          badge: 0
+          // Phase 9A: No badge unless real data exists
+          badge: undefined
         };
       });
 

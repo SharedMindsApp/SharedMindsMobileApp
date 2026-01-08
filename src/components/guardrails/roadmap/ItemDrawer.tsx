@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { X, Trash2, Save, Share2, CheckCircle2 } from 'lucide-react';
 import type { RoadmapItem, RoadmapItemStatus, Track } from '../../../lib/guardrails';
 import { updateRoadmapItem, deleteRoadmapItem } from '../../../lib/guardrails';
@@ -8,6 +8,9 @@ import { syncToPersonalSpace, removeFromPersonalSpace } from '../../../lib/space
 import { ShareToSpaceModal } from '../../shared/ShareToSpaceModal';
 import { getTaskFlowTaskForRoadmapItem, isRoadmapItemTaskFlowEligible } from '../../../lib/guardrails/taskFlowSyncService';
 import type { TaskFlowTask } from '../../../lib/guardrails/taskFlowTypes';
+import { BottomSheet } from '../../shared/BottomSheet';
+import { ConfirmDialogInline } from '../../ConfirmDialogInline';
+import { showToast } from '../../Toast';
 
 interface ItemDrawerProps {
   item: RoadmapItem;
@@ -34,6 +37,15 @@ export function ItemDrawer({ item, isOpen, onClose, onUpdate, tracks = [] }: Ite
   const [loading, setLoading] = useState(false);
   const [showShareModal, setShowShareModal] = useState(false);
   const [taskFlowTask, setTaskFlowTask] = useState<TaskFlowTask | null>(null);
+  const [isMobile, setIsMobile] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+
+  useEffect(() => {
+    const checkMobile = () => setIsMobile(window.innerWidth < 768);
+    checkMobile();
+    window.addEventListener('resize', checkMobile);
+    return () => window.removeEventListener('resize', checkMobile);
+  }, []);
 
   useEffect(() => {
     if (isOpen) {
@@ -61,7 +73,7 @@ export function ItemDrawer({ item, isOpen, onClose, onUpdate, tracks = [] }: Ite
     if (!title.trim() || loading) return;
 
     if (endDate && startDate && new Date(endDate) < new Date(startDate)) {
-      alert('End date must be after start date');
+      showToast('error', 'End date must be after start date');
       return;
     }
 
@@ -87,55 +99,45 @@ export function ItemDrawer({ item, isOpen, onClose, onUpdate, tracks = [] }: Ite
 
       onUpdate();
       onClose();
+      showToast('success', 'Item updated successfully');
     } catch (error) {
       console.error('Failed to update item:', error);
-      alert('Failed to update item. Please try again.');
+      showToast('error', 'Failed to update item. Please try again.');
     } finally {
       setLoading(false);
     }
   };
 
-  const handleDelete = async () => {
+  const handleDelete = () => {
     if (loading) return;
+    setShowDeleteConfirm(true);
+  };
 
-    if (!confirm(`Are you sure you want to delete "${item.title}"?`)) {
-      return;
-    }
-
+  const confirmDelete = async () => {
+    setShowDeleteConfirm(false);
     setLoading(true);
     try {
       await deleteRoadmapItem(item.id);
       await removeFromPersonalSpace('roadmap_item', item.id);
       onUpdate();
       onClose();
+      showToast('success', 'Item deleted successfully');
     } catch (error) {
       console.error('Failed to delete item:', error);
-      alert('Failed to delete item. Please try again.');
+      showToast('error', 'Failed to delete item. Please try again.');
     } finally {
       setLoading(false);
     }
   };
 
-  if (!isOpen) return null;
+  const renderHeader = useCallback(() => (
+    <div className="flex items-center justify-between">
+      <h2 className="text-lg font-semibold text-gray-900">Edit Roadmap Item</h2>
+    </div>
+  ), []);
 
-  return (
-    <>
-      <div
-        className="fixed inset-0 bg-black bg-opacity-30 z-40"
-        onClick={onClose}
-      />
-      <div className="fixed right-0 top-0 bottom-0 w-96 bg-white shadow-2xl z-50 flex flex-col">
-        <div className="flex items-center justify-between p-4 border-b border-gray-200">
-          <h2 className="text-lg font-semibold text-gray-900">Edit Roadmap Item</h2>
-          <button
-            onClick={onClose}
-            className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg"
-          >
-            <X size={20} />
-          </button>
-        </div>
-
-        <div className="flex-1 overflow-y-auto p-4 space-y-4">
+  const renderContent = useCallback(() => (
+    <div className="space-y-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
               Title
@@ -244,9 +246,11 @@ export function ItemDrawer({ item, isOpen, onClose, onUpdate, tracks = [] }: Ite
           <div className="pt-2 text-xs text-gray-500">
             <p>Duration: {formatDateRange(startDate, endDate)}</p>
           </div>
-        </div>
+    </div>
+  ), [title, description, startDate, endDate, status, trackId, loading, tracks, taskFlowTask, setTitle, setDescription, setStartDate, setEndDate, setStatus, setTrackId]);
 
-        <div className="p-4 border-t border-gray-200 space-y-2">
+  const renderFooter = useCallback(() => (
+    <div className="space-y-2">
           <button
             onClick={handleSave}
             className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50"
@@ -274,7 +278,61 @@ export function ItemDrawer({ item, isOpen, onClose, onUpdate, tracks = [] }: Ite
             Delete Item
           </button>
         </div>
-      </div>
+  ), [handleSave, handleDelete, loading, title, setShowShareModal]);
+
+  if (!isOpen) return null;
+
+  return (
+    <>
+      <ConfirmDialogInline
+        isOpen={showDeleteConfirm}
+        message={`Are you sure you want to delete "${item.title}"? This action cannot be undone.`}
+        confirmText="Delete"
+        cancelText="Cancel"
+        variant="danger"
+        onConfirm={confirmDelete}
+        onCancel={() => setShowDeleteConfirm(false)}
+      />
+
+      {isMobile ? (
+        <BottomSheet
+          isOpen={isOpen}
+          onClose={onClose}
+          header={renderHeader()}
+          footer={renderFooter()}
+          maxHeight="90vh"
+          showCloseButton={true}
+          closeOnBackdrop={!loading}
+          preventClose={loading}
+        >
+          {renderContent()}
+        </BottomSheet>
+      ) : (
+        <>
+          <div
+            className="fixed inset-0 bg-black bg-opacity-30 z-40"
+            onClick={onClose}
+          />
+          <div className="fixed right-0 top-0 bottom-0 w-96 bg-white shadow-2xl z-50 flex flex-col">
+            <div className="flex items-center justify-between p-4 border-b border-gray-200">
+              {renderHeader()}
+              <button
+                onClick={onClose}
+                className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg"
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-4">
+              {renderContent()}
+            </div>
+            <div className="p-4 border-t border-gray-200">
+              {renderFooter()}
+            </div>
+          </div>
+        </>
+      )}
 
       <ShareToSpaceModal
         isOpen={showShareModal}

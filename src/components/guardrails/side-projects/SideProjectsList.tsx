@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Sparkles, Plus, Filter, ArrowUpDown } from 'lucide-react';
 import { SideProjectCard } from './SideProjectCard';
+import { SideProjectsMobileList } from './SideProjectsMobileList';
 import { CreateSideProjectModal } from './CreateSideProjectModal';
 import { useActiveDataContext } from '../../../state/useActiveDataContext';
 import { getMasterProjects } from '../../../lib/guardrails';
@@ -22,6 +23,7 @@ export function SideProjectsList() {
   const [loading, setLoading] = useState(true);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [sortBy, setSortBy] = useState<'recent' | 'name' | 'items'>('recent');
+  const [isMobile, setIsMobile] = useState(false);
 
   useEffect(() => {
     console.log('[SideProjectsList] activeProjectId from ADC:', activeProjectId);
@@ -47,6 +49,14 @@ export function SideProjectsList() {
       setLoading(false);
     }
   }, [activeProject]);
+
+  // Mobile detection
+  useEffect(() => {
+    const checkMobile = () => setIsMobile(window.innerWidth < 768);
+    checkMobile();
+    window.addEventListener('resize', checkMobile);
+    return () => window.removeEventListener('resize', checkMobile);
+  }, []);
 
   async function loadSideProjects() {
     if (!activeProject) return;
@@ -151,6 +161,39 @@ export function SideProjectsList() {
     );
   }
 
+  // Mobile view
+  if (isMobile) {
+    return (
+      <div className="h-screen flex flex-col bg-gray-50">
+        <div className="bg-white border-b border-gray-200 px-6 py-4">
+          <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
+            <Sparkles size={24} className="text-purple-600" />
+            Side Projects
+          </h1>
+          <p className="text-sm text-gray-600 mt-1">
+            Review and decide on exploratory work
+          </p>
+        </div>
+
+        {loading ? (
+          <div className="flex-1 flex items-center justify-center">
+            <div className="text-center">
+              <div className="w-12 h-12 border-4 border-purple-600 border-t-transparent rounded-full animate-spin mx-auto mb-4" />
+              <p className="text-gray-600">Loading side projects...</p>
+            </div>
+          </div>
+        ) : (
+          <SideProjectsMobileList
+            projects={sideProjects}
+            activeProject={activeProject}
+            onRefresh={loadSideProjects}
+          />
+        )}
+      </div>
+    );
+  }
+
+  // Desktop view (unchanged)
   if (loading) {
     return (
       <div className="p-8">

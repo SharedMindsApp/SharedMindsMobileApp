@@ -29,6 +29,8 @@ import { supabase } from '../../lib/supabase';
 import { CalendarEventPill } from '../calendar/CalendarEventPill';
 import { DayPeekPanel } from '../calendar/DayPeekPanel';
 import { QuickAddPopover } from '../calendar/QuickAddPopover';
+import { QuickAddBottomSheet } from './mobile/QuickAddBottomSheet';
+import { MonthlyPlannerMobile } from './mobile/MonthlyPlannerMobile';
 import { EventDetailModal } from '../calendar/EventDetailModal';
 import { useCalendarNavigation } from '../../hooks/useCalendarNavigation';
 import { splitEventsForMonthView, getEventsForDate, getContainerSegmentsForWeek } from '../../lib/calendar/eventSegmentation';
@@ -84,6 +86,9 @@ export function PlannerMonthly() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   // Phase 7A: Mobile detection and disclaimer
   const [isMobile, setIsMobile] = useState(false);
+  // Phase 10A: Swipe navigation state
+  const [swipeStart, setSwipeStart] = useState<{ x: number; y: number; time: number } | null>(null);
+  const [swipeOffset, setSwipeOffset] = useState(0);
   const [showMobileDisclaimer, setShowMobileDisclaimer] = useState(() => {
     if (typeof window === 'undefined') return false;
     const dismissed = sessionStorage.getItem('planner_monthly_mobile_disclaimer_dismissed');
@@ -102,6 +107,14 @@ export function PlannerMonthly() {
       loadMonthlyData();
     }
   }, [user, selectedDate]);
+
+  // Mobile detection
+  useEffect(() => {
+    const checkMobile = () => setIsMobile(window.innerWidth < 768);
+    checkMobile();
+    window.addEventListener('resize', checkMobile);
+    return () => window.removeEventListener('resize', checkMobile);
+  }, []);
 
   // Subscribe to activity changes for live sync
   useEffect(() => {
@@ -355,6 +368,57 @@ export function PlannerMonthly() {
     setSelectedDate(newDate);
   };
 
+  // Phase 10A: Swipe navigation handlers (mobile only)
+  const handleTouchStart = (e: React.TouchEvent) => {
+    if (!isMobile) return;
+    setSwipeStart({
+      x: e.touches[0].clientX,
+      y: e.touches[0].clientY,
+      time: Date.now(),
+    });
+    setSwipeOffset(0);
+  };
+
+  const handleTouchMove = (e: React.TouchEvent) => {
+    if (!isMobile || !swipeStart) return;
+    
+    const deltaX = e.touches[0].clientX - swipeStart.x;
+    const deltaY = e.touches[0].clientY - swipeStart.y;
+    
+    // Only apply visual feedback for horizontal swipes
+    if (Math.abs(deltaX) > Math.abs(deltaY)) {
+      // Limit offset to prevent over-swiping
+      const maxOffset = 100;
+      setSwipeOffset(Math.max(-maxOffset, Math.min(maxOffset, deltaX * 0.3)));
+    }
+  };
+
+  const handleTouchEnd = (e: React.TouchEvent) => {
+    if (!isMobile || !swipeStart) {
+      setSwipeOffset(0);
+      return;
+    }
+    
+    const deltaX = e.changedTouches[0].clientX - swipeStart.x;
+    const deltaY = e.changedTouches[0].clientY - swipeStart.y;
+    const deltaTime = Date.now() - swipeStart.time;
+    
+    // Reset visual feedback
+    setSwipeOffset(0);
+    setSwipeStart(null);
+    
+    // Only trigger if horizontal swipe (ignore vertical scrolling)
+    if (Math.abs(deltaX) > Math.abs(deltaY) && Math.abs(deltaX) > 50 && deltaTime < 300) {
+      if (deltaX > 0) {
+        // Swipe right = previous month
+        navigateMonth('prev');
+      } else {
+        // Swipe left = next month
+        navigateMonth('next');
+      }
+    }
+  };
+
   const currentMonth = selectedDate.toLocaleDateString('en-US', { month: 'long' });
   const currentYear = selectedDate.getFullYear();
 
@@ -446,34 +510,120 @@ export function PlannerMonthly() {
     setSelectedDate(newDate);
   };
 
+  // Mobile-first layout
+  if (isMobile) {
+    return (
+      <PlannerShell>
+        <div 
+          className="max-w-full h-screen-safe flex flex-col"
+          onTouchStart={handleTouchStart}
+          onTouchMove={handleTouchMove}
+          onTouchEnd={handleTouchEnd}
+          style={{
+            transform: swipeOffset !== 0 ? `translateX(${swipeOffset}px)` : undefined,
+            transition: swipeOffset === 0 ? 'transform 0.2s ease-out' : 'none',
+          }}
+        >
+          {/* Subtle guidance banner (dismissible) */}
+          {showMobileDisclaimer && (
+            <div className="px-4 pt-2 pb-1">
+              <div className="bg-blue-50/80 border border-blue-200/50 rounded-lg px-3 py-2 flex items-center justify-between">
+                <p className="text-xs text-blue-700 flex-1">
+                  Tap a day to add events. Advanced editing works best on desktop.
+                </p>
+                <button
+                  onClick={() => {
+                    setShowMobileDisclaimer(false);
+                    sessionStorage.setItem('planner_monthly_mobile_disclaimer_dismissed', 'true');
+                  }}
+                  className="text-blue-400 hover:text-blue-600 transition-colors flex-shrink-0 ml-2"
+                  aria-label="Dismiss"
+                >
+                  <X size={14} />
+                </button>
+              </div>
+            </div>
+          )}
+
+          <MonthlyPlannerMobile
+            selectedDate={selectedDate}
+            currentMonth={currentMonth}
+            currentYear={currentYear}
+            weeks={weeks}
+            events={filteredEvents}
+            entry={entry}
+            todos={todos}
+            newTodoTitle={newTodoTitle}
+            searchQuery={searchQuery}
+            isToday={(day) => {
+              return day > 0 && day === new Date().getDate() && 
+                selectedDate.getMonth() === new Date().getMonth() && 
+                selectedDate.getFullYear() === new Date().getFullYear();
+            }}
+            getEventsForDay={getEventsForDay}
+            onNavigateMonth={navigateMonth}
+            onJumpToMonth={jumpToMonth}
+            onGoToToday={goToToday}
+            onDayClick={(day) => {
+              const date = new Date(selectedDate.getFullYear(), selectedDate.getMonth(), day);
+              setQuickAddDate(date);
+            }}
+            onEventClick={setSelectedEvent}
+            onSearchChange={setSearchQuery}
+            onAddTodo={handleAddTodo}
+            onTodoTitleChange={setNewTodoTitle}
+            onToggleTodo={handleToggleTodo}
+            onDeleteTodo={handleDeleteTodo}
+            onNotesChange={saveNotes}
+          />
+
+          {/* Mobile: Quick Add BottomSheet */}
+          {quickAddDate && user && (
+            <QuickAddBottomSheet
+              isOpen={!!quickAddDate}
+              onClose={() => setQuickAddDate(null)}
+              onEventCreated={loadMonthlyData}
+              userId={user.id}
+              date={quickAddDate}
+            />
+          )}
+
+          {/* Event Detail Modal */}
+          {selectedEvent && user && (
+            <EventDetailModal
+              isOpen={!!selectedEvent}
+              onClose={() => setSelectedEvent(null)}
+              event={selectedEvent}
+              mode="month"
+              userId={user.id}
+              onUpdated={() => {
+                loadMonthlyData();
+                setSelectedEvent(null);
+              }}
+              onDeleted={() => {
+                loadMonthlyData();
+                setSelectedEvent(null);
+              }}
+            />
+          )}
+        </div>
+      </PlannerShell>
+    );
+  }
+
+  // Desktop layout (unchanged)
   return (
     <PlannerShell>
-      <div className="max-w-full bg-gradient-to-br from-gray-50 to-gray-100/50 min-h-screen pb-8">
-        {/* Phase 7A: Mobile disclaimer */}
-        {showMobileDisclaimer && isMobile && (
-          <div className="mb-4 mx-4 pt-4">
-            <div className="bg-blue-50 border border-blue-200 rounded-lg shadow-lg px-4 py-3 flex items-start gap-3">
-              <div className="flex-1">
-                <p className="text-sm text-blue-800 font-medium">
-                  Advanced scheduling works best on desktop
-                </p>
-                <p className="text-xs text-blue-600 mt-1">
-                  You can view and edit events, but drag and resize are optimized for desktop.
-                </p>
-              </div>
-              <button
-                onClick={() => {
-                  setShowMobileDisclaimer(false);
-                  sessionStorage.setItem('planner_monthly_mobile_disclaimer_dismissed', 'true');
-                }}
-                className="text-blue-400 hover:text-blue-600 transition-colors flex-shrink-0"
-                aria-label="Dismiss"
-              >
-                <X size={18} />
-              </button>
-            </div>
-          </div>
-        )}
+      <div 
+        className="max-w-full bg-gradient-to-br from-gray-50 to-gray-100/50 min-h-screen pb-8"
+        onTouchStart={handleTouchStart}
+        onTouchMove={handleTouchMove}
+        onTouchEnd={handleTouchEnd}
+        style={{
+          transform: swipeOffset !== 0 ? `translateX(${swipeOffset}px)` : undefined,
+          transition: swipeOffset === 0 ? 'transform 0.2s ease-out' : 'none',
+        }}
+      >
 
         {/* Premium Sticky Header */}
         <div className="sticky top-0 z-30 bg-gradient-to-b from-white to-gray-50/50 backdrop-blur-sm border-b border-gray-200 shadow-sm mb-6">
@@ -502,8 +652,22 @@ export function PlannerMonthly() {
                   </button>
                 </div>
                 <button
-                  onClick={goToToday}
-                  className="px-6 py-2.5 bg-gradient-to-r from-blue-600 to-blue-700 text-white rounded-2xl hover:from-blue-700 hover:to-blue-800 active:scale-95 font-medium text-sm shadow-sm hover:shadow-md transition-all duration-200"
+                  onClick={() => {
+                    const today = new Date();
+                    const isCurrentMonth = selectedDate.getMonth() === today.getMonth() && 
+                                         selectedDate.getFullYear() === today.getFullYear();
+                    if (!isCurrentMonth) {
+                      goToToday();
+                    }
+                  }}
+                  disabled={selectedDate.getMonth() === new Date().getMonth() && 
+                           selectedDate.getFullYear() === new Date().getFullYear()}
+                  className={`px-6 py-2.5 rounded-2xl font-medium text-sm shadow-sm transition-all duration-200 ${
+                    selectedDate.getMonth() === new Date().getMonth() && 
+                    selectedDate.getFullYear() === new Date().getFullYear()
+                      ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
+                      : 'bg-gradient-to-r from-blue-600 to-blue-700 text-white hover:from-blue-700 hover:to-blue-800 active:scale-95 hover:shadow-md'
+                  }`}
                 >
                   Today
                 </button>
@@ -954,8 +1118,8 @@ export function PlannerMonthly() {
           </div>
         )}
 
-        {/* Quick Add Popover */}
-        {quickAddDate && user && (
+        {/* Desktop: Quick Add Popover */}
+        {quickAddDate && user && !isMobile && (
           <QuickAddPopover
             isOpen={!!quickAddDate}
             onClose={() => setQuickAddDate(null)}
@@ -964,6 +1128,20 @@ export function PlannerMonthly() {
             onEventCreated={() => {
               loadMonthlyData();
             }}
+          />
+        )}
+
+        {/* Mobile: Quick Add BottomSheet */}
+        {quickAddDate && user && isMobile && (
+          <QuickAddBottomSheet
+            isOpen={!!quickAddDate}
+            onClose={() => {
+              setQuickAddDate(null);
+              setQuickAddTitle('');
+            }}
+            onEventCreated={loadMonthlyData}
+            userId={user.id}
+            date={quickAddDate}
           />
         )}
 

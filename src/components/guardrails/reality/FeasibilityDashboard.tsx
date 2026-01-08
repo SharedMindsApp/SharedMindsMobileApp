@@ -90,15 +90,16 @@ export function FeasibilityDashboard({ masterProjectId }: FeasibilityDashboardPr
   }
 
   return (
-    <div className="p-6 max-w-7xl mx-auto">
-      <div className="mb-6">
-        <h2 className="text-2xl font-bold text-gray-900">Feasibility Dashboard</h2>
-        <p className="text-gray-600 mt-1">
+    <div className="p-4 md:p-6 max-w-7xl mx-auto">
+      <div className="mb-4 md:mb-6">
+        <h2 className="text-xl md:text-2xl font-bold text-gray-900">Feasibility Dashboard</h2>
+        <p className="text-sm md:text-base text-gray-600 mt-1">
           Comprehensive analysis of your project's readiness and resource requirements
         </p>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      {/* Mobile: Single column, Desktop: 2 columns */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 md:gap-6">
         <div className="lg:col-span-2">
           <FeasibilityScoreCard score={report.feasibilityScore} status={report.feasibilityStatus} />
         </div>

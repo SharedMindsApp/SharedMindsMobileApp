@@ -37,6 +37,8 @@ import type { PermissionFlags } from '../../lib/permissions/types';
 import { EventDetailModal } from '../calendar/EventDetailModal';
 import { FEATURE_CALENDAR_EXTRAS } from '../../lib/featureFlags';
 import { subscribeActivityChanged } from '../../lib/activities/activityEvents';
+import { QuickAddBottomSheet } from './mobile/QuickAddBottomSheet';
+import { WeeklyPlannerMobile } from './mobile/WeeklyPlannerMobile';
 
 interface DraggingState {
   eventId: string;
@@ -77,10 +79,18 @@ export function PlannerWeekly() {
   const gridRef = useRef<HTMLDivElement>(null);
   // Phase 7A: Mobile detection and disclaimer
   const [isMobile, setIsMobile] = useState(false);
+  // Phase 10A: Swipe navigation state
+  const [swipeStart, setSwipeStart] = useState<{ x: number; y: number; time: number } | null>(null);
+  const [swipeOffset, setSwipeOffset] = useState(0);
   const [showMobileDisclaimer, setShowMobileDisclaimer] = useState(() => {
     if (typeof window === 'undefined') return false;
     const dismissed = sessionStorage.getItem('planner_weekly_mobile_disclaimer_dismissed');
     return !dismissed && window.innerWidth < 768;
+  });
+  // Mobile: Expanded days state (today expanded by default)
+  const [expandedDays, setExpandedDays] = useState<Set<string>>(() => {
+    const today = new Date().toDateString();
+    return new Set([today]);
   });
 
   useEffect(() => {
@@ -95,6 +105,17 @@ export function PlannerWeekly() {
       loadWeeklyData();
     }
   }, [user, selectedDate]);
+
+  // Reset expanded days when week changes (keep today expanded if in current week)
+  useEffect(() => {
+    const today = new Date().toDateString();
+    const weekHasToday = weekDays.some(day => day.toDateString() === today);
+    if (weekHasToday) {
+      setExpandedDays(new Set([today]));
+    } else {
+      setExpandedDays(new Set());
+    }
+  }, [weekDays]);
 
   // Subscribe to activity changes for live sync
   useEffect(() => {
@@ -222,6 +243,57 @@ export function PlannerWeekly() {
     setSelectedDate(newDate);
   };
 
+  // Phase 10A: Swipe navigation handlers (mobile only)
+  const handleTouchStart = (e: React.TouchEvent) => {
+    if (!isMobile) return;
+    setSwipeStart({
+      x: e.touches[0].clientX,
+      y: e.touches[0].clientY,
+      time: Date.now(),
+    });
+    setSwipeOffset(0);
+  };
+
+  const handleTouchMove = (e: React.TouchEvent) => {
+    if (!isMobile || !swipeStart) return;
+    
+    const deltaX = e.touches[0].clientX - swipeStart.x;
+    const deltaY = e.touches[0].clientY - swipeStart.y;
+    
+    // Only apply visual feedback for horizontal swipes
+    if (Math.abs(deltaX) > Math.abs(deltaY)) {
+      // Limit offset to prevent over-swiping
+      const maxOffset = 100;
+      setSwipeOffset(Math.max(-maxOffset, Math.min(maxOffset, deltaX * 0.3)));
+    }
+  };
+
+  const handleTouchEnd = (e: React.TouchEvent) => {
+    if (!isMobile || !swipeStart) {
+      setSwipeOffset(0);
+      return;
+    }
+    
+    const deltaX = e.changedTouches[0].clientX - swipeStart.x;
+    const deltaY = e.changedTouches[0].clientY - swipeStart.y;
+    const deltaTime = Date.now() - swipeStart.time;
+    
+    // Reset visual feedback
+    setSwipeOffset(0);
+    setSwipeStart(null);
+    
+    // Only trigger if horizontal swipe (ignore vertical scrolling)
+    if (Math.abs(deltaX) > Math.abs(deltaY) && Math.abs(deltaX) > 50 && deltaTime < 300) {
+      if (deltaX > 0) {
+        // Swipe right = previous week
+        navigateWeek('prev');
+      } else {
+        // Swipe left = next week
+        navigateWeek('next');
+      }
+    }
+  };
+
   const getWeekDays = () => {
     const dayOfWeek = selectedDate.getDay();
     const monday = new Date(selectedDate);
@@ -239,6 +311,10 @@ export function PlannerWeekly() {
   const weekDays = getWeekDays();
   const weekStart = weekDays[0].toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
   const weekEnd = weekDays[6].toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  
+  // Check if current week is being displayed
+  const today = new Date();
+  const isCurrentWeek = weekDays.some(day => day.toDateString() === today.toDateString());
 
   // Calculate current time indicator position
   const getCurrentTimePosition = useCallback(() => {
@@ -573,8 +649,14 @@ export function PlannerWeekly() {
 
   // Handle time slot click
   const handleTimeSlotClick = (date: Date, hour: number, minute: number) => {
-    setQuickAddSlot({ date, hour, minute });
-    setQuickAddTitle('');
+    if (isMobile) {
+      // Mobile: Open BottomSheet
+      setQuickAddSlot({ date, hour, minute });
+    } else {
+      // Desktop: Inline input
+      setQuickAddSlot({ date, hour, minute });
+      setQuickAddTitle('');
+    }
   };
 
   // Handle quick add submit
@@ -657,35 +739,121 @@ export function PlannerWeekly() {
     );
   }
 
+  // Mobile-first layout
+  if (isMobile) {
+    return (
+      <PlannerShell>
+        <div 
+          className="max-w-full h-screen-safe flex flex-col"
+          onTouchStart={handleTouchStart}
+          onTouchMove={handleTouchMove}
+          onTouchEnd={handleTouchEnd}
+          style={{
+            transform: swipeOffset !== 0 ? `translateX(${swipeOffset}px)` : undefined,
+            transition: swipeOffset === 0 ? 'transform 0.2s ease-out' : 'none',
+          }}
+        >
+          {/* Subtle guidance banner (dismissible) */}
+          {showMobileDisclaimer && (
+            <div className="px-4 pt-2 pb-1">
+              <div className="bg-blue-50/80 border border-blue-200/50 rounded-lg px-3 py-2 flex items-center justify-between">
+                <p className="text-xs text-blue-700 flex-1">
+                  Tap a day to add events. Advanced editing works best on desktop.
+                </p>
+                <button
+                  onClick={() => {
+                    setShowMobileDisclaimer(false);
+                    sessionStorage.setItem('planner_weekly_mobile_disclaimer_dismissed', 'true');
+                  }}
+                  className="text-blue-400 hover:text-blue-600 transition-colors flex-shrink-0 ml-2"
+                  aria-label="Dismiss"
+                >
+                  <X size={14} />
+                </button>
+              </div>
+            </div>
+          )}
+
+          <WeeklyPlannerMobile
+            weekStart={weekStart}
+            weekEnd={weekEnd}
+            weekDays={weekDays}
+            selectedDate={selectedDate}
+            entry={entry}
+            newGoal={newGoal}
+            getDayEvents={getDayEvents}
+            onNavigateWeek={navigateWeek}
+            onGoToToday={() => {
+              const today = new Date();
+              setSelectedDate(today);
+            }}
+            onDayClick={(date) => {
+              // Navigate to daily view for the selected day
+              navigate('/planner/daily', { state: { date: date.toISOString() } });
+            }}
+            onEventClick={setSelectedEvent}
+            onTimeSlotClick={(date, hour, minute) => {
+              setQuickAddSlot({ date, hour, minute });
+            }}
+            onNotesChange={saveNotes}
+            onGoalChange={setNewGoal}
+            onAddGoal={addGoal}
+            onToggleGoal={toggleGoal}
+            onRemoveGoal={removeGoal}
+          />
+
+          {/* Mobile: Quick Add BottomSheet */}
+          {quickAddSlot && user && (
+            <QuickAddBottomSheet
+              isOpen={!!quickAddSlot}
+              onClose={() => {
+                setQuickAddSlot(null);
+                setQuickAddTitle('');
+              }}
+              onEventCreated={loadWeeklyData}
+              userId={user.id}
+              date={quickAddSlot.date}
+              hour={quickAddSlot.hour}
+              minute={quickAddSlot.minute}
+            />
+          )}
+
+          {/* Event Detail Modal */}
+          {selectedEvent && user && (
+            <EventDetailModal
+              isOpen={!!selectedEvent}
+              onClose={() => setSelectedEvent(null)}
+              event={selectedEvent}
+              mode="week"
+              userId={user.id}
+              onUpdated={() => {
+                loadWeeklyData();
+                setSelectedEvent(null);
+              }}
+              onDeleted={() => {
+                loadWeeklyData();
+                setSelectedEvent(null);
+              }}
+            />
+          )}
+        </div>
+      </PlannerShell>
+    );
+  }
+
+  // Desktop layout (unchanged)
   return (
     <PlannerShell>
-      <div className="max-w-full">
-        {/* Phase 7A: Mobile disclaimer */}
-        {showMobileDisclaimer && isMobile && (
-          <div className="mb-4 mx-4">
-            <div className="bg-blue-50 border border-blue-200 rounded-lg shadow-lg px-4 py-3 flex items-start gap-3">
-              <div className="flex-1">
-                <p className="text-sm text-blue-800 font-medium">
-                  Advanced scheduling works best on desktop
-                </p>
-                <p className="text-xs text-blue-600 mt-1">
-                  You can view and edit events, but drag and resize are optimized for desktop.
-                </p>
-              </div>
-              <button
-                onClick={() => {
-                  setShowMobileDisclaimer(false);
-                  sessionStorage.setItem('planner_weekly_mobile_disclaimer_dismissed', 'true');
-                }}
-                className="text-blue-400 hover:text-blue-600 transition-colors flex-shrink-0"
-                aria-label="Dismiss"
-              >
-                <X size={18} />
-              </button>
-            </div>
-          </div>
-        )}
-
+      <div 
+        className="max-w-full"
+        onTouchStart={handleTouchStart}
+        onTouchMove={handleTouchMove}
+        onTouchEnd={handleTouchEnd}
+        style={{
+          transform: swipeOffset !== 0 ? `translateX(${swipeOffset}px)` : undefined,
+          transition: swipeOffset === 0 ? 'transform 0.2s ease-out' : 'none',
+        }}
+      >
         {/* Header */}
         <div className="flex items-center justify-between mb-4 md:mb-6">
           <button onClick={() => navigateWeek('prev')} className="p-1 md:p-2 hover:bg-gray-100 rounded">
@@ -696,24 +864,30 @@ export function PlannerWeekly() {
             <p className="text-xs md:text-sm text-gray-600 mt-1">{weekStart} - {weekEnd}</p>
           </div>
           <div className="flex items-center gap-2">
-            {/* Phase 7A: Add "Today" button */}
-            {!isCurrentWeek && (
-              <button
-                onClick={() => {
+            {/* Today button - always visible, disabled when already on current week */}
+            <button
+              onClick={() => {
+                if (!isCurrentWeek) {
                   const today = new Date();
                   setSelectedDate(today);
-                }}
-                className="px-3 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg text-sm font-medium transition-colors min-h-[44px]"
-              >
-                Today
-              </button>
-            )}
+                }
+              }}
+              disabled={isCurrentWeek}
+              className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors min-h-[44px] ${
+                isCurrentWeek
+                  ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                  : 'bg-gray-100 hover:bg-gray-200 text-gray-700'
+              }`}
+            >
+              Today
+            </button>
             <button onClick={() => navigateWeek('next')} className="p-1 md:p-2 hover:bg-gray-100 rounded">
               <ChevronRight size={20} className="md:w-6 md:h-6" />
             </button>
           </div>
         </div>
 
+        {/* Desktop: Grid Layout */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-3 md:gap-4 lg:gap-6">
           {/* Left Column - Notes & Goals */}
           <div className="lg:col-span-2 space-y-3 md:space-y-4">
@@ -925,7 +1099,8 @@ export function PlannerWeekly() {
                             }`}
                             onClick={() => handleTimeSlotClick(date, slot.hour, slot.minute)}
                           >
-                            {isQuickAdd && (
+                            {/* Desktop: Inline input */}
+                            {isQuickAdd && !isMobile && (
                               <div
                                 className="absolute inset-x-1 top-0 z-30"
                                 onClick={(e) => e.stopPropagation()}
@@ -1019,6 +1194,22 @@ export function PlannerWeekly() {
               loadWeeklyData();
               setSelectedEvent(null);
             }}
+          />
+        )}
+
+        {/* Mobile: Quick Add BottomSheet */}
+        {isMobile && quickAddSlot && user && (
+          <QuickAddBottomSheet
+            isOpen={!!quickAddSlot}
+            onClose={() => {
+              setQuickAddSlot(null);
+              setQuickAddTitle('');
+            }}
+            onEventCreated={loadWeeklyData}
+            userId={user.id}
+            date={quickAddSlot.date}
+            hour={quickAddSlot.hour}
+            minute={quickAddSlot.minute}
           />
         )}
       </div>

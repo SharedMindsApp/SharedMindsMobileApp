@@ -69,7 +69,7 @@ export function CompletionScreen({ answers, onContinue }: CompletionScreenProps)
               </h1>
 
               <p className="text-lg text-gray-700 leading-relaxed max-w-xl mx-auto">
-                Your insights will help SharedMind personalize everything — communication, routines, support suggestions, and stress predictions.
+                Your insights will help SharedMinds personalize everything — communication, routines, support suggestions, and stress predictions.
               </p>
             </div>
 

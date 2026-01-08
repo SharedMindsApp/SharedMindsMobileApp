@@ -15,6 +15,8 @@ import { NetworkStatusProvider } from './contexts/NetworkStatusContext';
 import { AppBootProvider, useAppBoot } from './contexts/AppBootContext';
 import { AppErrorBoundary } from './components/AppErrorBoundary';
 import { AppBootScreen } from './components/AppBootScreen';
+import { NotFoundRedirect } from './components/NotFoundRedirect';
+import { RootRedirect } from './components/RootRedirect';
 import { Layout } from './components/Layout';
 import { RouteGlitchEffect } from './components/RouteGlitchEffect';
 import { Dashboard } from './components/Dashboard';
@@ -193,6 +195,7 @@ import { CreateTripPage } from './components/planner/travel/CreateTripPage';
 import { TripDetailPage } from './components/planner/travel/TripDetailPage';
 import { PlannerSocial } from './components/planner/PlannerSocial';
 import { PlannerJournal } from './components/planner/PlannerJournal';
+import { DailyAlignmentPage } from './components/regulation/DailyAlignmentPage';
 
 // Phase 8: Inner app component that manages boot state
 function AppContent() {
@@ -229,26 +232,26 @@ function AppContent() {
     }
   }, [setStatus, setServiceWorkerState]);
 
-  // Phase 8: Boot sequence - transition through states
+  // Phase 10: Optimized boot sequence - event-driven, no artificial delays
   useEffect(() => {
+    // Immediately transition to ready - let AuthContext and other providers handle loading
+    // Boot screen will show as overlay if auth is still loading
     if (state.status === 'initializing') {
-      // Start loading assets
-      setTimeout(() => setStatus('loading-assets'), 500);
-    } else if (state.status === 'loading-assets') {
-      // Simulate asset loading, then hydrate session
-      setTimeout(() => setStatus('hydrating-session'), 1000);
-    } else if (state.status === 'hydrating-session') {
-      // Session hydration complete, app is ready
-      setTimeout(() => setStatus('ready'), 500);
+      setStatus('ready');
     }
   }, [state.status, setStatus]);
 
-  // Phase 8: Show boot screen if not ready
-  if (state.status !== 'ready') {
-    return <AppBootScreen />;
-  }
+  // Phase 10: Render app immediately, boot screen is shown as overlay during auth loading
+  // This allows contexts to start initializing in parallel rather than sequentially
+  const showBootOverlay = state.status !== 'ready';
 
   return (
+    <>
+      {showBootOverlay && (
+        <div className="fixed inset-0 z-[9999] bg-white">
+          <AppBootScreen />
+        </div>
+      )}
     <BrowserRouter>
       <AuthProvider>
         <ViewAsProvider>
@@ -265,13 +268,10 @@ function AppContent() {
                           <AppRouteGuard>
                             <RouteGlitchEffect />
                               <Routes>
+          {/* Phase 8C: Root route is redirect-only, no UI rendered */}
           <Route
             path="/"
-            element={
-              <GuestGuard>
-                <Landing />
-              </GuestGuard>
-            }
+            element={<RootRedirect />}
           />
 
           <Route
@@ -330,6 +330,15 @@ function AppContent() {
                 <Layout>
                   <Dashboard />
                 </Layout>
+              </AuthGuard>
+            }
+          />
+          {/* Phase 11: Daily Alignment standalone route */}
+          <Route
+            path="/alignment"
+            element={
+              <AuthGuard>
+                <DailyAlignmentPage />
               </AuthGuard>
             }
           />
@@ -1908,6 +1917,11 @@ function AppContent() {
               </AuthGuard>
             }
           />
+          {/* Phase 8B: Catch-all route for unmatched paths */}
+          <Route
+            path="*"
+            element={<NotFoundRedirect />}
+          />
                               </Routes>
                             </AppRouteGuard>
                           </NetworkStatusProvider>
@@ -1923,6 +1937,7 @@ function AppContent() {
         </ViewAsProvider>
       </AuthProvider>
     </BrowserRouter>
+    </>
   );
 }
 

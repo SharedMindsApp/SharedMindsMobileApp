@@ -1,7 +1,7 @@
-# SharedMind Insight Journey Redesign
+# SharedMinds Insight Journey Redesign
 
 ## Overview
-The SharedMind questionnaire experience has been completely redesigned from a static "Section Overview" into a beautiful, emotionally rewarding journey called **"Your Insight Journey"**.
+The SharedMinds questionnaire experience has been completely redesigned from a static "Section Overview" into a beautiful, emotionally rewarding journey called **"Your Insight Journey"**.
 
 ## What Changed
 

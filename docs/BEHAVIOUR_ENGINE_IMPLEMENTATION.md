@@ -2,7 +2,7 @@
 
 ## Overview
 
-A complete Behaviour Engine has been implemented for SharedMind, including habit tracking, achievements, reminders, and full integration with the existing widget system.
+A complete Behaviour Engine has been implemented for SharedMinds, including habit tracking, achievements, reminders, and full integration with the existing widget system.
 
 ## Database Schema
 
@@ -311,4 +311,4 @@ Build successfully completed with all new features:
 
 ## Conclusion
 
-The Behaviour Engine is now fully integrated into SharedMind, providing a complete habit tracking, achievement, and reminder system that works seamlessly with the existing widget architecture. All core functionality is operational and ready for use.
+The Behaviour Engine is now fully integrated into SharedMinds, providing a complete habit tracking, achievement, and reminder system that works seamlessly with the existing widget architecture. All core functionality is operational and ready for use.

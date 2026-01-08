@@ -1,0 +1,105 @@
+/**
+ * Phase 8B: Pull-to-Refresh Guard for Installed PWA
+ * 
+ * Prevents pull-to-refresh from escaping to Vercel error pages.
+ * Ensures refresh stays within the SPA context.
+ */
+
+import { isStandaloneApp } from './appContext';
+
+let isGuardActive = false;
+
+/**
+ * Phase 8B: Initialize pull-to-refresh guard for installed PWA
+ * Should be called once during app initialization
+ */
+export function initPullToRefreshGuard(): void {
+  // Only activate in installed PWA
+  if (!isStandaloneApp()) {
+    return;
+  }
+
+  if (isGuardActive) {
+    return; // Already initialized
+  }
+
+  isGuardActive = true;
+
+  // Phase 8B: Prevent default pull-to-refresh behavior
+  // This ensures refresh stays within the SPA
+  let touchStartY = 0;
+  let touchEndY = 0;
+  let isScrolling = false;
+
+  const handleTouchStart = (e: TouchEvent) => {
+    touchStartY = e.touches[0].clientY;
+    isScrolling = false;
+  };
+
+  const handleTouchMove = (e: TouchEvent) => {
+    touchEndY = e.touches[0].clientY;
+    const scrollTop = window.pageYOffset || document.documentElement.scrollTop;
+    
+    // Phase 8B: If user is at top of page and pulling down, prevent default
+    // This prevents native pull-to-refresh that could escape to error page
+    if (scrollTop === 0 && touchEndY > touchStartY) {
+      // Only prevent if pull is significant (more than 50px)
+      if (touchEndY - touchStartY > 50) {
+        e.preventDefault();
+        isScrolling = true;
+      }
+    }
+  };
+
+  const handleTouchEnd = () => {
+    // Phase 8B: If user pulled down significantly at top, reload app shell
+    // This ensures refresh happens within SPA context
+    if (isScrolling && touchEndY - touchStartY > 100) {
+      // Reload the app shell (will be handled by service worker)
+      window.location.reload();
+    }
+    touchStartY = 0;
+    touchEndY = 0;
+    isScrolling = false;
+  };
+
+  // Phase 8B: Add touch event listeners
+  document.addEventListener('touchstart', handleTouchStart, { passive: false });
+  document.addEventListener('touchmove', handleTouchMove, { passive: false });
+  document.addEventListener('touchend', handleTouchEnd, { passive: true });
+
+  // Phase 8B: Also prevent overscroll behavior that could trigger refresh
+  // This CSS approach works on some browsers
+  if (typeof document !== 'undefined') {
+    const style = document.createElement('style');
+    style.textContent = `
+      body {
+        overscroll-behavior-y: contain;
+      }
+      @media (display-mode: standalone) {
+        body {
+          overscroll-behavior-y: contain;
+          overscroll-behavior-x: contain;
+        }
+      }
+    `;
+    document.head.appendChild(style);
+  }
+
+  console.log('[PullToRefreshGuard] Initialized for installed PWA');
+}
+
+/**
+ * Phase 8B: Cleanup pull-to-refresh guard
+ */
+export function cleanupPullToRefreshGuard(): void {
+  if (!isGuardActive) {
+    return;
+  }
+
+  // Note: We don't remove event listeners here as they're attached to document
+  // This is fine as the guard should persist for the app lifetime
+  isGuardActive = false;
+}
+
+

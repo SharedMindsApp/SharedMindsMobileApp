@@ -71,18 +71,28 @@ if (import.meta.env.PROD && 'serviceWorker' in navigator) {
 
         // Phase 3C: Handle service worker updates
         // Phase 8: Don't auto-reload, let boot system handle it
+        // Phase 9: Enhanced update detection for in-app update banner
         registration.addEventListener('updatefound', () => {
           const newWorker = registration.installing;
           if (newWorker) {
             newWorker.addEventListener('statechange', () => {
               if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
-                // Phase 8: Signal update available instead of auto-reloading
-                // The boot system will show update banner
-                window.dispatchEvent(new CustomEvent('sw-update-available'));
+                // Phase 9: Signal update available - service worker is waiting
+                // The update banner will show and allow user to confirm
+                window.dispatchEvent(new CustomEvent('sw-update-available', {
+                  detail: { waiting: true }
+                }));
               }
             });
           }
         });
+
+        // Phase 9: Check for waiting service worker on registration
+        if (registration.waiting) {
+          window.dispatchEvent(new CustomEvent('sw-update-available', {
+            detail: { waiting: true }
+          }));
+        }
       })
       .catch((error) => {
         console.warn('Service Worker registration failed:', error);
@@ -97,12 +107,16 @@ if (import.meta.env.PROD && 'serviceWorker' in navigator) {
 // Phase 3C: Enhanced visual identity
 import { isStandaloneApp } from './lib/appContext';
 import { preventInstallPromptInApp } from './lib/installPrompt';
+// Phase 8B: Pull-to-refresh guard for installed PWA
+import { initPullToRefreshGuard } from './lib/pullToRefreshGuard';
 
 // Phase 3C: Add standalone mode class for styling
 if (isStandaloneApp()) {
   document.documentElement.classList.add('standalone-mode');
   // Phase 3C: Prevent any install prompts in installed app
   preventInstallPromptInApp();
+  // Phase 8B: Initialize pull-to-refresh guard
+  initPullToRefreshGuard();
 }
 
 // ---- Mount App ----

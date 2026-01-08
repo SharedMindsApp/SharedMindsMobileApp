@@ -64,6 +64,7 @@ export function AppIcon({ app, onTap, onLongPress, isDragging = false, isEditMod
           <IconComponent size={32} className="text-white" />
         )}
 
+        {/* Phase 9A: Only show badge if there's real data (no 0 badges) */}
         {app.badge && app.badge > 0 && (
           <div className="absolute -top-1 -right-1 min-w-[20px] h-5 bg-red-500 rounded-full flex items-center justify-center px-1.5 shadow-md">
             <span className="text-white text-xs font-bold">

@@ -2,11 +2,11 @@ import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { Loader2, LayoutGrid, Smartphone, Home, Users, User, ChevronDown, Target, MessageCircle, Settings, ArrowLeft } from 'lucide-react';
 import { FridgeCanvas } from './fridge-canvas/FridgeCanvas';
-import { MobileModeContainer } from './mobile/MobileModeContainer';
-import { FloatingAIChatWidget } from './ai-chat/FloatingAIChatWidget';
+import { SpacesOSLauncher } from './spaces/SpacesOSLauncher';
 import { getSpaceById, Household } from '../lib/household';
-
-type UIMode = 'fridge' | 'mobile';
+import { isStandaloneApp } from '../lib/appContext';
+import { loadHouseholdWidgets } from '../lib/fridgeCanvas';
+import { WidgetWithLayout } from '../lib/fridgeCanvasTypes';
 
 export function SpaceViewPage() {
   const { spaceId } = useParams<{ spaceId: string }>();
@@ -14,17 +14,32 @@ export function SpaceViewPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showSpacesMenu, setShowSpacesMenu] = useState(false);
-  const [uiMode, setUIMode] = useState<UIMode>(() => {
-    const saved = localStorage.getItem('ui_mode');
-    return (saved === 'mobile' || saved === 'fridge') ? saved : 'fridge';
-  });
+  const [widgets, setWidgets] = useState<WidgetWithLayout[]>([]);
+  const [isMobile, setIsMobile] = useState(false);
   const navigate = useNavigate();
+
+  // Phase 9A: Detect mobile/installed app
+  useEffect(() => {
+    const checkMobile = () => {
+      const mobile = window.innerWidth < 768 || isStandaloneApp();
+      setIsMobile(mobile);
+    };
+    checkMobile();
+    window.addEventListener('resize', checkMobile);
+    return () => window.removeEventListener('resize', checkMobile);
+  }, []);
 
   useEffect(() => {
     if (spaceId) {
       loadSpace();
     }
   }, [spaceId]);
+
+  useEffect(() => {
+    if (household) {
+      loadWidgets();
+    }
+  }, [household]);
 
   const loadSpace = async () => {
     if (!spaceId) return;
@@ -45,9 +60,14 @@ export function SpaceViewPage() {
     }
   };
 
-  const handleModeToggle = (mode: UIMode) => {
-    setUIMode(mode);
-    localStorage.setItem('ui_mode', mode);
+  const loadWidgets = async () => {
+    if (!household) return;
+    try {
+      const loadedWidgets = await loadHouseholdWidgets(household.id);
+      setWidgets(loadedWidgets);
+    } catch (err) {
+      console.error('Error loading widgets:', err);
+    }
   };
 
   if (loading) {
@@ -77,24 +97,18 @@ export function SpaceViewPage() {
     );
   }
 
-  if (uiMode === 'mobile') {
-    return <MobileModeContainer />;
+  // Phase 9A: On mobile/installed app, show OS launcher
+  if (isMobile && household) {
+    return <SpacesOSLauncher widgets={widgets} householdId={household.id} householdName={household.name} />;
   }
 
+  // Phase 9A: Desktop - show canvas (mode toggle removed, desktop-only if needed)
   return (
     <div className="min-h-screen bg-gradient-to-br from-amber-50 via-orange-50 to-rose-50">
       <div className="bg-white border-b border-gray-200 shadow-sm">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16">
             <div className="flex items-center gap-6">
-              {/* Phase 6A: Mobile navigation safety - always show back button on mobile */}
-              <button
-                onClick={() => navigate('/spaces/shared')}
-                className="md:hidden p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-50 rounded-lg transition-colors min-h-[44px] min-w-[44px] flex items-center justify-center"
-                aria-label="Back to Shared Spaces"
-              >
-                <ArrowLeft size={20} />
-              </button>
               <div>
                 {/* Desktop: show back link above title */}
                 <button
@@ -184,37 +198,12 @@ export function SpaceViewPage() {
                 </button>
               </div>
             </div>
-
-            <div className="flex items-center gap-2 bg-gray-100 rounded-lg p-1">
-              <button
-                onClick={() => handleModeToggle('fridge')}
-                className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-colors ${
-                  uiMode === 'fridge'
-                    ? 'bg-white text-gray-900 shadow-sm'
-                    : 'text-gray-600 hover:text-gray-900'
-                }`}
-              >
-                <LayoutGrid size={18} />
-                Canvas
-              </button>
-              <button
-                onClick={() => handleModeToggle('mobile')}
-                className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-colors ${
-                  uiMode === 'mobile'
-                    ? 'bg-white text-gray-900 shadow-sm'
-                    : 'text-gray-600 hover:text-gray-900'
-                }`}
-              >
-                <Smartphone size={18} />
-                Mobile
-              </button>
-            </div>
           </div>
         </div>
       </div>
 
       <FridgeCanvas householdId={household.id} />
-      <FloatingAIChatWidget />
+      {/* AI chat widget disabled for shared spaces */}
     </div>
   );
 }

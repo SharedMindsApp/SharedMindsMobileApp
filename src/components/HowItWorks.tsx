@@ -28,7 +28,7 @@ export function HowItWorks() {
                 <Brain size={24} className="text-white" />
               </div>
               <span className="text-2xl font-bold bg-gradient-to-r from-blue-600 to-teal-600 bg-clip-text text-transparent">
-                SharedMind
+                SharedMinds
               </span>
             </Link>
             <div className="flex items-center gap-4">
@@ -67,11 +67,11 @@ export function HowItWorks() {
           </div>
 
           <h1 className="text-5xl sm:text-6xl font-bold text-gray-900 mb-8 leading-tight">
-            How SharedMind Works
+            How SharedMinds Works
           </h1>
 
           <p className="text-2xl text-gray-700 max-w-3xl mx-auto mb-12 leading-relaxed">
-            SharedMind is your roadmap for understanding every mind in your home. We guide you through a gentle journey from confusion to clarity, helping each neurotype feel seen, heard, and supported.
+            SharedMinds is your roadmap for understanding every mind in your home. We guide you through a gentle journey from confusion to clarity, helping each neurotype feel seen, heard, and supported.
           </p>
 
           <div className="rounded-3xl overflow-hidden shadow-2xl max-w-4xl mx-auto mb-8">
@@ -91,7 +91,7 @@ export function HowItWorks() {
               The Five-Stage Journey
             </h2>
             <p className="text-xl text-gray-600 max-w-3xl mx-auto">
-              From first questions to lasting harmony, here's how SharedMind transforms your household dynamics.
+              From first questions to lasting harmony, here's how SharedMinds transforms your household dynamics.
             </p>
           </div>
 
@@ -273,7 +273,7 @@ export function HowItWorks() {
                   Improve Together
                 </h3>
                 <p className="text-xl text-gray-700 leading-relaxed mb-6">
-                  SharedMind grows with you, offering adaptive support and gentle recommendations—no pressure, no streaks, no guilt.
+                  SharedMinds grows with you, offering adaptive support and gentle recommendations—no pressure, no streaks, no guilt.
                 </p>
 
                 <div className="space-y-4">
@@ -429,7 +429,7 @@ export function HowItWorks() {
               <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-blue-500 to-teal-500 flex items-center justify-center">
                 <Brain size={28} className="text-white" />
               </div>
-              <span className="text-3xl font-bold text-white">SharedMind</span>
+              <span className="text-3xl font-bold text-white">SharedMinds</span>
             </Link>
             <p className="text-gray-400 leading-relaxed text-lg max-w-2xl mx-auto">
               Building harmony in neurodiverse households—one mind at a time.
@@ -438,7 +438,7 @@ export function HowItWorks() {
 
           <div className="border-t border-gray-800 mt-12 pt-8 text-center">
             <p className="text-gray-500">
-              &copy; {new Date().getFullYear()} SharedMind. All rights reserved.
+              &copy; {new Date().getFullYear()} SharedMinds. All rights reserved.
             </p>
           </div>
         </div>

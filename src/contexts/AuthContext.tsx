@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
+import { createContext, useContext, useEffect, useState, useMemo, useCallback, useRef, ReactNode } from 'react';
 import { supabase } from '../lib/supabase';
 import type { User } from '@supabase/supabase-js';
 import { isStandaloneApp } from '../lib/appContext';
@@ -44,8 +44,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(true);
+  const profileRef = useRef<Profile | null>(null);
 
-  const fetchProfile = async (userId: string) => {
+  // Keep ref in sync with state
+  useEffect(() => {
+    profileRef.current = profile;
+  }, [profile]);
+
+  const fetchProfile = useCallback(async (userId: string) => {
     try {
       const { data, error } = await supabase
         .from('profiles')
@@ -59,21 +65,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       console.error('Error fetching profile:', error);
       setProfile(null);
     }
-  };
+  }, []);
 
-  const refreshProfile = async () => {
+  const refreshProfile = useCallback(async () => {
     if (user?.id) {
       await fetchProfile(user.id);
     }
-  };
+  }, [user?.id, fetchProfile]);
 
   useEffect(() => {
     let mounted = true;
 
     const initAuth = async () => {
       try {
+        // Phase 10: Reduced timeout from 10s to 5s for faster failure recovery
         const timeoutPromise = new Promise((_, reject) =>
-          setTimeout(() => reject(new Error('Session check timeout')), 10000)
+          setTimeout(() => reject(new Error('Session check timeout')), 5000)
         );
 
         const sessionPromise = supabase.auth.getSession();
@@ -87,10 +94,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
         if (mounted) {
           setUser(session?.user ?? null);
-          if (session?.user) {
-            await fetchProfile(session.user.id);
-          }
+          // Phase 10: Set loading false immediately, fetch profile in background
+          // This allows UI to render while profile loads
           setLoading(false);
+          if (session?.user) {
+            // Don't await - let profile load in background
+            fetchProfile(session.user.id).catch(err => {
+              console.error('Background profile fetch error:', err);
+            });
+          }
         }
       } catch (error) {
         console.error('Auth initialization error:', error);
@@ -138,8 +150,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           } else if (mounted && session.user) {
             // Phase 3C: Session valid - ensure profile is loaded
             // Only fetch if profile is missing or user changed
-            if (!profile || profile.user_id !== session.user.id) {
-              await fetchProfile(session.user.id);
+            // Phase 10: Use ref to check profile without dependency
+            const currentProfile = profileRef.current;
+            if (!currentProfile || currentProfile.user_id !== session.user.id) {
+              // Fetch in background, don't block
+              fetchProfile(session.user.id).catch(err => {
+                console.error('Visibility change profile fetch error:', err);
+              });
             }
           }
         } catch (error) {
@@ -157,9 +174,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       subscription.unsubscribe();
       document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
-  }, []);
+  }, [fetchProfile]);
 
-  const signOut = async () => {
+  const signOut = useCallback(async () => {
     await supabase.auth.signOut();
     setUser(null);
     setProfile(null);
@@ -167,9 +184,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (isStandaloneApp()) {
       window.location.href = '/auth/login';
     }
-  };
+  }, []);
 
-  const toggleSafeMode = async (enabled: boolean) => {
+  const toggleSafeMode = useCallback(async (enabled: boolean) => {
     if (!user?.id) return;
 
     const { pauseAllInterventionsForSafeMode, clearSafeModePauseFlags } = await import(
@@ -193,7 +210,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
 
     await refreshProfile();
-  };
+  }, [user?.id, refreshProfile]);
 
   const viewAsData = getViewAsProfile ? getViewAsProfile() : { viewAsProfile: null, isViewingAs: false };
   const effectiveProfile = viewAsData.isViewingAs && viewAsData.viewAsProfile
@@ -206,24 +223,41 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const isPremium = role === 'premium' || role === 'admin';
   const isFree = role === 'free';
 
+  // Phase 10: Memoize context value to prevent unnecessary re-renders
+  const value = useMemo(
+    () => ({
+      user,
+      profile: effectiveProfile,
+      loading,
+      role,
+      isAdmin,
+      isPremium,
+      isFree,
+      actualRole,
+      isViewingAs: viewAsData.isViewingAs,
+      safeModeEnabled: effectiveProfile?.safe_mode_enabled ?? false,
+      signOut,
+      refreshProfile,
+      toggleSafeMode,
+    }),
+    [
+      user,
+      effectiveProfile,
+      loading,
+      role,
+      isAdmin,
+      isPremium,
+      isFree,
+      actualRole,
+      viewAsData.isViewingAs,
+      signOut,
+      refreshProfile,
+      toggleSafeMode,
+    ]
+  );
+
   return (
-    <AuthContext.Provider
-      value={{
-        user,
-        profile: effectiveProfile,
-        loading,
-        role,
-        isAdmin,
-        isPremium,
-        isFree,
-        actualRole,
-        isViewingAs: viewAsData.isViewingAs,
-        safeModeEnabled: effectiveProfile?.safe_mode_enabled ?? false,
-        signOut,
-        refreshProfile,
-        toggleSafeMode,
-      }}
-    >
+    <AuthContext.Provider value={value}>
       {children}
     </AuthContext.Provider>
   );

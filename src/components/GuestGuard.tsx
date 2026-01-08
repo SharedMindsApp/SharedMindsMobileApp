@@ -2,7 +2,6 @@ import { useEffect, useState } from 'react';
 import { Navigate } from 'react-router-dom';
 import { Loader2, LogOut, AlertCircle } from 'lucide-react';
 import { supabase } from '../lib/supabase';
-import { isStandaloneApp } from '../lib/appContext';
 
 type GuestGuardProps = {
   children: React.ReactNode;
@@ -87,9 +86,8 @@ export function GuestGuard({ children }: GuestGuardProps) {
 
   const handleSignOut = async () => {
     await supabase.auth.signOut();
-    // Phase 3B: In installed app, redirect to login after logout
-    const redirectTo = isStandaloneApp() ? '/auth/login' : '/';
-    window.location.href = redirectTo;
+    // Phase 8C: Always redirect to login after logout
+    window.location.href = '/auth/login';
   };
 
   const handleGoToLogin = () => {
@@ -97,9 +95,8 @@ export function GuestGuard({ children }: GuestGuardProps) {
   };
 
   const handleGoHome = () => {
-    // Phase 3B: In installed app, redirect to login instead of landing
-    const redirectTo = isStandaloneApp() ? '/auth/login' : '/';
-    window.location.href = redirectTo;
+    // Phase 8C: Always redirect to login (no landing page)
+    window.location.href = '/auth/login';
   };
 
   if (timedOut && errorMessage) {
@@ -116,10 +113,10 @@ export function GuestGuard({ children }: GuestGuardProps) {
 
           <div className="space-y-3">
             <button
-              onClick={handleGoHome}
+              onClick={handleGoToLogin}
               className="w-full bg-blue-600 text-white py-3 px-4 rounded-lg hover:bg-blue-700 transition-colors font-medium"
             >
-              Reload Home Page
+              Go to Login
             </button>
             <button
               onClick={handleGoToLogin}
@@ -158,12 +155,14 @@ export function GuestGuard({ children }: GuestGuardProps) {
   }
 
   if (authenticated) {
+    // Phase 8C: Authenticated users should not see guest pages
     if (hasHousehold) {
-      return <Navigate to="/dashboard" replace />;
+      return <Navigate to="/planner/daily" replace />;
     } else {
       return <Navigate to="/onboarding/household" replace />;
     }
   }
 
+  // Phase 8C: Unauthenticated users can access guest pages (login, signup, etc.)
   return <>{children}</>;
 }

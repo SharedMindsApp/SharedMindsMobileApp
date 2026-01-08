@@ -17,6 +17,7 @@ const SHELL_FILES = [
 ];
 
 // Phase 3A: Install - Cache app shell only
+// Phase 9: Don't skipWaiting immediately - wait for user confirmation
 self.addEventListener('install', (event) => {
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => {
@@ -27,8 +28,9 @@ self.addEventListener('install', (event) => {
       });
     })
   );
-  // Activate immediately to avoid waiting for all tabs to close
-  self.skipWaiting();
+  // Phase 9: Don't activate immediately - wait for user to confirm update
+  // Service worker will wait until user clicks "Update now" button
+  // self.skipWaiting(); // Commented out - will be called on user confirmation
 });
 
 // Phase 3A: Activate - Clean up old caches
@@ -50,9 +52,51 @@ self.addEventListener('activate', (event) => {
 });
 
 // Phase 3A: Fetch - Network-first for everything, fallback to cache for shell only
+// Phase 8B: Enhanced navigation handling for SPA routing
 self.addEventListener('fetch', (event) => {
   const { request } = event;
   const url = new URL(request.url);
+
+  // Phase 8B: Handle navigation requests (page loads, refreshes, deep links)
+  // Always serve index.html for navigation requests to ensure SPA routing works
+  if (request.mode === 'navigate') {
+    event.respondWith(
+      fetch(request)
+        .then((response) => {
+          // Phase 8B: If response is 404 or error, serve cached index.html
+          if (!response.ok || response.status === 404) {
+            return caches.match('/index.html').then((cachedIndex) => {
+              if (cachedIndex) {
+                return cachedIndex;
+              }
+              // Fallback: try to fetch index.html from network
+              return fetch('/index.html').catch(() => {
+                return new Response('App shell not available', { status: 503 });
+              });
+            });
+          }
+          // Phase 8B: Cache successful navigation responses (index.html)
+          if (response.ok) {
+            const responseClone = response.clone();
+            caches.open(CACHE_NAME).then((cache) => {
+              cache.put('/index.html', responseClone);
+            });
+          }
+          return response;
+        })
+        .catch(() => {
+          // Network failed, serve cached index.html
+          return caches.match('/index.html').then((cachedIndex) => {
+            if (cachedIndex) {
+              return cachedIndex;
+            }
+            // Last resort: return offline message
+            return new Response('Offline', { status: 503 });
+          });
+        })
+    );
+    return; // Don't process navigation requests further
+  }
 
   // Never cache API requests or auth endpoints
   if (
@@ -75,6 +119,16 @@ self.addEventListener('fetch', (event) => {
     event.respondWith(
       fetch(request)
         .then((response) => {
+          // Phase 8B: Never cache 404 responses
+          if (response.status === 404) {
+            // For 404s on shell files, try index.html as fallback
+            if (request.destination === 'document') {
+              return caches.match('/index.html').then((cachedIndex) => {
+                return cachedIndex || response;
+              });
+            }
+            return response;
+          }
           // If network succeeds, cache the response for future use
           if (response.ok) {
             const responseClone = response.clone();
@@ -90,6 +144,12 @@ self.addEventListener('fetch', (event) => {
             if (cachedResponse) {
               return cachedResponse;
             }
+            // Phase 8B: For document requests, fallback to index.html
+            if (request.destination === 'document') {
+              return caches.match('/index.html').then((cachedIndex) => {
+                return cachedIndex || new Response('Offline', { status: 503 });
+              });
+            }
             // If no cache, return a basic offline page (optional)
             return new Response('Offline', { status: 503 });
           });
@@ -97,5 +157,12 @@ self.addEventListener('fetch', (event) => {
     );
   }
   // For all other requests (images, fonts, etc.), use network only, no caching
+});
+
+// Phase 9: Listen for skipWaiting message from client
+self.addEventListener('message', (event) => {
+  if (event.data && event.data.type === 'SKIP_WAITING') {
+    self.skipWaiting();
+  }
 });
 

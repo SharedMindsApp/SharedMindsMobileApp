@@ -81,7 +81,7 @@ export function Login() {
               <LogIn size={32} className="text-blue-600" />
             </div>
             <h1 className="text-3xl font-bold text-gray-900 mb-2">Welcome Back</h1>
-            <p className="text-gray-600">Log in to your SharedMind account</p>
+            <p className="text-gray-600">Log in to your SharedMinds account</p>
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-5">

@@ -1,8 +1,29 @@
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { Calendar, Clock, CalendarDays, ChevronRight } from 'lucide-react';
 import { PlannerShell } from './PlannerShell';
+import { BottomSheet } from '../shared/BottomSheet';
 
 export function PlannerIndex() {
   const navigate = useNavigate();
+  const [isMobile, setIsMobile] = useState(false);
+  const [selectedArea, setSelectedArea] = useState<string | null>(null);
+
+  // Mobile detection
+  useEffect(() => {
+    const checkMobile = () => setIsMobile(window.innerWidth < 768);
+    checkMobile();
+    window.addEventListener('resize', checkMobile);
+    return () => window.removeEventListener('resize', checkMobile);
+  }, []);
+
+  const openAreaBottomSheet = (areaTitle: string) => {
+    setSelectedArea(areaTitle);
+  };
+
+  const closeAreaBottomSheet = () => {
+    setSelectedArea(null);
+  };
 
   const months = [
     'JANUARY', 'FEBRUARY', 'MARCH', 'APRIL', 'MAY', 'JUNE',
@@ -196,6 +217,185 @@ export function PlannerIndex() {
     },
   };
 
+  // Get selected area data
+  const selectedAreaData = selectedArea
+    ? Object.values(lifeAreas).find((area) => area.title === selectedArea)
+    : null;
+
+  // Mobile-first layout
+  if (isMobile) {
+    return (
+      <PlannerShell>
+        {/* Mobile: Single Column, Quick Launch Hub */}
+        <div className="space-y-4 pb-6">
+          {/* Header */}
+          <div className="text-center mb-6">
+            <h1 className="text-2xl font-bold text-gray-900">Planner</h1>
+            <p className="text-sm text-gray-600 mt-1">Quick navigation</p>
+          </div>
+
+          {/* Primary Quick Actions - Most Common */}
+          <div className="space-y-3">
+            <h2 className="text-sm font-semibold text-gray-700 uppercase tracking-wide px-1">
+              Quick Access
+            </h2>
+            <div className="grid grid-cols-2 gap-3">
+              <button
+                onClick={() => navigate('/planner/daily')}
+                className="bg-gradient-to-br from-blue-500 to-blue-600 text-white rounded-xl p-4 shadow-lg hover:shadow-xl active:scale-[0.98] transition-all flex flex-col items-center gap-2 min-h-[100px]"
+              >
+                <Calendar size={28} />
+                <span className="font-semibold text-base">Daily</span>
+              </button>
+              <button
+                onClick={() => navigate('/planner/weekly')}
+                className="bg-gradient-to-br from-purple-500 to-purple-600 text-white rounded-xl p-4 shadow-lg hover:shadow-xl active:scale-[0.98] transition-all flex flex-col items-center gap-2 min-h-[100px]"
+              >
+                <CalendarDays size={28} />
+                <span className="font-semibold text-base">Weekly</span>
+              </button>
+              <button
+                onClick={() => navigate('/planner/monthly')}
+                className="bg-gradient-to-br from-pink-500 to-pink-600 text-white rounded-xl p-4 shadow-lg hover:shadow-xl active:scale-[0.98] transition-all flex flex-col items-center gap-2 min-h-[100px]"
+              >
+                <Clock size={28} />
+                <span className="font-semibold text-base">Monthly</span>
+              </button>
+              <button
+                onClick={() => navigate('/planner')}
+                className="bg-gradient-to-br from-gray-500 to-gray-600 text-white rounded-xl p-4 shadow-lg hover:shadow-xl active:scale-[0.98] transition-all flex flex-col items-center gap-2 min-h-[100px]"
+              >
+                <ChevronRight size={28} />
+                <span className="font-semibold text-base">Index</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Calendar Navigation - Compact */}
+          <div className="space-y-3">
+            <h2 className="text-sm font-semibold text-gray-700 uppercase tracking-wide px-1">
+              Calendar
+            </h2>
+            <div className="bg-white rounded-xl border border-gray-200 p-4 space-y-3">
+              <button
+                onClick={() => navigate('/planner/monthly')}
+                className="w-full text-left px-4 py-3 bg-pink-50 border border-pink-200 rounded-lg hover:bg-pink-100 active:scale-[0.98] transition-all flex items-center justify-between min-h-[44px]"
+              >
+                <span className="font-medium text-gray-900">Monthly Planner</span>
+                <ChevronRight size={20} className="text-gray-400" />
+              </button>
+              <button
+                onClick={() => navigate('/planner/quarterly')}
+                className="w-full text-left px-4 py-3 bg-red-50 border border-red-200 rounded-lg hover:bg-red-100 active:scale-[0.98] transition-all flex items-center justify-between min-h-[44px]"
+              >
+                <span className="font-medium text-gray-900">Year Calendar</span>
+                <ChevronRight size={20} className="text-gray-400" />
+              </button>
+            </div>
+          </div>
+
+          {/* Life Areas - Collapsible Sections */}
+          <div className="space-y-3">
+            <h2 className="text-sm font-semibold text-gray-700 uppercase tracking-wide px-1">
+              Life Areas
+            </h2>
+            <div className="space-y-2">
+              {Object.values(lifeAreas).map((area) => {
+                const displayItems = area.items.slice(0, 3); // Show first 3 items
+                const hasMore = area.items.length > 3;
+
+                return (
+                  <div
+                    key={area.title}
+                    className={`${area.color} border border-gray-200 rounded-xl overflow-hidden`}
+                  >
+                    {/* Area Header - Always Visible */}
+                    <button
+                      onClick={() => {
+                        if (hasMore) {
+                          openAreaBottomSheet(area.title);
+                        } else {
+                          navigate(area.route);
+                        }
+                      }}
+                      className="w-full px-4 py-3 flex items-center justify-between min-h-[44px] active:bg-white/20 transition-colors"
+                    >
+                      <span className="font-bold text-sm text-gray-900 uppercase tracking-wide">
+                        {area.title}
+                      </span>
+                      {hasMore ? (
+                        <ChevronRight size={20} className="text-gray-600" />
+                      ) : (
+                        <ChevronRight size={20} className="text-gray-400" />
+                      )}
+                    </button>
+
+                    {/* Quick Items - Always Visible (First 3) */}
+                    {displayItems.length > 0 && (
+                      <div className="px-4 pb-3 space-y-1.5">
+                        {displayItems.map((item) => {
+                          const itemLabel = typeof item === 'string' ? item : item.label;
+                          const itemRoute = typeof item === 'string' ? '/planner/areas' : item.route;
+                          return (
+                            <button
+                              key={itemLabel}
+                              onClick={() => navigate(itemRoute)}
+                              className="w-full text-left px-3 py-2 text-sm font-medium text-gray-700 bg-white/60 hover:bg-white rounded-lg border border-gray-200/40 active:scale-[0.98] transition-all min-h-[44px]"
+                            >
+                              {itemLabel}
+                            </button>
+                          );
+                        })}
+                        {hasMore && (
+                          <button
+                            onClick={() => openAreaBottomSheet(area.title)}
+                            className="w-full text-center px-3 py-2 text-xs font-medium text-gray-600 bg-white/40 hover:bg-white/60 rounded-lg border border-gray-200/30 active:scale-[0.98] transition-all min-h-[44px]"
+                          >
+                            View all {area.items.length} items
+                          </button>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+
+        {/* Life Area Bottom Sheet - Full Item List */}
+        {selectedAreaData && (
+          <BottomSheet
+            isOpen={!!selectedAreaData}
+            onClose={closeAreaBottomSheet}
+            title={selectedAreaData.title}
+            maxHeight="85vh"
+          >
+            <div className="space-y-2 p-4">
+              {selectedAreaData.items.map((item) => {
+                const itemLabel = typeof item === 'string' ? item : item.label;
+                const itemRoute = typeof item === 'string' ? '/planner/areas' : item.route;
+                return (
+                  <button
+                    key={itemLabel}
+                    onClick={() => {
+                      navigate(itemRoute);
+                      closeAreaBottomSheet();
+                    }}
+                    className="w-full text-left px-4 py-3 text-base font-medium text-gray-900 bg-gray-50 hover:bg-gray-100 rounded-lg border border-gray-200 active:scale-[0.98] transition-all min-h-[44px]"
+                  >
+                    {itemLabel}
+                  </button>
+                );
+              })}
+            </div>
+          </BottomSheet>
+        )}
+      </PlannerShell>
+    );
+  }
+
+  // Desktop: Keep existing grid layout
   return (
     <PlannerShell>
       {/* Index Title */}

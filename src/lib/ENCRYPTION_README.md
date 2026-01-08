@@ -1,8 +1,8 @@
-# SharedMind Encryption System
+# SharedMinds Encryption System
 
 ## Overview
 
-This encryption system provides end-to-end encryption for the SharedMind messaging feature. All messages are encrypted on the client side and the server only stores encrypted data.
+This encryption system provides end-to-end encryption for the SharedMinds messaging feature. All messages are encrypted on the client side and the server only stores encrypted data.
 
 ## Architecture
 

@@ -393,7 +393,7 @@ export function Settings() {
             <h3 className="font-semibold text-gray-900">App Information</h3>
           </div>
           <p className="text-sm text-gray-600 mb-4">
-            SharedMind helps households understand each other better through structured questionnaires
+            SharedMinds helps households understand each other better through structured questionnaires
             and AI-powered insights.
           </p>
           <p className="text-xs text-gray-500">Version 1.0.0</p>

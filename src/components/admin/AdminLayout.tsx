@@ -85,7 +85,7 @@ export function AdminLayout({ children }: AdminLayoutProps) {
                 <Brain size={24} className="text-white" />
               </div>
               <div>
-                <h1 className="text-xl font-bold text-gray-900">SharedMind</h1>
+                <h1 className="text-xl font-bold text-gray-900">SharedMinds</h1>
                 <p className="text-xs text-gray-500">Admin Panel</p>
               </div>
             </div>

@@ -19,7 +19,7 @@ import { LockedFeaturesJourney } from '../features/LockedFeaturesJourney';
 import { HouseholdMatchTriggerCard } from '../household/HouseholdMatchTriggerCard';
 import { HouseholdInsightMatchViewer } from '../household/HouseholdInsightMatchViewer';
 import { HouseholdMatchUnlockCelebration } from '../household/HouseholdMatchUnlockCelebration';
-import { DailyAlignmentPanel } from '../regulation/DailyAlignmentPanel';
+import { DailyAlignmentEntryCard } from '../regulation/DailyAlignmentEntryCard';
 import { getDailyAlignmentEnabled } from '../../lib/regulation/dailyAlignmentService';
 import {
   checkHouseholdMatchReady,
@@ -29,6 +29,7 @@ import {
   saveMatchToProfile,
   HouseholdInsightMatch,
 } from '../../lib/householdInsightMatch';
+import { isStandaloneApp } from '../../lib/appContext';
 
 interface StandardDashboardLayoutProps {
   sections: Section[];
@@ -67,6 +68,7 @@ export function StandardDashboardLayout({
   const [showUnlockCelebration, setShowUnlockCelebration] = useState(false);
   const [isCheckingMatch, setIsCheckingMatch] = useState(true);
   const [dailyAlignmentEnabled, setDailyAlignmentEnabled] = useState(false);
+  const [isMobile, setIsMobile] = useState(false);
 
   useEffect(() => {
     checkForHouseholdMatch();
@@ -77,6 +79,14 @@ export function StandardDashboardLayout({
       loadDailyAlignmentEnabled();
     }
   }, [currentMember]);
+
+  // Mobile detection
+  useEffect(() => {
+    const checkMobile = () => setIsMobile(window.innerWidth < 768 || isStandaloneApp());
+    checkMobile();
+    window.addEventListener('resize', checkMobile);
+    return () => window.removeEventListener('resize', checkMobile);
+  }, []);
 
   const loadDailyAlignmentEnabled = async () => {
     if (!currentMember?.user_id) return;
@@ -176,21 +186,23 @@ export function StandardDashboardLayout({
 
       {dailyAlignmentEnabled && currentMember?.user_id && (
         <div className="mb-6">
-          <DailyAlignmentPanel userId={currentMember.user_id} />
+          <DailyAlignmentEntryCard userId={currentMember.user_id} />
         </div>
       )}
 
-      <div className={`grid grid-cols-1 md:grid-cols-2 ${densityClass}`}>
-        <div className={`${theme.cardBg} rounded-xl shadow-sm border border-gray-200 p-6`}>
-          <div className="flex items-center gap-3 mb-4">
-            <div className="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center">
-              <BookOpen size={24} className="text-blue-600" />
+      <div className={`grid grid-cols-1 ${isMobile ? '' : 'md:grid-cols-2'} ${densityClass}`}>
+        {/* Questionnaire Progress - Hidden on mobile */}
+        {!isMobile && (
+          <div className={`${theme.cardBg} rounded-xl shadow-sm border border-gray-200 p-6`}>
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center">
+                <BookOpen size={24} className="text-blue-600" />
+              </div>
+              <div>
+                <h2 className="text-lg font-semibold text-gray-900">Questionnaire Progress</h2>
+                <p className="text-sm text-gray-600">Complete all sections</p>
+              </div>
             </div>
-            <div>
-              <h2 className="text-lg font-semibold text-gray-900">Questionnaire Progress</h2>
-              <p className="text-sm text-gray-600">Complete all sections</p>
-            </div>
-          </div>
 
           {firstIncompleteSection && (
             <div className="mb-4 p-3 bg-blue-50 rounded-lg border border-blue-100">
@@ -254,7 +266,8 @@ export function StandardDashboardLayout({
               <span className="font-medium">All sections completed!</span>
             </div>
           )}
-        </div>
+          </div>
+        )}
 
         <div className={`${theme.cardBg} rounded-xl shadow-sm border border-gray-200 p-6`}>
           <div className="flex items-center gap-3 mb-4">
@@ -324,12 +337,16 @@ export function StandardDashboardLayout({
         />
       )}
 
-      <LockedFeaturesJourney
-        memberId={currentMember?.id || null}
-        reducedMotion={config.reducedMotion}
-      />
+      {/* Your Insight Journey - Hidden on mobile */}
+      {!isMobile && (
+        <LockedFeaturesJourney
+          memberId={currentMember?.id || null}
+          reducedMotion={config.reducedMotion}
+        />
+      )}
 
-      <BrainProfileWidget />
+      {/* My Brain Profile - Hidden on mobile */}
+      {!isMobile && <BrainProfileWidget />}
 
       {showUnlockCelebration && (
         <HouseholdMatchUnlockCelebration

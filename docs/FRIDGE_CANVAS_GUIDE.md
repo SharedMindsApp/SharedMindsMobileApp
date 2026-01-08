@@ -2,7 +2,7 @@
 
 ## Overview
 
-The Fridge Canvas is a full-screen, infinite canvas experience similar to Miro or Figma whiteboards. It's the central feature of SharedMind's Household Dashboard, replacing traditional dashboard panels with an interactive, personalized workspace.
+The Fridge Canvas is a full-screen, infinite canvas experience similar to Miro or Figma whiteboards. It's the central feature of SharedMinds' Household Dashboard, replacing traditional dashboard panels with an interactive, personalized workspace.
 
 ## Core Features
 

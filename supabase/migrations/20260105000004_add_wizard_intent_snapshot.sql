@@ -55,3 +55,4 @@ COMMENT ON COLUMN master_projects.wizard_intent_snapshot IS 'JSONB object storin
 
 
 
+

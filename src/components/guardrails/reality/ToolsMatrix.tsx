@@ -92,27 +92,28 @@ export function ToolsMatrix({ masterProjectId }: ToolsMatrixProps) {
   }
 
   return (
-    <div className="p-6 max-w-7xl mx-auto">
-      <div className="mb-6">
-        <h2 className="text-2xl font-bold text-gray-900">Tools Matrix</h2>
-        <p className="text-gray-600 mt-1">
+    <div className="p-4 md:p-6 max-w-7xl mx-auto">
+      <div className="mb-4 md:mb-6">
+        <h2 className="text-xl md:text-2xl font-bold text-gray-900">Tools Matrix</h2>
+        <p className="text-sm md:text-base text-gray-600 mt-1">
           Manage your available tools and define project requirements
         </p>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <div className="bg-white rounded-xl border border-gray-200 p-6">
-          <div className="flex items-center justify-between mb-4">
+      {/* Mobile: Single column stacked, Desktop: 2 columns side-by-side */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 md:gap-6">
+        <div className="bg-white rounded-xl border border-gray-200 p-4 md:p-6">
+          <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
             <div className="flex items-center gap-2">
               <Wrench size={20} className="text-orange-600" />
-              <h3 className="text-lg font-semibold text-gray-900">Your Tools</h3>
+              <h3 className="text-base md:text-lg font-semibold text-gray-900">Your Tools</h3>
             </div>
             <button
               onClick={() => {
                 setEditingTool(null);
                 setShowAddToolModal(true);
               }}
-              className="flex items-center gap-2 px-3 py-1.5 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition-colors text-sm"
+              className="flex items-center gap-2 px-3 py-1.5 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition-colors text-sm min-h-[44px]"
             >
               <Plus size={16} />
               Add Tool
@@ -120,7 +121,7 @@ export function ToolsMatrix({ masterProjectId }: ToolsMatrixProps) {
           </div>
 
           {userTools.length === 0 ? (
-            <div className="text-center py-8">
+            <div className="text-center py-6 md:py-8">
               <div className="w-12 h-12 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-3">
                 <Wrench size={24} className="text-gray-400" />
               </div>
@@ -130,13 +131,13 @@ export function ToolsMatrix({ masterProjectId }: ToolsMatrixProps) {
               </p>
             </div>
           ) : (
-            <div className="space-y-2 max-h-96 overflow-y-auto">
+            <div className="space-y-2 max-h-[60vh] md:max-h-96 overflow-y-auto">
               {userTools.map((tool) => (
                 <div key={tool.id} className="p-3 bg-gray-50 border border-gray-200 rounded-lg">
-                  <div className="flex items-start justify-between mb-2">
-                    <div className="flex-1">
-                      <h4 className="font-medium text-gray-900">{tool.name}</h4>
-                      <div className="flex items-center gap-3 mt-1">
+                  <div className="flex items-start justify-between gap-2 mb-2">
+                    <div className="flex-1 min-w-0">
+                      <h4 className="font-medium text-gray-900 text-sm md:text-base">{tool.name}</h4>
+                      <div className="flex items-center gap-3 mt-1 flex-wrap">
                         <span className="text-xs text-gray-600">{tool.category}</span>
                         {tool.cost !== null && (
                           <span className="flex items-center gap-1 text-xs text-gray-600">
@@ -146,21 +147,23 @@ export function ToolsMatrix({ masterProjectId }: ToolsMatrixProps) {
                         )}
                       </div>
                     </div>
-                    <div className="flex items-center gap-1">
+                    <div className="flex items-center gap-1 flex-shrink-0">
                       <button
                         onClick={() => {
                           setEditingTool(tool);
                           setShowAddToolModal(true);
                         }}
-                        className="p-1 text-gray-400 hover:text-orange-600 transition-colors"
+                        className="p-2 text-gray-400 hover:text-orange-600 transition-colors min-h-[44px] min-w-[44px] flex items-center justify-center"
+                        aria-label="Edit tool"
                       >
-                        <Pencil size={14} />
+                        <Pencil size={16} />
                       </button>
                       <button
                         onClick={() => handleDeleteUserTool(tool.id)}
-                        className="p-1 text-gray-400 hover:text-red-600 transition-colors"
+                        className="p-2 text-gray-400 hover:text-red-600 transition-colors min-h-[44px] min-w-[44px] flex items-center justify-center"
+                        aria-label="Delete tool"
                       >
-                        <Trash2 size={14} />
+                        <Trash2 size={16} />
                       </button>
                     </div>
                   </div>
@@ -170,18 +173,18 @@ export function ToolsMatrix({ masterProjectId }: ToolsMatrixProps) {
           )}
         </div>
 
-        <div className="bg-white rounded-xl border border-gray-200 p-6">
-          <div className="flex items-center justify-between mb-4">
+        <div className="bg-white rounded-xl border border-gray-200 p-4 md:p-6">
+          <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
             <div className="flex items-center gap-2">
               <AlertTriangle size={20} className="text-red-600" />
-              <h3 className="text-lg font-semibold text-gray-900">Required for Project</h3>
+              <h3 className="text-base md:text-lg font-semibold text-gray-900">Required for Project</h3>
             </div>
             <button
               onClick={() => {
                 setEditingRequired(null);
                 setShowAddRequiredModal(true);
               }}
-              className="flex items-center gap-2 px-3 py-1.5 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors text-sm"
+              className="flex items-center gap-2 px-3 py-1.5 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors text-sm min-h-[44px]"
             >
               <Plus size={16} />
               Add Requirement
@@ -189,7 +192,7 @@ export function ToolsMatrix({ masterProjectId }: ToolsMatrixProps) {
           </div>
 
           {requiredTools.length === 0 ? (
-            <div className="text-center py-8">
+            <div className="text-center py-6 md:py-8">
               <div className="w-12 h-12 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-3">
                 <AlertTriangle size={24} className="text-gray-400" />
               </div>
@@ -199,7 +202,7 @@ export function ToolsMatrix({ masterProjectId }: ToolsMatrixProps) {
               </p>
             </div>
           ) : (
-            <div className="space-y-2 max-h-96 overflow-y-auto">
+            <div className="space-y-2 max-h-[60vh] md:max-h-96 overflow-y-auto">
               {requiredTools.map((tool) => {
                 const gapStatus = getToolGapStatus(tool.name);
                 return (
@@ -213,27 +216,27 @@ export function ToolsMatrix({ masterProjectId }: ToolsMatrixProps) {
                         : 'bg-green-50 border-green-200'
                     }`}
                   >
-                    <div className="flex items-start justify-between mb-2">
-                      <div className="flex-1">
-                        <div className="flex items-center gap-2">
-                          <h4 className="font-medium text-gray-900">{tool.name}</h4>
+                    <div className="flex items-start justify-between gap-2 mb-2">
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <h4 className="font-medium text-gray-900 text-sm md:text-base">{tool.name}</h4>
                           {tool.is_essential && (
-                            <span className="px-2 py-0.5 bg-red-100 text-red-700 text-xs rounded-full font-medium">
+                            <span className="px-2 py-0.5 bg-red-100 text-red-700 text-xs rounded-full font-medium whitespace-nowrap">
                               Essential
                             </span>
                           )}
                           {gapStatus === 'missing-essential' && (
-                            <span className="px-2 py-0.5 bg-red-600 text-white text-xs rounded-full font-medium">
+                            <span className="px-2 py-0.5 bg-red-600 text-white text-xs rounded-full font-medium whitespace-nowrap">
                               Critical
                             </span>
                           )}
                           {gapStatus === 'missing-optional' && (
-                            <span className="px-2 py-0.5 bg-yellow-100 text-yellow-700 text-xs rounded-full font-medium">
+                            <span className="px-2 py-0.5 bg-yellow-100 text-yellow-700 text-xs rounded-full font-medium whitespace-nowrap">
                               Missing
                             </span>
                           )}
                         </div>
-                        <div className="flex items-center gap-3 mt-1">
+                        <div className="flex items-center gap-3 mt-1 flex-wrap">
                           <span className="text-xs text-gray-600">{tool.category}</span>
                           {tool.estimated_cost !== null && (
                             <span className="flex items-center gap-1 text-xs text-gray-600">
@@ -243,21 +246,23 @@ export function ToolsMatrix({ masterProjectId }: ToolsMatrixProps) {
                           )}
                         </div>
                       </div>
-                      <div className="flex items-center gap-1">
+                      <div className="flex items-center gap-1 flex-shrink-0">
                         <button
                           onClick={() => {
                             setEditingRequired(tool);
                             setShowAddRequiredModal(true);
                           }}
-                          className="p-1 text-gray-400 hover:text-red-600 transition-colors"
+                          className="p-2 text-gray-400 hover:text-red-600 transition-colors min-h-[44px] min-w-[44px] flex items-center justify-center"
+                          aria-label="Edit requirement"
                         >
-                          <Pencil size={14} />
+                          <Pencil size={16} />
                         </button>
                         <button
                           onClick={() => handleDeleteRequiredTool(tool.id)}
-                          className="p-1 text-gray-400 hover:text-red-600 transition-colors"
+                          className="p-2 text-gray-400 hover:text-red-600 transition-colors min-h-[44px] min-w-[44px] flex items-center justify-center"
+                          aria-label="Delete requirement"
                         >
-                          <Trash2 size={14} />
+                          <Trash2 size={16} />
                         </button>
                       </div>
                     </div>

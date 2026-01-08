@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import { createContext, useContext, useState, useEffect, useCallback, useMemo, ReactNode } from 'react';
 import { setActiveProjectId as setADCProjectId } from '../state/activeDataContext';
 import type { MasterProject } from '../lib/guardrailsTypes';
 
@@ -17,9 +17,7 @@ const STORAGE_PROJECT_KEY = 'guardrails_active_project';
 export function ActiveProjectProvider({ children }: { children: ReactNode }) {
   const [activeProjectId, setActiveProjectId] = useState<string | null>(() => {
     if (typeof window !== 'undefined') {
-      const id = localStorage.getItem(STORAGE_KEY);
-      console.log('[ActiveProjectContext] Initial activeProjectId from localStorage:', id);
-      return id;
+      return localStorage.getItem(STORAGE_KEY);
     }
     return null;
   });
@@ -27,103 +25,113 @@ export function ActiveProjectProvider({ children }: { children: ReactNode }) {
   const [activeProject, setActiveProjectState] = useState<MasterProject | null>(() => {
     if (typeof window !== 'undefined') {
       const stored = localStorage.getItem(STORAGE_PROJECT_KEY);
-      console.log('[ActiveProjectContext] Raw localStorage value:', stored);
       if (stored) {
         try {
-          const parsed = JSON.parse(stored);
-          console.log('[ActiveProjectContext] Initial activeProject from localStorage:', {
-            id: parsed?.id,
-            name: parsed?.name,
-            domain_id: parsed?.domain_id
-          });
-          return parsed;
+          return JSON.parse(stored);
         } catch (e) {
           console.error('[ActiveProjectContext] Failed to parse stored project:', e);
           return null;
         }
       }
     }
-    console.log('[ActiveProjectContext] No stored project found');
     return null;
   });
 
   const [initialized, setInitialized] = useState(false);
 
-  console.log('[ActiveProjectContext] Rendering with activeProject:', activeProject ? {
-    id: activeProject.id,
-    name: activeProject.name
-  } : null);
-
+  // Log only when activeProject reference actually changes
   useEffect(() => {
-    console.log('[ActiveProjectContext] useEffect running, initialized:', initialized, 'activeProject:', activeProject ? activeProject.id : null);
+    console.log('[ActiveProjectContext] activeProject changed:', activeProject ? {
+      id: activeProject.id,
+      name: activeProject.name
+    } : null);
+  }, [activeProject]);
+
+  // Initialize ADC on mount
+  useEffect(() => {
     if (!initialized) {
       if (activeProject) {
-        console.log('[ActiveProjectContext] Initializing with project:', {
-          id: activeProject.id,
-          name: activeProject.name,
-          domain_id: activeProject.domain_id
-        });
         setADCProjectId(activeProject.id, activeProject.domain_id);
       } else {
-        console.log('[ActiveProjectContext] Initializing with no project - clearing ADC');
         setADCProjectId(null, null);
       }
       setInitialized(true);
     }
   }, [initialized, activeProject]);
 
+  // Sync to ADC when project changes after initialization
   useEffect(() => {
     if (initialized) {
       if (activeProject) {
-        console.log('[ActiveProjectContext] Project changed:', activeProject.id);
         setADCProjectId(activeProject.id, activeProject.domain_id);
       } else {
-        console.log('[ActiveProjectContext] Project cleared');
         setADCProjectId(null, null);
       }
     }
   }, [activeProject, initialized]);
 
-  const setActiveProject = (project: MasterProject | null) => {
-    console.log('[ActiveProjectContext] setActiveProject called with:', project ? {
-      id: project.id,
-      name: project.name,
-      domain_id: project.domain_id
-    } : null);
+  // Guarded setter: only updates if project ID is different
+  const setActiveProjectSafe = useCallback((project: MasterProject | null) => {
+    let projectChanged = false;
 
-    setActiveProjectState(project);
-    setActiveProjectId(project?.id || null);
+    setActiveProjectState(prev => {
+      // If the project ID is the same, don't update (preserve reference)
+      if (prev?.id === project?.id) {
+        return prev;
+      }
+      projectChanged = true;
+      return project;
+    });
 
-    if (project) {
-      localStorage.setItem(STORAGE_KEY, project.id);
-      localStorage.setItem(STORAGE_PROJECT_KEY, JSON.stringify(project));
-      console.log('[ActiveProjectContext] Stored in localStorage:', STORAGE_PROJECT_KEY, project.id);
-      setADCProjectId(project.id, project.domain_id);
-    } else {
-      localStorage.removeItem(STORAGE_KEY);
-      localStorage.removeItem(STORAGE_PROJECT_KEY);
-      console.log('[ActiveProjectContext] Removed from localStorage');
-      setADCProjectId(null, null);
+    setActiveProjectId(prevId => {
+      // If the ID is the same, don't update
+      const nextId = project?.id || null;
+      if (prevId === nextId) {
+        return prevId;
+      }
+      return nextId;
+    });
+
+    // Only update localStorage and ADC if project actually changed
+    if (projectChanged) {
+      if (project) {
+        localStorage.setItem(STORAGE_KEY, project.id);
+        localStorage.setItem(STORAGE_PROJECT_KEY, JSON.stringify(project));
+        setADCProjectId(project.id, project.domain_id);
+      } else {
+        localStorage.removeItem(STORAGE_KEY);
+        localStorage.removeItem(STORAGE_PROJECT_KEY);
+        setADCProjectId(null, null);
+      }
     }
-  };
+  }, []);
 
-  const clearActiveProject = () => {
+  // Exposed setter (wraps the safe setter for API compatibility)
+  const setActiveProject = useCallback((project: MasterProject | null) => {
+    setActiveProjectSafe(project);
+  }, [setActiveProjectSafe]);
+
+  const clearActiveProject = useCallback(() => {
     setActiveProjectState(null);
     setActiveProjectId(null);
     localStorage.removeItem(STORAGE_KEY);
     localStorage.removeItem(STORAGE_PROJECT_KEY);
     setADCProjectId(null, null);
-  };
+  }, []);
+
+  // Memoize context value to prevent unnecessary re-renders
+  const value = useMemo(
+    () => ({
+      activeProjectId,
+      activeProject,
+      setActiveProject,
+      clearActiveProject,
+    }),
+    [activeProjectId, activeProject, setActiveProject, clearActiveProject]
+  );
 
   return (
-    <ActiveProjectContext.Provider
-      value={{
-        activeProjectId,
-        activeProject,
-        setActiveProject,
-        clearActiveProject,
-      }}
-    >
+    <ActiveProjectContext.Provider value={value}>
       {children}
     </ActiveProjectContext.Provider>
   );

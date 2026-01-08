@@ -23,7 +23,7 @@
     - No plaintext message content is ever stored
     - Server never has access to decrypted content
     - End-to-end encryption handled client-side
-    - This migration does NOT modify existing SharedMind tables
+    - This migration does NOT modify existing SharedMinds tables
 */
 
 -- Create enum types for messaging system

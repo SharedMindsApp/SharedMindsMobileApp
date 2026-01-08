@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Zap, Filter, ArrowUpDown, AlertTriangle } from 'lucide-react';
 import { OffshootIdeaCard } from './OffshootIdeaCard';
+import { OffshootIdeasMobileList } from './OffshootIdeasMobileList';
 import { useActiveDataContext } from '../../../state/useActiveDataContext';
 import { getMasterProjects } from '../../../lib/guardrails';
 import type { MasterProject } from '../../../lib/guardrailsTypes';
@@ -21,6 +22,7 @@ export function OffshootIdeasList() {
   const [loading, setLoading] = useState(true);
   const [filterBy, setFilterBy] = useState<'all' | 'node' | 'roadmap_item' | 'side_idea'>('all');
   const [sortBy, setSortBy] = useState<'recent' | 'name'>('recent');
+  const [isMobile, setIsMobile] = useState(false);
 
   useEffect(() => {
     console.log('[OffshootIdeasList] activeProjectId from ADC:', activeProjectId);
@@ -46,6 +48,14 @@ export function OffshootIdeasList() {
       setLoading(false);
     }
   }, [activeProject]);
+
+  // Mobile detection
+  useEffect(() => {
+    const checkMobile = () => setIsMobile(window.innerWidth < 768);
+    checkMobile();
+    window.addEventListener('resize', checkMobile);
+    return () => window.removeEventListener('resize', checkMobile);
+  }, []);
 
   async function loadOffshoots() {
     if (!activeProject) return;
@@ -168,6 +178,53 @@ export function OffshootIdeasList() {
     }
   };
 
+  // Mobile view
+  if (isMobile) {
+    if (!activeProject) {
+      return (
+        <div className="p-4">
+          <div className="bg-amber-50 border border-amber-200 rounded-lg p-6 text-center">
+            <p className="text-amber-900 font-medium">No active project selected</p>
+            <p className="text-sm text-amber-700 mt-1">
+              Please select or create a master project first
+            </p>
+          </div>
+        </div>
+      );
+    }
+
+    return (
+      <div className="h-screen flex flex-col bg-gray-50">
+        <div className="bg-white border-b border-gray-200 px-6 py-4">
+          <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
+            <Zap size={24} className="text-amber-600" />
+            Offshoot Ideas
+          </h1>
+          <p className="text-sm text-gray-600 mt-1">
+            Spontaneous sparks and drift moments
+          </p>
+        </div>
+
+        {loading ? (
+          <div className="flex-1 flex items-center justify-center">
+            <div className="text-center">
+              <div className="w-12 h-12 border-4 border-amber-600 border-t-transparent rounded-full animate-spin mx-auto mb-4" />
+              <p className="text-gray-600">Loading ideas...</p>
+            </div>
+          </div>
+        ) : (
+          <OffshootIdeasMobileList
+            offshoots={offshoots}
+            stats={stats}
+            masterProjectId={activeProject.id}
+            onRefresh={loadOffshoots}
+          />
+        )}
+      </div>
+    );
+  }
+
+  // Desktop view (unchanged)
   return (
     <div className="p-8">
       <div className="mb-6">

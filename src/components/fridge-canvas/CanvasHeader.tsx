@@ -1,11 +1,12 @@
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { Home, Users, MessageCircle, Settings, ChevronUp, Menu, LayoutGrid, Smartphone, User, ChevronDown, Target, Shield, Palette, Bell, Lock, LogOut, Sun, Moon, Zap, Check, BookOpen } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { getUserUIMode, setUserUIMode } from '../../lib/mobileApps';
 import type { UIMode } from '../../lib/mobileTypes';
 import { useUIPreferences } from '../../contexts/UIPreferencesContext';
 import { triggerGlitchTransition } from '../../lib/glitchTransition';
+import { isStandaloneApp } from '../../lib/appContext';
 
 interface CanvasHeaderProps {
   householdName?: string;
@@ -16,17 +17,43 @@ export function CanvasHeader({ householdName }: CanvasHeaderProps) {
   const [showSpacesMenu, setShowSpacesMenu] = useState(false);
   const [showSettingsMenu, setShowSettingsMenu] = useState(false);
   const [uiMode, setUIMode] = useState<UIMode>('fridge');
+  const [isMobile, setIsMobile] = useState(false);
   const navigate = useNavigate();
+  const location = useLocation();
   const { user, signOut } = useAuth();
   const { appTheme, setAppTheme } = useUIPreferences();
 
+  // Phase 9A: Detect mobile/installed app
+  useEffect(() => {
+    const checkMobile = () => {
+      const mobile = window.innerWidth < 768 || isStandaloneApp();
+      setIsMobile(mobile);
+    };
+    checkMobile();
+    window.addEventListener('resize', checkMobile);
+    return () => window.removeEventListener('resize', checkMobile);
+  }, []);
+
   useEffect(() => {
     loadUIMode();
-  }, [user]);
+  }, [user, location.pathname, isMobile]); // Phase 9A: Reload when pathname or mobile state changes to sync state
 
   const loadUIMode = async () => {
     if (!user) return;
 
+    // Phase 9A: On Spaces pages, sync uiMode with what's actually being shown (viewport-based)
+    const isOnSpacesPage = location.pathname.startsWith('/spaces/personal') || 
+                          (location.pathname.startsWith('/spaces/') && location.pathname !== '/spaces/shared' && !location.pathname.endsWith('/shared'));
+    
+    if (isOnSpacesPage) {
+      // On Spaces pages, the view is determined by viewport, not database
+      // Desktop = widget mode (fridge), Mobile = mobile mode
+      const actualMode = isMobile ? 'mobile' : 'fridge';
+      setUIMode(actualMode);
+      return;
+    }
+
+    // Not on Spaces page - load from database
     try {
       const mode = await getUserUIMode(user.id);
       setUIMode(mode);
@@ -42,6 +69,28 @@ export function CanvasHeader({ householdName }: CanvasHeaderProps) {
   const handleUIModeToggle = async (mode: UIMode) => {
     if (!user || mode === uiMode) return;
 
+    // Phase 9A: Check if we're on a Spaces page
+    const isOnSpacesPage = location.pathname.startsWith('/spaces/personal') || 
+                          (location.pathname.startsWith('/spaces/') && location.pathname !== '/spaces/shared' && !location.pathname.endsWith('/shared'));
+
+    // Phase 9A: On desktop, widget mode is always shown for Spaces (no toggle needed)
+    // On mobile, OS launcher is always shown (toggle is hidden)
+    // So if we're on a Spaces page, the toggle shouldn't do anything
+    if (isOnSpacesPage) {
+      // Just update the state for consistency, but don't navigate or reload
+      // The view is determined by viewport, not uiMode
+      try {
+        await setUserUIMode(user.id, mode);
+        setUIMode(mode);
+        localStorage.setItem('ui_mode', mode);
+      } catch (err) {
+        console.error('Error setting UI mode:', err);
+        localStorage.setItem('ui_mode', mode);
+        setUIMode(mode);
+      }
+      return;
+    }
+
     triggerGlitchTransition(400);
 
     try {
@@ -49,6 +98,7 @@ export function CanvasHeader({ householdName }: CanvasHeaderProps) {
       setUIMode(mode);
       localStorage.setItem('ui_mode', mode);
 
+      // Not on Spaces page - navigate as before
       setTimeout(() => {
         if (mode === 'mobile') {
           navigate('/mobile');
@@ -91,30 +141,33 @@ export function CanvasHeader({ householdName }: CanvasHeaderProps) {
         <div className="flex items-center justify-between h-14">
           <div className="flex items-center gap-6">
             <div className="flex items-center gap-4">
-              <div className="flex items-center bg-gray-100 rounded-lg p-1">
-                <button
-                  onClick={() => handleUIModeToggle('fridge')}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
-                    uiMode === 'fridge'
-                      ? 'bg-white text-orange-700 shadow-sm'
-                      : 'text-gray-600 hover:text-gray-900'
-                  }`}
-                >
-                  <LayoutGrid size={16} />
-                  <span>Widget Mode</span>
-                </button>
-                <button
-                  onClick={() => handleUIModeToggle('mobile')}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
-                    uiMode === 'mobile'
-                      ? 'bg-white text-orange-700 shadow-sm'
-                      : 'text-gray-600 hover:text-gray-900'
-                  }`}
-                >
-                  <Smartphone size={16} />
-                  <span>Mobile Mode</span>
-                </button>
-              </div>
+              {/* Phase 9A: Hide mode toggle on mobile/installed app */}
+              {!isMobile && (
+                <div className="flex items-center bg-gray-100 rounded-lg p-1">
+                  <button
+                    onClick={() => handleUIModeToggle('fridge')}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
+                      uiMode === 'fridge'
+                        ? 'bg-white text-orange-700 shadow-sm'
+                        : 'text-gray-600 hover:text-gray-900'
+                    }`}
+                  >
+                    <LayoutGrid size={16} />
+                    <span>Widget Mode</span>
+                  </button>
+                  <button
+                    onClick={() => handleUIModeToggle('mobile')}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
+                      uiMode === 'mobile'
+                        ? 'bg-white text-orange-700 shadow-sm'
+                        : 'text-gray-600 hover:text-gray-900'
+                    }`}
+                  >
+                    <Smartphone size={16} />
+                    <span>Mobile Mode</span>
+                  </button>
+                </div>
+              )}
 
               {householdName && (
                 <p className="text-xs text-gray-500 hidden sm:block">{householdName}</p>

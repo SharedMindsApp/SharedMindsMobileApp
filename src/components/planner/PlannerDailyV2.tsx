@@ -11,7 +11,7 @@
 
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { ChevronLeft, ChevronRight, Plus, X, Lock, Share2, ArrowLeft } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Plus, X, Lock, Share2, ArrowLeft, Clock } from 'lucide-react';
 import { PlannerShell } from './PlannerShell';
 import { useAuth } from '../../contexts/AuthContext';
 import {
@@ -29,6 +29,8 @@ import { enforceVisibility, assertCanEdit, PermissionError } from '../../lib/per
 import { EventDetailModal } from '../calendar/EventDetailModal';
 import { FEATURE_CALENDAR_EXTRAS } from '../../lib/featureFlags';
 import { subscribeActivityChanged } from '../../lib/activities/activityEvents';
+import { QuickAddBottomSheet } from './mobile/QuickAddBottomSheet';
+import { DailyPlannerMobile } from './mobile/DailyPlannerMobile';
 
 interface DraggingState {
   eventId: string;
@@ -65,8 +67,20 @@ export function PlannerDailyV2() {
   const [quickAddTitle, setQuickAddTitle] = useState('');
   const [currentTime, setCurrentTime] = useState(new Date());
   const gridRef = useRef<HTMLDivElement>(null);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
   // Phase 7A: Mobile detection
   const [isMobile, setIsMobile] = useState(false);
+  // Phase 10A: Swipe navigation state
+  const [swipeStart, setSwipeStart] = useState<{ x: number; y: number; time: number } | null>(null);
+  const [swipeOffset, setSwipeOffset] = useState(0);
+  // Scroll to Now state
+  const [showScrollToNow, setShowScrollToNow] = useState(false);
+  const [hasAutoScrolled, setHasAutoScrolled] = useState(false);
+
+  // Calculate if selected date is today (needed for callbacks/effects)
+  const isToday = useMemo(() => {
+    return selectedDate.toDateString() === new Date().toDateString();
+  }, [selectedDate]);
 
   useEffect(() => {
     const checkMobile = () => setIsMobile(window.innerWidth < 768);
@@ -114,6 +128,94 @@ export function PlannerDailyV2() {
     return position;
   }, [currentTime]);
 
+  // Check if time indicator is visible in viewport
+  const checkTimeIndicatorVisibility = useCallback(() => {
+    if (!isMobile || !isToday || !scrollContainerRef.current) {
+      setShowScrollToNow(false);
+      return;
+    }
+
+    const timePosition = getCurrentTimePosition();
+    if (timePosition === null) {
+      setShowScrollToNow(false);
+      return;
+    }
+
+    const container = scrollContainerRef.current;
+    const containerTop = container.scrollTop;
+    const containerHeight = container.clientHeight;
+    const containerBottom = containerTop + containerHeight;
+
+    // Check if time indicator is within visible area (with some padding)
+    const padding = 100; // Show button if indicator is more than 100px outside viewport
+    const isVisible = timePosition >= containerTop - padding && timePosition <= containerBottom + padding;
+
+    setShowScrollToNow(!isVisible);
+  }, [isMobile, isToday, getCurrentTimePosition]);
+
+  // Scroll to current time
+  const scrollToNow = useCallback(() => {
+    if (!scrollContainerRef.current) return;
+
+    const timePosition = getCurrentTimePosition();
+    if (timePosition === null) return;
+
+    const container = scrollContainerRef.current;
+    const containerHeight = container.clientHeight;
+    // Scroll to center the time indicator in the viewport
+    const targetScroll = timePosition - containerHeight / 2;
+
+    container.scrollTo({
+      top: Math.max(0, targetScroll),
+      behavior: 'smooth',
+    });
+  }, [getCurrentTimePosition]);
+
+  // Auto-scroll to now on initial load (mobile only, if today and after start of day)
+  useEffect(() => {
+    if (!isMobile || !isToday || hasAutoScrolled || loading) return;
+
+    const timePosition = getCurrentTimePosition();
+    if (timePosition === null) return;
+
+    // Only auto-scroll if current time is after 6 AM (start of day)
+    const hour = currentTime.getHours();
+    if (hour < 6) return;
+
+    // Small delay to ensure DOM is ready
+    const timer = setTimeout(() => {
+      scrollToNow();
+      setHasAutoScrolled(true);
+    }, 300);
+
+    return () => clearTimeout(timer);
+  }, [isMobile, isToday, hasAutoScrolled, loading, getCurrentTimePosition, currentTime, scrollToNow]);
+
+  // Check visibility on scroll (mobile only)
+  useEffect(() => {
+    if (!isMobile || !scrollContainerRef.current) return;
+
+    const container = scrollContainerRef.current;
+    const handleScroll = () => {
+      checkTimeIndicatorVisibility();
+    };
+
+    container.addEventListener('scroll', handleScroll);
+    // Also check on initial render and when time changes
+    checkTimeIndicatorVisibility();
+
+    return () => {
+      container.removeEventListener('scroll', handleScroll);
+    };
+  }, [isMobile, checkTimeIndicatorVisibility]);
+
+  // Re-check visibility when time updates
+  useEffect(() => {
+    if (isMobile && isToday) {
+      checkTimeIndicatorVisibility();
+    }
+  }, [currentTime, isMobile, isToday, checkTimeIndicatorVisibility]);
+
   const loadDailyData = async () => {
     if (!user) return;
 
@@ -146,6 +248,57 @@ export function PlannerDailyV2() {
     const newDate = new Date(selectedDate);
     newDate.setDate(newDate.getDate() + (direction === 'prev' ? -1 : 1));
     setSelectedDate(newDate);
+  };
+
+  // Phase 10A: Swipe navigation handlers (mobile only)
+  const handleTouchStart = (e: React.TouchEvent) => {
+    if (!isMobile) return;
+    setSwipeStart({
+      x: e.touches[0].clientX,
+      y: e.touches[0].clientY,
+      time: Date.now(),
+    });
+    setSwipeOffset(0);
+  };
+
+  const handleTouchMove = (e: React.TouchEvent) => {
+    if (!isMobile || !swipeStart) return;
+    
+    const deltaX = e.touches[0].clientX - swipeStart.x;
+    const deltaY = e.touches[0].clientY - swipeStart.y;
+    
+    // Only apply visual feedback for horizontal swipes
+    if (Math.abs(deltaX) > Math.abs(deltaY)) {
+      // Limit offset to prevent over-swiping
+      const maxOffset = 100;
+      setSwipeOffset(Math.max(-maxOffset, Math.min(maxOffset, deltaX * 0.3)));
+    }
+  };
+
+  const handleTouchEnd = (e: React.TouchEvent) => {
+    if (!isMobile || !swipeStart) {
+      setSwipeOffset(0);
+      return;
+    }
+    
+    const deltaX = e.changedTouches[0].clientX - swipeStart.x;
+    const deltaY = e.changedTouches[0].clientY - swipeStart.y;
+    const deltaTime = Date.now() - swipeStart.time;
+    
+    // Reset visual feedback
+    setSwipeOffset(0);
+    setSwipeStart(null);
+    
+    // Only trigger if horizontal swipe (ignore vertical scrolling)
+    if (Math.abs(deltaX) > Math.abs(deltaY) && Math.abs(deltaX) > 50 && deltaTime < 300) {
+      if (deltaX > 0) {
+        // Swipe right = previous day
+        navigateDay('prev');
+      } else {
+        // Swipe left = next day
+        navigateDay('next');
+      }
+    }
   };
 
   const goToWeek = () => {
@@ -440,8 +593,14 @@ export function PlannerDailyV2() {
 
   // Handle time slot click
   const handleTimeSlotClick = (hour: number, minute: number) => {
-    setQuickAddSlot({ hour, minute });
-    setQuickAddTitle('');
+    if (isMobile) {
+      // Mobile: Open BottomSheet
+      setQuickAddSlot({ hour, minute });
+    } else {
+      // Desktop: Inline input
+      setQuickAddSlot({ hour, minute });
+      setQuickAddTitle('');
+    }
   };
 
   // Handle quick add submit
@@ -515,7 +674,6 @@ export function PlannerDailyV2() {
   }, [containerEvents, nestedEvents, regularEvents, selectedDate]);
 
   const { containers, nested, regular } = getDayEvents();
-  const isToday = selectedDate.toDateString() === new Date().toDateString();
   const dayName = selectedDate.toLocaleDateString('en-US', { weekday: 'long' });
   const dayDate = selectedDate.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
 
@@ -532,9 +690,94 @@ export function PlannerDailyV2() {
     );
   }
 
+  // Mobile-first layout
+  if (isMobile) {
+    return (
+      <PlannerShell>
+        <div 
+          className="max-w-full h-screen-safe flex flex-col"
+          onTouchStart={handleTouchStart}
+          onTouchMove={handleTouchMove}
+          onTouchEnd={handleTouchEnd}
+          style={{
+            transform: swipeOffset !== 0 ? `translateX(${swipeOffset}px)` : undefined,
+            transition: swipeOffset === 0 ? 'transform 0.2s ease-out' : 'none',
+          }}
+        >
+          <DailyPlannerMobile
+            selectedDate={selectedDate}
+            isToday={isToday}
+            dayName={dayName}
+            dayDate={selectedDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+            timeSlots={timeSlots}
+            containers={containers}
+            nested={nested}
+            regular={regular}
+            currentTime={currentTime}
+            getCurrentTimePosition={getCurrentTimePosition}
+            onNavigateDay={navigateDay}
+            onGoToToday={() => {
+              const today = new Date();
+              setSelectedDate(today);
+            }}
+            onTimeSlotClick={(hour, minute) => {
+              setQuickAddSlot({ hour, minute });
+            }}
+            onEventClick={setSelectedEvent}
+          />
+
+          {/* Mobile: Quick Add BottomSheet */}
+          {quickAddSlot && user && (
+            <QuickAddBottomSheet
+              isOpen={!!quickAddSlot}
+              onClose={() => {
+                setQuickAddSlot(null);
+                setQuickAddTitle('');
+              }}
+              onEventCreated={loadDailyData}
+              userId={user.id}
+              date={selectedDate}
+              hour={quickAddSlot.hour}
+              minute={quickAddSlot.minute}
+            />
+          )}
+
+          {/* Event Detail Modal */}
+          {selectedEvent && user && (
+            <EventDetailModal
+              isOpen={!!selectedEvent}
+              onClose={() => setSelectedEvent(null)}
+              event={selectedEvent}
+              mode="day"
+              userId={user.id}
+              onUpdated={() => {
+                loadDailyData();
+                setSelectedEvent(null);
+              }}
+              onDeleted={() => {
+                loadDailyData();
+                setSelectedEvent(null);
+              }}
+            />
+          )}
+        </div>
+      </PlannerShell>
+    );
+  }
+
+  // Desktop layout (unchanged)
   return (
     <PlannerShell>
-      <div className="max-w-full">
+      <div 
+        className="max-w-full"
+        onTouchStart={handleTouchStart}
+        onTouchMove={handleTouchMove}
+        onTouchEnd={handleTouchEnd}
+        style={{
+          transform: swipeOffset !== 0 ? `translateX(${swipeOffset}px)` : undefined,
+          transition: swipeOffset === 0 ? 'transform 0.2s ease-out' : 'none',
+        }}
+      >
         {/* Header */}
         <div className="flex items-center justify-between mb-4 md:mb-6">
           <div className="flex items-center gap-4">
@@ -557,18 +800,23 @@ export function PlannerDailyV2() {
             </button>
           </div>
           <div className="flex items-center gap-2">
-            {/* Phase 7A: Add "Today" button */}
-            {!isToday && (
-              <button
-                onClick={() => {
+            {/* Today button - always visible, disabled when already on today */}
+            <button
+              onClick={() => {
+                if (!isToday) {
                   const today = new Date();
                   setSelectedDate(today);
-                }}
-                className="px-3 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg text-sm font-medium transition-colors min-h-[44px]"
-              >
-                Today
-              </button>
-            )}
+                }
+              }}
+              disabled={isToday}
+              className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors min-h-[44px] ${
+                isToday
+                  ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                  : 'bg-gray-100 hover:bg-gray-200 text-gray-700'
+              }`}
+            >
+              Today
+            </button>
             <button
               onClick={goToWeek}
               className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm min-h-[44px]"
@@ -622,7 +870,11 @@ export function PlannerDailyV2() {
             )}
           </div>
 
-          <div className="flex overflow-y-auto" style={{ maxHeight: 'calc(100vh - 320px)' }}>
+          <div 
+            ref={scrollContainerRef}
+            className="flex overflow-y-auto" 
+            style={{ maxHeight: 'calc(100vh - 320px)' }}
+          >
             {/* Time Column */}
             <div className="w-20 flex-shrink-0 border-r-2 border-gray-300 bg-gray-50 sticky left-0 z-10">
               {timeSlots.map((slot, idx) => (
@@ -671,7 +923,8 @@ export function PlannerDailyV2() {
                     }`}
                     onClick={() => handleTimeSlotClick(slot.hour, slot.minute)}
                   >
-                    {isQuickAdd && (
+                    {/* Desktop: Inline input */}
+                    {isQuickAdd && !isMobile && (
                       <div
                         className="absolute inset-x-2 top-0 z-30"
                         onClick={(e) => e.stopPropagation()}
@@ -762,6 +1015,34 @@ export function PlannerDailyV2() {
               setSelectedEvent(null);
             }}
           />
+        )}
+
+        {/* Mobile: Quick Add BottomSheet */}
+        {isMobile && quickAddSlot && user && (
+          <QuickAddBottomSheet
+            isOpen={!!quickAddSlot}
+            onClose={() => {
+              setQuickAddSlot(null);
+              setQuickAddTitle('');
+            }}
+            onEventCreated={loadDailyData}
+            userId={user.id}
+            date={selectedDate}
+            hour={quickAddSlot.hour}
+            minute={quickAddSlot.minute}
+          />
+        )}
+
+        {/* Mobile: Scroll to Now Button */}
+        {isMobile && showScrollToNow && isToday && (
+          <button
+            onClick={scrollToNow}
+            className="fixed bottom-20 right-4 z-40 bg-blue-600 text-white rounded-full p-3 shadow-lg hover:bg-blue-700 active:scale-95 transition-all flex items-center gap-2 min-h-[44px]"
+            aria-label="Scroll to current time"
+          >
+            <Clock size={20} />
+            <span className="font-medium">Now</span>
+          </button>
         )}
       </div>
     </PlannerShell>

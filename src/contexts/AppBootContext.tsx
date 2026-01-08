@@ -131,6 +131,36 @@ export function AppBootProvider({ children }: { children: ReactNode }) {
     };
   }, [state.status]);
 
+  // Phase 8B: Detect routing failures (404 responses, NOT_FOUND errors)
+  useEffect(() => {
+    const handleError = (event: ErrorEvent) => {
+      // Phase 8B: Detect Vercel 404 or routing-related errors
+      if (
+        event.message?.includes('404') ||
+        event.message?.includes('NOT_FOUND') ||
+        event.error?.message?.includes('404') ||
+        event.error?.message?.includes('NOT_FOUND')
+      ) {
+        console.warn('[AppBoot] Routing failure detected, attempting recovery');
+        setState((prev) => {
+          // Only transition to fatal-error if not already in a terminal state
+          if (prev.status !== 'fatal-error' && prev.status !== 'ready') {
+            return {
+              ...prev,
+              status: 'fatal-error',
+              error: new Error('Route not found - app shell may need reload'),
+              errorCode: 'ROUTING_FAILURE',
+            };
+          }
+          return prev;
+        });
+      }
+    };
+
+    window.addEventListener('error', handleError);
+    return () => window.removeEventListener('error', handleError);
+  }, []);
+
   const setStatus = useCallback((status: AppBootStatus) => {
     setState((prev) => {
       // Don't allow transitions from fatal-error or ready unless explicitly resetting

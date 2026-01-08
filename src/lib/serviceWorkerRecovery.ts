@@ -175,3 +175,4 @@ export async function monitorServiceWorkerHealth(
   setTimeout(checkHealth, 1000);
 }
 
+

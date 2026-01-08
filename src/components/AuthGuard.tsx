@@ -1,14 +1,14 @@
 import { useEffect, useState } from 'react';
-import { Navigate } from 'react-router-dom';
+import { Navigate, useLocation } from 'react-router-dom';
 import { Loader2, LogOut, AlertCircle } from 'lucide-react';
 import { supabase } from '../lib/supabase';
-import { isStandaloneApp } from '../lib/appContext';
 
 type AuthGuardProps = {
   children: React.ReactNode;
 };
 
 export function AuthGuard({ children }: AuthGuardProps) {
+  const location = useLocation();
   const [loading, setLoading] = useState(true);
   const [authenticated, setAuthenticated] = useState(false);
   const [timedOut, setTimedOut] = useState(false);
@@ -17,13 +17,14 @@ export function AuthGuard({ children }: AuthGuardProps) {
   useEffect(() => {
     checkInitialSession();
 
+    // Phase 10: Reduced timeout from 10s to 5s for faster failure recovery
     const timeoutId = setTimeout(() => {
       if (loading) {
         setTimedOut(true);
         setLoading(false);
         setErrorMessage('Authentication check timed out. Please try signing in again.');
       }
-    }, 10000);
+    }, 5000);
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       (() => {
@@ -61,7 +62,8 @@ export function AuthGuard({ children }: AuthGuardProps) {
 
   const handleSignOut = async () => {
     await supabase.auth.signOut();
-    window.location.href = '/';
+    // Phase 8C: Always redirect to login after logout
+    window.location.href = '/auth/login';
   };
 
   const handleGoToLogin = async () => {
@@ -71,7 +73,8 @@ export function AuthGuard({ children }: AuthGuardProps) {
 
   const handleGoHome = async () => {
     await supabase.auth.signOut();
-    window.location.href = '/';
+    // Phase 8C: Always redirect to login (no landing page)
+    window.location.href = '/auth/login';
   };
 
   if (timedOut && errorMessage) {
@@ -94,10 +97,10 @@ export function AuthGuard({ children }: AuthGuardProps) {
               Go to Login
             </button>
             <button
-              onClick={handleGoHome}
+              onClick={handleGoToLogin}
               className="w-full bg-gray-100 text-gray-700 py-3 px-4 rounded-lg hover:bg-gray-200 transition-colors font-medium"
             >
-              Go to Home Page
+              Go to Login
             </button>
           </div>
 
@@ -137,9 +140,20 @@ export function AuthGuard({ children }: AuthGuardProps) {
   }
 
   if (!authenticated) {
-    // Phase 3B: In installed app, redirect to login instead of landing page
-    const redirectTo = isStandaloneApp() ? '/auth/login' : '/';
-    return <Navigate to={redirectTo} replace />;
+    // Phase 8C: Always redirect unauthenticated users to /login
+    return <Navigate to="/auth/login" replace />;
+  }
+
+  // Phase 8C: If authenticated user is on /login or /, redirect to app
+  if (location.pathname === '/auth/login' || location.pathname === '/') {
+    // Check for last planner view (mobile-first)
+    if (typeof window !== 'undefined' && window.innerWidth < 1024) {
+      const lastView = localStorage.getItem('last_planner_view');
+      if (lastView && ['/planner/daily', '/planner/weekly', '/planner/monthly'].includes(lastView)) {
+        return <Navigate to={lastView} replace />;
+      }
+    }
+    return <Navigate to="/planner/daily" replace />;
   }
 
   return <>{children}</>;

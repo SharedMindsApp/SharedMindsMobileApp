@@ -50,3 +50,4 @@ export function GoalTrackerWidget({ layout = 'compact' }: GoalTrackerWidgetProps
 
 
 
+

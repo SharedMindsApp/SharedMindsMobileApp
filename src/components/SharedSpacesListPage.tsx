@@ -2,13 +2,25 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Loader2, Users, ArrowRight, Plus, Home, User, ChevronDown, Target, MessageCircle, Settings } from 'lucide-react';
 import { getSharedSpaces, Household } from '../lib/household';
-import { FloatingAIChatWidget } from './ai-chat/FloatingAIChatWidget';
+import { isStandaloneApp } from '../lib/appContext';
 
 export function SharedSpacesListPage() {
   const [spaces, setSpaces] = useState<Household[]>([]);
   const [loading, setLoading] = useState(true);
   const [showSpacesMenu, setShowSpacesMenu] = useState(false);
+  const [isMobile, setIsMobile] = useState(false);
   const navigate = useNavigate();
+
+  // Phase 9A: Detect mobile/installed app
+  useEffect(() => {
+    const checkMobile = () => {
+      const mobile = window.innerWidth < 768 || isStandaloneApp();
+      setIsMobile(mobile);
+    };
+    checkMobile();
+    window.addEventListener('resize', checkMobile);
+    return () => window.removeEventListener('resize', checkMobile);
+  }, []);
 
   useEffect(() => {
     loadSharedSpaces();
@@ -155,34 +167,54 @@ export function SharedSpacesListPage() {
             </button>
           </div>
         ) : (
-          <div className="space-y-4">
-            {spaces.map((space) => (
-              <button
-                key={space.id}
-                onClick={() => navigate(`/spaces/${space.id}`)}
-                className="w-full bg-white rounded-xl shadow-md border border-gray-200 hover:border-amber-500 hover:shadow-lg transition-all p-6 text-left group"
-              >
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-4">
-                    <div className="w-12 h-12 bg-amber-100 rounded-lg flex items-center justify-center group-hover:bg-amber-500 transition-colors">
-                      <Users size={24} className="text-amber-600 group-hover:text-white transition-colors" />
-                    </div>
-                    <div>
-                      <h3 className="text-xl font-bold text-gray-900 mb-1">{space.name}</h3>
-                      <p className="text-sm text-gray-500">
-                        {space.plan === 'premium' ? (
-                          <span className="text-teal-600 font-medium">Premium Plan</span>
-                        ) : (
-                          <span className="text-gray-500">Free Plan</span>
-                        )}
-                      </p>
-                    </div>
+          // Phase 9A: Mobile shows OS-style grid, desktop shows list
+          isMobile ? (
+            <div className="grid grid-cols-4 gap-6 sm:gap-8">
+              {spaces.map((space) => (
+                <button
+                  key={space.id}
+                  onClick={() => navigate(`/spaces/${space.id}`)}
+                  className="flex flex-col items-center gap-2 active:scale-95 transition-transform"
+                >
+                  <div className="relative w-20 h-20 sm:w-24 sm:h-24 rounded-3xl bg-amber-500 flex items-center justify-center shadow-lg">
+                    <Users size={40} className="text-white" />
                   </div>
-                  <ArrowRight size={24} className="text-gray-400 group-hover:text-amber-600 transition-colors" />
-                </div>
-              </button>
-            ))}
-          </div>
+                  <span className="text-xs sm:text-sm text-gray-900 font-medium text-center max-w-[80px] sm:max-w-[96px] truncate">
+                    {space.name}
+                  </span>
+                </button>
+              ))}
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {spaces.map((space) => (
+                <button
+                  key={space.id}
+                  onClick={() => navigate(`/spaces/${space.id}`)}
+                  className="w-full bg-white rounded-xl shadow-md border border-gray-200 hover:border-amber-500 hover:shadow-lg transition-all p-6 text-left group"
+                >
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-4">
+                      <div className="w-12 h-12 bg-amber-100 rounded-lg flex items-center justify-center group-hover:bg-amber-500 transition-colors">
+                        <Users size={24} className="text-amber-600 group-hover:text-white transition-colors" />
+                      </div>
+                      <div>
+                        <h3 className="text-xl font-bold text-gray-900 mb-1">{space.name}</h3>
+                        <p className="text-sm text-gray-500">
+                          {space.plan === 'premium' ? (
+                            <span className="text-teal-600 font-medium">Premium Plan</span>
+                          ) : (
+                            <span className="text-gray-500">Free Plan</span>
+                          )}
+                        </p>
+                      </div>
+                    </div>
+                    <ArrowRight size={24} className="text-gray-400 group-hover:text-amber-600 transition-colors" />
+                  </div>
+                </button>
+              ))}
+            </div>
+          )
         )}
       </div>
 

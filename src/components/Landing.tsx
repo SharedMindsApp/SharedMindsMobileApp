@@ -70,7 +70,7 @@ export function Landing() {
                 <Brain size={24} className="text-white" />
               </div>
               <span className="text-2xl font-bold bg-gradient-to-r from-blue-600 to-teal-600 bg-clip-text text-transparent">
-                SharedMind
+                SharedMinds
               </span>
             </div>
             <div className="flex items-center gap-4">
@@ -115,7 +115,7 @@ export function Landing() {
             </h1>
 
             <p className="text-xl text-gray-700 mb-12 leading-relaxed">
-              SharedMind helps neurodiverse households build harmony through shared insights, emotional clarity, and personalised support — for ADHD, Autism, AuDHD, Dyslexia, sensory differences, and more.
+              SharedMinds helps neurodiverse households build harmony through shared insights, emotional clarity, and personalised support — for ADHD, Autism, AuDHD, Dyslexia, sensory differences, and more.
             </p>
 
             <div className="flex flex-col sm:flex-row gap-4 justify-center lg:justify-start items-center">
@@ -130,7 +130,7 @@ export function Landing() {
                 to="/how-it-works"
                 className="bg-white hover:bg-gray-50 text-gray-900 font-semibold px-10 py-5 rounded-full border-2 border-gray-300 transition-all shadow-lg hover:shadow-xl text-lg"
               >
-                How SharedMind Works
+                How SharedMinds Works
               </Link>
             </div>
           </div>
@@ -477,13 +477,13 @@ export function Landing() {
                   </div>
                 </div>
                 <div className="mb-6">
-                  <p className="text-sm font-semibold text-gray-500 mb-2">Before SharedMind</p>
+                  <p className="text-sm font-semibold text-gray-500 mb-2">Before SharedMinds</p>
                   <p className="text-gray-700">
                     "I needed structure. They needed spontaneity. Every plan became a fight, and we both felt trapped."
                   </p>
                 </div>
                 <div>
-                  <p className="text-sm font-semibold text-gray-500 mb-2">After SharedMind</p>
+                  <p className="text-sm font-semibold text-gray-500 mb-2">After SharedMinds</p>
                   <p className="text-gray-700">
                     "The report showed us how to create flexible structure. Now we honor both our needs without conflict."
                   </p>
@@ -512,13 +512,13 @@ export function Landing() {
                   </div>
                 </div>
                 <div className="mb-6">
-                  <p className="text-sm font-semibold text-gray-500 mb-2">Before SharedMind</p>
+                  <p className="text-sm font-semibold text-gray-500 mb-2">Before SharedMinds</p>
                   <p className="text-gray-700">
                     "My child's sensory needs drained me completely. I couldn't regulate myself while meeting theirs."
                   </p>
                 </div>
                 <div>
-                  <p className="text-sm font-semibold text-gray-500 mb-2">After SharedMind</p>
+                  <p className="text-sm font-semibold text-gray-500 mb-2">After SharedMinds</p>
                   <p className="text-gray-700">
                     "We learned to create sensory zones that work for both of us. I can recharge while they thrive."
                   </p>
@@ -547,13 +547,13 @@ export function Landing() {
                   </div>
                 </div>
                 <div className="mb-6">
-                  <p className="text-sm font-semibold text-gray-500 mb-2">Before SharedMind</p>
+                  <p className="text-sm font-semibold text-gray-500 mb-2">Before SharedMinds</p>
                   <p className="text-gray-700">
                     "We both struggled with tasks but in different ways. We couldn't support each other because we didn't understand our own challenges."
                   </p>
                 </div>
                 <div>
-                  <p className="text-sm font-semibold text-gray-500 mb-2">After SharedMind</p>
+                  <p className="text-sm font-semibold text-gray-500 mb-2">After SharedMinds</p>
                   <p className="text-gray-700">
                     "Now we know our individual patterns and create systems that support both neurotypes. We're finally a team."
                   </p>
@@ -582,13 +582,13 @@ export function Landing() {
                   </div>
                 </div>
                 <div className="mb-6">
-                  <p className="text-sm font-semibold text-gray-500 mb-2">Before SharedMind</p>
+                  <p className="text-sm font-semibold text-gray-500 mb-2">Before SharedMinds</p>
                   <p className="text-gray-700">
                     "Chris thought I was lazy. I felt broken and ashamed. We were stuck in blame cycles."
                   </p>
                 </div>
                 <div>
-                  <p className="text-sm font-semibold text-gray-500 mb-2">After SharedMind</p>
+                  <p className="text-sm font-semibold text-gray-500 mb-2">After SharedMinds</p>
                   <p className="text-gray-700">
                     "The report helped Chris understand executive dysfunction. Now they support me without judgment, and I don't feel ashamed."
                   </p>
@@ -617,15 +617,15 @@ export function Landing() {
                   </div>
                 </div>
                 <div className="mb-6">
-                  <p className="text-sm font-semibold text-gray-500 mb-2">Before SharedMind</p>
+                  <p className="text-sm font-semibold text-gray-500 mb-2">Before SharedMinds</p>
                   <p className="text-gray-700">
                     "My sensory needs felt impossible to explain. They took everything personally when I needed space."
                   </p>
                 </div>
                 <div>
-                  <p className="text-sm font-semibold text-gray-500 mb-2">After SharedMind</p>
+                  <p className="text-sm font-semibold text-gray-500 mb-2">After SharedMinds</p>
                   <p className="text-gray-700">
-                    "SharedMind gave us the language. Now Lee understands my sensory shutdowns aren't rejection—just how I recharge."
+                    "SharedMinds gave us the language. Now Lee understands my sensory shutdowns aren't rejection—just how I recharge."
                   </p>
                 </div>
               </div>
@@ -652,13 +652,13 @@ export function Landing() {
                   </div>
                 </div>
                 <div className="mb-6">
-                  <p className="text-sm font-semibold text-gray-500 mb-2">Before SharedMind</p>
+                  <p className="text-sm font-semibold text-gray-500 mb-2">Before SharedMinds</p>
                   <p className="text-gray-700">
                     "My anxiety paralysis looked like avoidance. Their ADHD impulsivity looked like carelessness. We misread each other constantly."
                   </p>
                 </div>
                 <div>
-                  <p className="text-sm font-semibold text-gray-500 mb-2">After SharedMind</p>
+                  <p className="text-sm font-semibold text-gray-500 mb-2">After SharedMinds</p>
                   <p className="text-gray-700">
                     "We finally see each other's struggles clearly. We've built a system that reduces both my anxiety and their overwhelm."
                   </p>
@@ -677,7 +677,7 @@ export function Landing() {
               Simple, transparent pricing
             </h2>
             <p className="text-xl text-gray-600 mb-8">
-              SharedMind will always offer a free starter version so every neurodiverse household can access support.
+              SharedMinds will always offer a free starter version so every neurodiverse household can access support.
             </p>
             <div className="inline-block bg-gradient-to-r from-blue-100 to-teal-100 rounded-2xl px-8 py-4 mb-8">
               <p className="text-lg font-semibold text-gray-900">
@@ -711,7 +711,7 @@ export function Landing() {
             — starting today.
           </h2>
           <p className="text-2xl text-blue-100 mb-12 max-w-3xl mx-auto leading-relaxed">
-            SharedMind helps every neurotype feel understood.
+            SharedMinds helps every neurotype feel understood.
           </p>
 
           <div className="mb-12 rounded-3xl overflow-hidden shadow-2xl max-w-3xl mx-auto">
@@ -757,10 +757,10 @@ export function Landing() {
                 <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-blue-500 to-teal-500 flex items-center justify-center">
                   <Brain size={28} className="text-white" />
                 </div>
-                <span className="text-3xl font-bold text-white">SharedMind</span>
+                <span className="text-3xl font-bold text-white">SharedMinds</span>
               </div>
               <p className="text-gray-400 leading-relaxed text-lg mb-6">
-                SharedMind supports neurodiverse households with compassion, understanding, and practical tools for building harmony at home — for ADHD, Autism, AuDHD, Dyslexia, and all neurotypes.
+                SharedMinds supports neurodiverse households with compassion, understanding, and practical tools for building harmony at home — for ADHD, Autism, AuDHD, Dyslexia, and all neurotypes.
               </p>
               <div className="flex items-center gap-3 text-gray-400">
                 <Mail size={20} />
@@ -810,7 +810,7 @@ export function Landing() {
 
           <div className="border-t border-gray-800 pt-8 flex flex-col md:flex-row justify-between items-center gap-4">
             <p className="text-gray-500">
-              &copy; {new Date().getFullYear()} SharedMind. All rights reserved.
+              &copy; {new Date().getFullYear()} SharedMinds. All rights reserved.
             </p>
             <p className="text-gray-500 text-sm">
               Built with care for neurodiverse households everywhere.

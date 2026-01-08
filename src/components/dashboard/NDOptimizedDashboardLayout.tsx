@@ -13,8 +13,9 @@ import { useUIPreferences } from '../../contexts/UIPreferencesContext';
 import { DENSITY_SPACING_MAP, FONT_SCALE_MAP, COLOR_THEMES } from '../../lib/uiPreferencesTypes';
 import { BrainProfileWidget } from './BrainProfileWidget';
 import { LockedFeaturesJourney } from '../features/LockedFeaturesJourney';
-import { DailyAlignmentPanel } from '../regulation/DailyAlignmentPanel';
+import { DailyAlignmentEntryCard } from '../regulation/DailyAlignmentEntryCard';
 import { getDailyAlignmentEnabled } from '../../lib/regulation/dailyAlignmentService';
+import { isStandaloneApp } from '../../lib/appContext';
 
 interface NDOptimizedDashboardLayoutProps {
   members: Member[];
@@ -42,12 +43,21 @@ export function NDOptimizedDashboardLayout({
   const transitionClass = config.reducedMotion ? '' : 'transition-all duration-200';
 
   const [dailyAlignmentEnabled, setDailyAlignmentEnabled] = useState(false);
+  const [isMobile, setIsMobile] = useState(false);
 
   useEffect(() => {
     if (currentMember?.user_id) {
       loadDailyAlignmentEnabled();
     }
   }, [currentMember]);
+
+  // Mobile detection
+  useEffect(() => {
+    const checkMobile = () => setIsMobile(window.innerWidth < 768 || isStandaloneApp());
+    checkMobile();
+    window.addEventListener('resize', checkMobile);
+    return () => window.removeEventListener('resize', checkMobile);
+  }, []);
 
   const loadDailyAlignmentEnabled = async () => {
     if (!currentMember?.user_id) return;
@@ -68,80 +78,89 @@ export function NDOptimizedDashboardLayout({
 
       {dailyAlignmentEnabled && currentMember?.user_id && (
         <div className="mb-6">
-          <DailyAlignmentPanel userId={currentMember.user_id} />
+          <DailyAlignmentEntryCard userId={currentMember.user_id} />
         </div>
       )}
 
-      {firstIncompleteSection ? (
-        <div className={`${theme.cardBg} rounded-2xl shadow-lg border-2 border-blue-200 p-8 mb-8`}>
-          <div className="text-center mb-6">
-            <div className="inline-flex items-center justify-center w-20 h-20 bg-blue-100 rounded-full mb-4">
-              <BookOpen size={36} className="text-blue-600" />
-            </div>
-            <h2 className="text-3xl font-bold text-gray-900 mb-2">Your Next Step</h2>
-            <p className="text-gray-600">One section at a time</p>
-          </div>
+      {/* Questionnaire Progress - Hidden on mobile */}
+      {!isMobile && (
+        <>
+          {firstIncompleteSection ? (
+            <div className={`${theme.cardBg} rounded-2xl shadow-lg border-2 border-blue-200 p-8 mb-8`}>
+              <div className="text-center mb-6">
+                <div className="inline-flex items-center justify-center w-20 h-20 bg-blue-100 rounded-full mb-4">
+                  <BookOpen size={36} className="text-blue-600" />
+                </div>
+                <h2 className="text-3xl font-bold text-gray-900 mb-2">Your Next Step</h2>
+                <p className="text-gray-600">One section at a time</p>
+              </div>
 
-          <div className="bg-blue-50 rounded-xl p-6 mb-6 border border-blue-100">
-            <p className="text-sm font-medium text-gray-600 mb-2">Continue with:</p>
-            <h3 className="text-xl font-bold text-gray-900 mb-2">{firstIncompleteSection.title}</h3>
-            <p className="text-gray-700">{firstIncompleteSection.description}</p>
-          </div>
+              <div className="bg-blue-50 rounded-xl p-6 mb-6 border border-blue-100">
+                <p className="text-sm font-medium text-gray-600 mb-2">Continue with:</p>
+                <h3 className="text-xl font-bold text-gray-900 mb-2">{firstIncompleteSection.title}</h3>
+                <p className="text-gray-700">{firstIncompleteSection.description}</p>
+              </div>
 
-          <button
-            onClick={() => navigate('/journey')}
-            className={`w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-5 px-8 rounded-xl ${transitionClass} flex items-center justify-center gap-3 text-xl shadow-md`}
-          >
-            Continue
-            <ArrowRight size={28} />
-          </button>
+              <button
+                onClick={() => navigate('/journey')}
+                className={`w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-5 px-8 rounded-xl ${transitionClass} flex items-center justify-center gap-3 text-xl shadow-md`}
+              >
+                Continue
+                <ArrowRight size={28} />
+              </button>
 
-          <div className="mt-8 pt-6 border-t border-gray-200">
-            <div className="flex items-center justify-center gap-3 text-sm text-gray-600 mb-2">
-              <span>Your Progress</span>
-            </div>
-            <div className="flex items-center gap-3">
-              <div className="flex-1">
-                <div className="w-full bg-gray-200 rounded-full h-3">
-                  <div
-                    className={`bg-blue-600 h-3 rounded-full ${transitionClass}`}
-                    style={{ width: `${overallProgress}%` }}
-                  ></div>
+              <div className="mt-8 pt-6 border-t border-gray-200">
+                <div className="flex items-center justify-center gap-3 text-sm text-gray-600 mb-2">
+                  <span>Your Progress</span>
+                </div>
+                <div className="flex items-center gap-3">
+                  <div className="flex-1">
+                    <div className="w-full bg-gray-200 rounded-full h-3">
+                      <div
+                        className={`bg-blue-600 h-3 rounded-full ${transitionClass}`}
+                        style={{ width: `${overallProgress}%` }}
+                      ></div>
+                    </div>
+                  </div>
+                  <span className="text-lg font-bold text-gray-900 min-w-[3rem] text-right">{overallProgress}%</span>
                 </div>
               </div>
-              <span className="text-lg font-bold text-gray-900 min-w-[3rem] text-right">{overallProgress}%</span>
             </div>
-          </div>
-        </div>
-      ) : (
-        <div className={`${theme.cardBg} rounded-2xl shadow-lg border-2 border-green-200 p-8 mb-8`}>
-          <div className="text-center">
-            <div className="inline-flex items-center justify-center w-20 h-20 bg-green-100 rounded-full mb-6">
-              <CheckCircle2 size={40} className="text-green-600" />
-            </div>
-            <h2 className="text-3xl font-bold text-gray-900 mb-3">All Complete!</h2>
-            <p className="text-lg text-gray-700 mb-8">You have finished all questionnaire sections</p>
+          ) : (
+            <div className={`${theme.cardBg} rounded-2xl shadow-lg border-2 border-green-200 p-8 mb-8`}>
+              <div className="text-center">
+                <div className="inline-flex items-center justify-center w-20 h-20 bg-green-100 rounded-full mb-6">
+                  <CheckCircle2 size={40} className="text-green-600" />
+                </div>
+                <h2 className="text-3xl font-bold text-gray-900 mb-3">All Complete!</h2>
+                <p className="text-lg text-gray-700 mb-8">You have finished all questionnaire sections</p>
 
-            <div className="bg-green-50 rounded-xl p-6 border-2 border-green-200">
-              <div className="text-5xl font-bold text-green-600 mb-2">100%</div>
-              <div className="text-base text-gray-700">Questionnaire Complete</div>
-            </div>
+                <div className="bg-green-50 rounded-xl p-6 border-2 border-green-200">
+                  <div className="text-5xl font-bold text-green-600 mb-2">100%</div>
+                  <div className="text-base text-gray-700">Questionnaire Complete</div>
+                </div>
 
-            {members.length > 0 && (
-              <div className="mt-6 text-sm text-gray-600">
-                All {members.length} member{members.length !== 1 ? 's' : ''} have completed their sections
+                {members.length > 0 && (
+                  <div className="mt-6 text-sm text-gray-600">
+                    All {members.length} member{members.length !== 1 ? 's' : ''} have completed their sections
+                  </div>
+                )}
               </div>
-            )}
-          </div>
-        </div>
+            </div>
+          )}
+        </>
       )}
 
-      <LockedFeaturesJourney
-        memberId={currentMember?.id || null}
-        reducedMotion={config.reducedMotion}
-      />
+      {/* Your Insight Journey - Hidden on mobile */}
+      {!isMobile && (
+        <LockedFeaturesJourney
+          memberId={currentMember?.id || null}
+          reducedMotion={config.reducedMotion}
+        />
+      )}
 
-      <BrainProfileWidget />
+      {/* My Brain Profile - Hidden on mobile */}
+      {!isMobile && <BrainProfileWidget />}
 
       <div className="space-y-4">
         {reportAvailable && (

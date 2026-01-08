@@ -556,4 +556,4 @@ The Fridge Canvas provides a complete infinite whiteboard experience with:
 **Database Tables:** 2 (widgets + positions)
 **Total LOC:** ~2000 lines of TypeScript/TSX
 
-The system is production-ready and fully integrated with the existing SharedMind household infrastructure.
+The system is production-ready and fully integrated with the existing SharedMinds household infrastructure.

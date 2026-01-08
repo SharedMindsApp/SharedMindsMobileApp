@@ -1,5 +1,5 @@
 /*
-  # SharedMind MVP Database Schema
+  # SharedMinds MVP Database Schema
 
   1. New Tables
     - `households`

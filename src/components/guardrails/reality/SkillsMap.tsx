@@ -73,7 +73,13 @@ export function SkillsMap({ masterProjectId, mode: explicitMode }: SkillsMapProp
   const [skillLinks, setSkillLinks] = useState<Map<string, SkillEntityLink[]>>(new Map());
   const [skillPlans, setSkillPlans] = useState<Map<string, boolean>>(new Map()); // skillId -> hasActivePlan
   const [loading, setLoading] = useState(true);
-  const [viewMode, setViewMode] = useState<'list' | 'map'>('map');
+  // Mobile: Default to list view, Desktop: Default to map view
+  const [viewMode, setViewMode] = useState<'list' | 'map'>(() => 
+    typeof window !== 'undefined' && window.innerWidth < 768 ? 'list' : 'map'
+  );
+  const [isMobile, setIsMobile] = useState(() => 
+    typeof window !== 'undefined' && window.innerWidth < 768
+  );
   const [selectedContextType, setSelectedContextType] = useState<SkillContextType | 'all'>('all');
   const [selectedSkill, setSelectedSkill] = useState<string | null>(null);
   const [zoom, setZoom] = useState(1);
@@ -709,8 +715,8 @@ export function SkillsMap({ masterProjectId, mode: explicitMode }: SkillsMapProp
         </div>
       ) : (
         /* List View (Existing Skills Matrix) */
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <div className="bg-white rounded-xl border border-gray-200 p-6">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 md:gap-6">
+          <div className="bg-white rounded-xl border border-gray-200 p-4 md:p-6">
             <div className="flex items-center justify-between mb-4">
               <div className="flex items-center gap-2">
                 <Award size={20} className="text-blue-600" />
@@ -772,11 +778,11 @@ export function SkillsMap({ masterProjectId, mode: explicitMode }: SkillsMapProp
           </div>
 
           {mode === 'guardrails' && (
-            <div className="bg-white rounded-xl border border-gray-200 p-6">
+            <div className="bg-white rounded-xl border border-gray-200 p-4 md:p-6">
               <div className="flex items-center justify-between mb-4">
                 <div className="flex items-center gap-2">
                   <AlertCircle size={20} className="text-purple-600" />
-                  <h3 className="text-lg font-semibold text-gray-900">Required for Project</h3>
+                  <h3 className="text-base md:text-lg font-semibold text-gray-900">Required for Project</h3>
                 </div>
               </div>
 

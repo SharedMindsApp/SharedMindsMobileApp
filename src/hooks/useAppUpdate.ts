@@ -1,0 +1,227 @@
+/**
+ * useAppUpdate Hook
+ * 
+ * Manages app update detection and state for in-app update banner.
+ * Checks for updates on load, foreground, and periodically.
+ */
+
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { checkForUpdate, CURRENT_APP_VERSION } from '../lib/appVersion';
+
+export interface AppUpdateState {
+  updateAvailable: boolean;
+  updateReady: boolean;
+  dismissed: boolean;
+  isOnline: boolean;
+  currentVersion: string;
+  latestVersion: string | null;
+}
+
+const CHECK_INTERVAL = 30 * 60 * 1000; // 30 minutes
+const FOREGROUND_CHECK_DELAY = 1000; // 1 second after returning to foreground
+
+export function useAppUpdate() {
+  const [state, setState] = useState<AppUpdateState>({
+    updateAvailable: false,
+    updateReady: false,
+    dismissed: false,
+    isOnline: navigator.onLine,
+    currentVersion: CURRENT_APP_VERSION,
+    latestVersion: null,
+  });
+
+  const checkIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const serviceWorkerRegistrationRef = useRef<ServiceWorkerRegistration | null>(null);
+
+  // Check for service worker update
+  const checkServiceWorkerUpdate = useCallback(async () => {
+    if (!('serviceWorker' in navigator)) return;
+
+    try {
+      const registration = await navigator.serviceWorker.getRegistration();
+      if (!registration) return;
+
+      serviceWorkerRegistrationRef.current = registration;
+
+      // Check if there's a waiting service worker (already installed, waiting to activate)
+      if (registration.waiting && navigator.serviceWorker.controller) {
+        setState((prev) => ({
+          ...prev,
+          updateReady: true,
+          updateAvailable: true,
+        }));
+        return;
+      }
+
+      // Check if there's an installing service worker
+      if (registration.installing) {
+        const installingWorker = registration.installing;
+        const handleStateChange = () => {
+          if (installingWorker.state === 'installed' && navigator.serviceWorker.controller) {
+            // Service worker is installed but not yet activated (waiting for skipWaiting)
+            setState((prev) => ({
+              ...prev,
+              updateReady: true,
+              updateAvailable: true,
+            }));
+          }
+        };
+        installingWorker.addEventListener('statechange', handleStateChange);
+        // Clean up listener if component unmounts (though this is unlikely)
+        return () => installingWorker.removeEventListener('statechange', handleStateChange);
+      }
+
+      // Periodically check for updates
+      await registration.update();
+    } catch (error) {
+      console.warn('[useAppUpdate] Error checking service worker:', error);
+    }
+  }, []);
+
+  // Check for version update
+  const checkVersionUpdate = useCallback(async () => {
+    if (!state.isOnline) return;
+
+    try {
+      const updateAvailable = await checkForUpdate();
+      if (updateAvailable) {
+        setState((prev) => ({
+          ...prev,
+          updateAvailable: true,
+        }));
+      }
+    } catch (error) {
+      console.warn('[useAppUpdate] Error checking version:', error);
+    }
+  }, [state.isOnline]);
+
+  // Combined update check
+  const performUpdateCheck = useCallback(async () => {
+    await Promise.all([checkVersionUpdate(), checkServiceWorkerUpdate()]);
+  }, [checkVersionUpdate, checkServiceWorkerUpdate]);
+
+  // Listen for service worker update events
+  useEffect(() => {
+    const handleUpdateAvailable = (event: Event) => {
+      const customEvent = event as CustomEvent;
+      setState((prev) => ({
+        ...prev,
+        updateReady: true,
+        updateAvailable: true,
+      }));
+      
+      // Also check registration to ensure we have the latest state
+      checkServiceWorkerUpdate();
+    };
+
+    window.addEventListener('sw-update-available', handleUpdateAvailable);
+    return () => window.removeEventListener('sw-update-available', handleUpdateAvailable);
+  }, [checkServiceWorkerUpdate]);
+
+  // Listen for online/offline status
+  useEffect(() => {
+    const handleOnline = () => {
+      setState((prev) => ({ ...prev, isOnline: true }));
+      // Check for update when coming back online
+      setTimeout(() => performUpdateCheck(), FOREGROUND_CHECK_DELAY);
+    };
+
+    const handleOffline = () => {
+      setState((prev) => ({ ...prev, isOnline: false }));
+    };
+
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, [performUpdateCheck]);
+
+  // Listen for visibility change (app returning to foreground)
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible' && state.isOnline) {
+        // Delay check slightly to avoid interrupting user actions
+        setTimeout(() => performUpdateCheck(), FOREGROUND_CHECK_DELAY);
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
+  }, [performUpdateCheck, state.isOnline]);
+
+  // Initial check on mount (only once)
+  useEffect(() => {
+    // Small delay to avoid checking during app boot
+    const timeoutId = setTimeout(() => {
+      performUpdateCheck();
+    }, 2000); // Wait 2 seconds after mount
+
+    return () => clearTimeout(timeoutId);
+  }, []); // Only run on mount
+
+  // Periodic check (only if not dismissed)
+  useEffect(() => {
+    if (state.dismissed) return; // Don't check if dismissed
+
+    checkIntervalRef.current = setInterval(() => {
+      performUpdateCheck();
+    }, CHECK_INTERVAL);
+
+    return () => {
+      if (checkIntervalRef.current) {
+        clearInterval(checkIntervalRef.current);
+        checkIntervalRef.current = null;
+      }
+    };
+  }, [performUpdateCheck, state.dismissed]);
+
+  // Dismiss update banner
+  const dismissUpdate = useCallback(() => {
+    setState((prev) => ({ ...prev, dismissed: true }));
+  }, []);
+
+  // Apply update (reload app)
+  const applyUpdate = useCallback(async () => {
+    try {
+      // Service worker update scenario
+      const registration = serviceWorkerRegistrationRef.current;
+      
+      if (registration && registration.waiting) {
+        // Send skipWaiting message to waiting service worker
+        registration.waiting.postMessage({ type: 'SKIP_WAITING' });
+        
+        // Listen for controllerchange to know when new service worker takes control
+        const handleControllerChange = () => {
+          navigator.serviceWorker.removeEventListener('controllerchange', handleControllerChange);
+          window.location.reload();
+        };
+        
+        navigator.serviceWorker.addEventListener('controllerchange', handleControllerChange);
+        
+        // Fallback: reload after timeout if controllerchange doesn't fire
+        setTimeout(() => {
+          navigator.serviceWorker.removeEventListener('controllerchange', handleControllerChange);
+          window.location.reload();
+        }, 1000);
+      } else {
+        // No waiting service worker, just reload (version update scenario or fallback)
+        window.location.reload();
+      }
+    } catch (error) {
+      console.error('[useAppUpdate] Error applying update:', error);
+      // Fallback: just reload
+      window.location.reload();
+    }
+  }, []);
+
+  return {
+    ...state,
+    dismissUpdate,
+    applyUpdate,
+    checkForUpdate: performUpdateCheck,
+  };
+}
+

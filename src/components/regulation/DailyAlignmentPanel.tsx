@@ -48,9 +48,14 @@ interface RoadmapTaskEvent {
 
 interface DailyAlignmentPanelProps {
   userId: string;
+  /**
+   * Phase 11: If true, renders as standalone page (no widget framing).
+   * If false, renders as embedded widget (legacy dashboard behavior).
+   */
+  standalone?: boolean;
 }
 
-export function DailyAlignmentPanel({ userId }: DailyAlignmentPanelProps) {
+export function DailyAlignmentPanel({ userId, standalone = false }: DailyAlignmentPanelProps) {
   const [alignment, setAlignment] = useState<DailyAlignmentWithBlocks | null>(null);
   const [calendarEvents, setCalendarEvents] = useState<CalendarEvent[]>([]);
   const [roadmapItems, setRoadmapItems] = useState<RoadmapTaskEvent[]>([]);
@@ -266,71 +271,120 @@ export function DailyAlignmentPanel({ userId }: DailyAlignmentPanelProps) {
 
   if (loading || initializing) {
     return (
-      <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+      <div className={standalone ? "text-center text-sm text-gray-500 py-8" : "bg-white rounded-lg shadow-sm border border-gray-200 p-6"}>
         <div className="text-center text-sm text-gray-500">Loading daily alignment...</div>
       </div>
     );
   }
 
+  // Phase 11: In standalone mode, show empty state for dismissed/completed
+  // In widget mode, return null (don't show widget)
   if (!alignment || alignment.status === 'dismissed' || alignment.status === 'completed') {
+    if (standalone) {
+      return (
+        <div className="text-center py-12">
+          <div className="inline-flex items-center justify-center w-16 h-16 bg-blue-100 rounded-full mb-4">
+            <CalendarIcon className="w-8 h-8 text-blue-600" />
+          </div>
+          <h3 className="text-xl font-bold text-gray-900 mb-2">
+            {alignment?.status === 'completed' ? 'Alignment Completed' : 'No Alignment Today'}
+          </h3>
+          <p className="text-gray-600 mb-6">
+            {alignment?.status === 'completed'
+              ? "You've completed today's alignment. Come back tomorrow for a fresh start."
+              : "You haven't set up today's alignment yet."}
+          </p>
+          {alignment?.status !== 'completed' && (
+            <button
+              onClick={initializeAlignment}
+              className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium"
+            >
+              Start Daily Alignment
+            </button>
+          )}
+        </div>
+      );
+    }
     return null;
   }
 
   if (alignment.status === 'hidden') {
-    return (
-      <button
-        onClick={loadAlignment}
-        className="w-full bg-blue-50 border border-blue-200 rounded-lg p-3 text-left hover:bg-blue-100 transition-colors"
-      >
-        <div className="flex items-center gap-2">
-          <ChevronDown className="w-4 h-4 text-blue-600" />
-          <span className="text-sm font-medium text-blue-900">Show Daily Alignment</span>
-        </div>
-      </button>
-    );
+    // Phase 11: In standalone mode, hidden state should still show the full UI
+    // (user navigated here intentionally). In widget mode, show "Show" button.
+    if (!standalone) {
+      return (
+        <button
+          onClick={loadAlignment}
+          className="w-full bg-blue-50 border border-blue-200 rounded-lg p-3 text-left hover:bg-blue-100 transition-colors"
+        >
+          <div className="flex items-center gap-2">
+            <ChevronDown className="w-4 h-4 text-blue-600" />
+            <span className="text-sm font-medium text-blue-900">Show Daily Alignment</span>
+          </div>
+        </button>
+      );
+    }
+    // In standalone mode, continue to show full UI even if status is 'hidden'
+    // The user navigated here intentionally, so respect that intent
   }
+
+  // Phase 11: Standalone mode - remove widget framing, use full width
+  const containerClass = standalone
+    ? "w-full" // Full width, no card styling
+    : "bg-white rounded-xl shadow-lg border-2 border-gray-200 overflow-hidden"; // Widget card
+
+  const headerClass = standalone
+    ? "mb-6" // No background/border in standalone
+    : "bg-gradient-to-r from-blue-50 via-blue-100 to-blue-50 p-6 border-b-2 border-blue-200"; // Widget header
+
+  const contentClass = standalone
+    ? "space-y-6" // No padding/bg in standalone (handled by page)
+    : "p-6 bg-gray-50 space-y-6"; // Widget content
 
   return (
     <>
-      <div className="bg-white rounded-xl shadow-lg border-2 border-gray-200 overflow-hidden">
-        <div className="bg-gradient-to-r from-blue-50 via-blue-100 to-blue-50 p-6 border-b-2 border-blue-200">
-          <div className="flex items-start justify-between mb-3">
-            <div className="flex items-center gap-3">
-              <div className="p-2 bg-blue-600 rounded-lg">
-                <CalendarIcon className="w-6 h-6 text-white" />
+      <div className={containerClass}>
+        <div className={headerClass}>
+          {!standalone && (
+            <div className="flex items-start justify-between mb-3">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-blue-600 rounded-lg">
+                  <CalendarIcon className="w-6 h-6 text-white" />
+                </div>
+                <div>
+                  <h2 className="text-xl font-bold text-gray-900">Daily Alignment</h2>
+                  <p className="text-sm text-gray-600 mt-0.5">
+                    Set a loose plan for today—nothing here is binding
+                  </p>
+                </div>
               </div>
-              <div>
-                <h2 className="text-xl font-bold text-gray-900">Daily Alignment</h2>
-                <p className="text-sm text-gray-600 mt-0.5">
-                  Set a loose plan for today—nothing here is binding
-                </p>
-              </div>
+              <button
+                onClick={handleHide}
+                className="p-2 text-gray-400 hover:text-gray-600 hover:bg-white rounded-lg transition-colors"
+                title="Hide for now"
+              >
+                <X className="w-5 h-5" />
+              </button>
             </div>
-            <button
-              onClick={handleHide}
-              className="p-2 text-gray-400 hover:text-gray-600 hover:bg-white rounded-lg transition-colors"
-              title="Hide for now"
-            >
-              <X className="w-5 h-5" />
-            </button>
-          </div>
+          )}
 
-          <div className="flex flex-wrap gap-2 mt-4">
+          {/* Phase 11: Actions - sticky at bottom on mobile in standalone mode */}
+          <div className={`flex flex-wrap gap-2 ${standalone ? 'sticky bottom-0 bg-white/95 backdrop-blur-sm border-t border-gray-200 p-4 -mx-4 sm:-mx-6 lg:-mx-8 mt-6 z-30 safe-bottom' : 'mt-4'}`}>
             <button
               onClick={handleHide}
-              className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border-2 border-gray-300 rounded-lg hover:bg-gray-50 hover:border-gray-400 transition-all shadow-sm"
+              className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border-2 border-gray-300 rounded-lg hover:bg-gray-50 hover:border-gray-400 transition-all shadow-sm min-h-[44px]"
             >
               Hide for now
             </button>
             <button
               onClick={handleDismiss}
-              className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border-2 border-gray-300 rounded-lg hover:bg-gray-50 hover:border-gray-400 transition-all shadow-sm"
+              className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border-2 border-gray-300 rounded-lg hover:bg-gray-50 hover:border-gray-400 transition-all shadow-sm min-h-[44px]"
             >
               Dismiss for today
             </button>
             <button
               onClick={handleComplete}
-              className="px-4 py-2 text-sm font-medium text-white bg-gradient-to-r from-blue-600 to-blue-700 rounded-lg hover:from-blue-700 hover:to-blue-800 transition-all shadow-md flex items-center gap-2"
+              className="px-4 py-2 text-sm font-medium text-white bg-gradient-to-r from-blue-600 to-blue-700 rounded-lg hover:from-blue-700 hover:to-blue-800 transition-all shadow-md flex items-center gap-2 min-h-[44px]"
             >
               <CheckCircle className="w-4 h-4" />
               Complete alignment
@@ -338,7 +392,7 @@ export function DailyAlignmentPanel({ userId }: DailyAlignmentPanelProps) {
           </div>
         </div>
 
-        <div className="p-6 bg-gray-50 space-y-6">
+        <div className={contentClass}>
           {/* Guardrails Tasks & Events Section */}
           {roadmapItems.length > 0 && (
             <div className="bg-white border-2 border-purple-200 rounded-xl p-4 shadow-sm">
@@ -396,12 +450,12 @@ export function DailyAlignmentPanel({ userId }: DailyAlignmentPanelProps) {
             </div>
           )}
 
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            <div className="lg:col-span-1 border-2 border-gray-200 rounded-xl overflow-hidden shadow-sm bg-white">
+          <div className={`grid grid-cols-1 ${standalone ? 'lg:grid-cols-3' : 'lg:grid-cols-3'} gap-4 ${standalone ? 'sm:gap-6' : 'gap-6'}`}>
+            <div className={`lg:col-span-1 ${standalone ? 'border border-gray-200' : 'border-2 border-gray-200'} rounded-xl overflow-hidden shadow-sm bg-white`}>
               <AlignmentWorkPickerHierarchical userId={userId} />
             </div>
 
-            <div className="lg:col-span-2 bg-white border-2 border-gray-200 rounded-xl p-6 shadow-sm max-h-[700px] overflow-y-auto">
+            <div className={`lg:col-span-2 bg-white ${standalone ? 'border border-gray-200' : 'border-2 border-gray-200'} rounded-xl p-4 ${standalone ? 'sm:p-6' : 'p-6'} shadow-sm ${standalone ? 'max-h-[calc(100vh-300px)]' : 'max-h-[700px]'} overflow-y-auto`}>
               <AlignmentCalendarSpineV2
                 alignmentId={alignment.id}
                 blocks={alignment.blocks}

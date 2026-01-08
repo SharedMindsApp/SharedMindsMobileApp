@@ -61,7 +61,7 @@ export function FeedbackLoop() {
           </h3>
         </div>
         <p className="text-lg text-gray-600 max-w-2xl mx-auto">
-          SharedMind isn't a one-time assessment. It's an ongoing process that evolves with your household.
+          SharedMinds isn't a one-time assessment. It's an ongoing process that evolves with your household.
         </p>
       </div>
 
@@ -231,7 +231,7 @@ export function FeedbackLoop() {
 
       <div className="mt-24 text-center">
         <p className="text-lg text-gray-600 italic max-w-2xl mx-auto">
-          This cycle continues as your household grows and changes. SharedMind adapts with you, offering deeper insights and evolving support over time.
+          This cycle continues as your household grows and changes. SharedMinds adapts with you, offering deeper insights and evolving support over time.
         </p>
       </div>
     </div>
