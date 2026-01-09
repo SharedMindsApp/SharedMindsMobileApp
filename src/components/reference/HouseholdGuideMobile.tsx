@@ -4,7 +4,7 @@
  * Phase 9: Mobile-first Household guide using full screen with swipeable sections.
  */
 
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { X, ChevronLeft, ChevronRight, ArrowLeft } from 'lucide-react';
 import { HouseholdGuideCard } from './HouseholdGuideCard';
 import { getAllHouseholdGuideSections, type HouseholdGuideSection } from './householdGuideContent';
@@ -15,29 +15,105 @@ interface HouseholdGuideMobileProps {
   onBack?: () => void;
 }
 
+const SWIPE_THRESHOLD = 50;
+const SWIPE_VELOCITY_THRESHOLD = 0.3;
+
 export function HouseholdGuideMobile({
   isOpen,
   onClose,
   onBack,
 }: HouseholdGuideMobileProps) {
   const [currentIndex, setCurrentIndex] = useState(0);
+  const [swipeOffset, setSwipeOffset] = useState(0);
+  const [isSwiping, setIsSwiping] = useState(false);
+  const [isTransitioning, setIsTransitioning] = useState(false);
   const sections = getAllHouseholdGuideSections();
+  const touchStartRef = useRef<{ x: number; y: number; time: number } | null>(null);
+  const modalRef = useRef<HTMLDivElement>(null);
 
   const currentSection = sections[currentIndex];
   const isFirst = currentIndex === 0;
   const isLast = currentIndex === sections.length - 1;
 
+  useEffect(() => {
+    setSwipeOffset(0);
+    setIsSwiping(false);
+  }, [currentIndex]);
+
   function handleNext() {
-    if (!isLast) {
-      setCurrentIndex(prev => prev + 1);
+    if (!isLast && !isTransitioning) {
+      setIsTransitioning(true);
+      setTimeout(() => {
+        setCurrentIndex(prev => prev + 1);
+        setIsTransitioning(false);
+      }, 150);
     }
   }
 
   function handlePrevious() {
-    if (!isFirst) {
-      setCurrentIndex(prev => prev - 1);
+    if (!isFirst && !isTransitioning) {
+      setIsTransitioning(true);
+      setTimeout(() => {
+        setCurrentIndex(prev => prev - 1);
+        setIsTransitioning(false);
+      }, 150);
     }
   }
+
+  const handleTouchStart = (e: TouchEvent) => {
+    if (isTransitioning) return;
+    const touch = e.touches[0];
+    touchStartRef.current = { x: touch.clientX, y: touch.clientY, time: Date.now() };
+  };
+
+  const handleTouchMove = (e: TouchEvent) => {
+    if (!touchStartRef.current || isTransitioning) return;
+    const touch = e.touches[0];
+    const deltaX = touch.clientX - touchStartRef.current.x;
+    const deltaY = touch.clientY - touchStartRef.current.y;
+    if (Math.abs(deltaX) > Math.abs(deltaY) && Math.abs(deltaX) > 10) {
+      e.preventDefault();
+      setIsSwiping(true);
+      setSwipeOffset(Math.max(-100, Math.min(100, deltaX)));
+    }
+  };
+
+  const handleTouchEnd = () => {
+    if (!touchStartRef.current || !isSwiping || isTransitioning) {
+      touchStartRef.current = null;
+      setIsSwiping(false);
+      setSwipeOffset(0);
+      return;
+    }
+    const touchDuration = Date.now() - touchStartRef.current.time;
+    const velocity = Math.abs(swipeOffset) / touchDuration;
+    if (Math.abs(swipeOffset) >= SWIPE_THRESHOLD || velocity >= SWIPE_VELOCITY_THRESHOLD) {
+      if (swipeOffset < 0 && !isLast) {
+        handleNext();
+      } else if (swipeOffset > 0 && !isFirst) {
+        handlePrevious();
+      } else {
+        setSwipeOffset(0);
+      }
+    } else {
+      setSwipeOffset(0);
+    }
+    touchStartRef.current = null;
+    setIsSwiping(false);
+  };
+
+  useEffect(() => {
+    const modal = modalRef.current;
+    if (!modal || !isOpen) return;
+    modal.addEventListener('touchmove', handleTouchMove, { passive: false });
+    modal.addEventListener('touchstart', handleTouchStart, { passive: true });
+    modal.addEventListener('touchend', handleTouchEnd, { passive: true });
+    return () => {
+      modal.removeEventListener('touchmove', handleTouchMove);
+      modal.removeEventListener('touchstart', handleTouchStart);
+      modal.removeEventListener('touchend', handleTouchEnd);
+    };
+  }, [isOpen, isTransitioning, isSwiping, swipeOffset, isFirst, isLast]);
 
   if (!isOpen) return null;
 
@@ -50,7 +126,11 @@ export function HouseholdGuideMobile({
       />
 
       {/* Full Screen Modal */}
-      <div className="fixed inset-0 z-50 flex flex-col bg-white safe-top safe-bottom">
+      <div 
+        ref={modalRef}
+        className="fixed inset-0 z-50 flex flex-col bg-white safe-top safe-bottom"
+        style={{ overscrollBehavior: 'contain' }}
+      >
         {/* Header */}
         <div className="sticky top-0 bg-white border-b border-gray-200 px-4 py-4 flex items-center justify-between z-10 safe-top">
           <div className="flex items-center gap-3">
@@ -92,7 +172,14 @@ export function HouseholdGuideMobile({
 
         {/* Card Container */}
         <div className="flex-1 overflow-y-auto px-4 py-6">
-          <div className="max-w-md mx-auto">
+          <div 
+            className="max-w-md mx-auto"
+            style={{
+              transform: `translateX(${swipeOffset}px)`,
+              opacity: isSwiping ? 0.7 : 1,
+              transition: isSwiping ? 'none' : 'transform 0.3s ease-out, opacity 0.3s ease-out',
+            }}
+          >
             <HouseholdGuideCard section={currentSection} variant="mobile" />
           </div>
         </div>

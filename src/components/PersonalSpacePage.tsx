@@ -5,7 +5,7 @@
 
 import { useEffect, useState, useCallback } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { Loader2, LayoutGrid, Smartphone, Home, Users, User, ChevronDown, Target, MessageCircle, Settings, ArrowLeft, Menu } from 'lucide-react';
+import { Loader2, LayoutGrid, Smartphone, Home, Users, User, ChevronDown, Target, MessageCircle, ArrowLeft, Menu } from 'lucide-react';
 import { FridgeCanvas } from './fridge-canvas/FridgeCanvas';
 import { SpacesOSLauncher } from './spaces/SpacesOSLauncher';
 import { getPersonalSpace, createHousehold, Household } from '../lib/household';
@@ -182,7 +182,7 @@ export function PersonalSpacePage() {
               </div>
             </div>
             <div className="flex items-center gap-2 flex-shrink-0">
-              <NotificationBell />
+              <NotificationBell fullScreenOnMobile={true} />
               <button
                 onClick={() => {
                   const newParams = new URLSearchParams(searchParams);
@@ -318,23 +318,6 @@ export function PersonalSpacePage() {
                     <MessageCircle size={18} />
                     Messages
                   </button>
-                  <button
-                    onClick={(e) => {
-                      e.preventDefault();
-                      e.stopPropagation();
-                      setShowMobileMenu(false);
-                      navigate('/settings');
-                    }}
-                    onTouchStart={(e) => {
-                      e.preventDefault();
-                      e.stopPropagation();
-                    }}
-                    className="w-full text-left px-4 py-3 text-sm text-gray-700 hover:bg-gray-50 active:bg-gray-100 flex items-center gap-3 min-h-[44px]"
-                    type="button"
-                  >
-                    <Settings size={18} />
-                    Settings
-                  </button>
                 </div>
               </div>
             </>
@@ -354,7 +337,7 @@ export function PersonalSpacePage() {
 
               {/* Desktop: Show full menu */}
               <div className="hidden md:flex items-center gap-2">
-                <NotificationBell />
+                <NotificationBell fullScreenOnMobile={true} />
                 <button
                   onClick={() => navigate('/dashboard')}
                   className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium text-gray-600 hover:bg-gray-50 transition-colors min-h-[44px]"
@@ -421,13 +404,6 @@ export function PersonalSpacePage() {
                   Messages
                 </button>
 
-                <button
-                  onClick={() => navigate('/settings')}
-                  className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium text-gray-600 hover:bg-gray-50 transition-colors min-h-[44px]"
-                >
-                  <Settings size={18} />
-                  Settings
-                </button>
               </div>
             </div>
           </div>

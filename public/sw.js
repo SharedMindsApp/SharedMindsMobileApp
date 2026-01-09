@@ -9,6 +9,7 @@
 
 // Phase 3C: Cache versioning for clean updates
 const CACHE_NAME = 'shared-minds-shell-v2';
+// Note: Cache name is static - service worker updates handle cache invalidation
 // Shell files to pre-cache (static assets that don't change)
 const SHELL_FILES = [
   '/',

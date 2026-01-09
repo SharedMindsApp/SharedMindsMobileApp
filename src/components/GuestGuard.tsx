@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Navigate } from 'react-router-dom';
 import { Loader2, LogOut, AlertCircle } from 'lucide-react';
+import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
 
 type GuestGuardProps = {
@@ -8,86 +9,69 @@ type GuestGuardProps = {
 };
 
 export function GuestGuard({ children }: GuestGuardProps) {
+  const { user, loading: authLoading } = useAuth(); // Use AuthContext as single source of truth
   const [loading, setLoading] = useState(true);
-  const [authenticated, setAuthenticated] = useState(false);
   const [hasHousehold, setHasHousehold] = useState<boolean | null>(null);
   const [timedOut, setTimedOut] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  useEffect(() => {
-    checkInitialSession();
+  const isAuthenticated = !!user;
 
-    const timeoutId = setTimeout(() => {
-      if (loading) {
+  // Check household only if authenticated
+  useEffect(() => {
+    if (authLoading) {
+      setLoading(true);
+      return;
+    }
+
+    if (!isAuthenticated) {
+      setLoading(false);
+      setHasHousehold(null);
+      return;
+    }
+
+    // User is authenticated, check household
+    const checkUserHousehold = async (userId: string) => {
+      try {
+        const { data: memberData } = await supabase
+          .from('members')
+          .select('household_id')
+          .eq('user_id', userId)
+          .maybeSingle();
+
+        setHasHousehold(!!memberData?.household_id);
+      } catch (error) {
+        console.error('Error checking household:', error);
+        setHasHousehold(false);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    checkUserHousehold(user.id);
+  }, [isAuthenticated, authLoading, user?.id]);
+
+  // Timeout handling
+  useEffect(() => {
+    if (!authLoading && loading) {
+      const timeoutId = setTimeout(() => {
         setTimedOut(true);
         setLoading(false);
         setErrorMessage('Page load timed out. Please check your connection and try again.');
-      }
-    }, 10000);
+      }, 10000);
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      (() => {
-        if (session) {
-          checkUserHousehold(session.user.id);
-        } else {
-          setAuthenticated(false);
-          setHasHousehold(null);
-          setLoading(false);
-        }
-        clearTimeout(timeoutId);
-      })();
-    });
-
-    return () => {
-      clearTimeout(timeoutId);
-      subscription.unsubscribe();
-    };
-  }, []);
-
-  const checkUserHousehold = async (userId: string) => {
-    try {
-      const { data: memberData } = await supabase
-        .from('members')
-        .select('household_id')
-        .eq('user_id', userId)
-        .maybeSingle();
-
-      setHasHousehold(!!memberData?.household_id);
-      setAuthenticated(true);
-    } catch (error) {
-      console.error('Error checking household:', error);
-      setHasHousehold(false);
-      setAuthenticated(true);
-    } finally {
-      setLoading(false);
+      return () => clearTimeout(timeoutId);
     }
-  };
-
-  const checkInitialSession = async () => {
-    try {
-      const { data: { session }, error } = await supabase.auth.getSession();
-
-      if (error) {
-        console.error('Session check error:', error);
-        setAuthenticated(false);
-        setLoading(false);
-      } else if (session?.user) {
-        await checkUserHousehold(session.user.id);
-      } else {
-        setAuthenticated(false);
-        setLoading(false);
-      }
-    } catch (error) {
-      console.error('Auth initialization error:', error);
-      setAuthenticated(false);
-      setLoading(false);
-    }
-  };
+  }, [authLoading, loading]);
 
   const handleSignOut = async () => {
-    await supabase.auth.signOut();
-    // Phase 8C: Always redirect to login after logout
-    window.location.href = '/auth/login';
+    try {
+      await supabase.auth.signOut();
+    } catch (error) {
+      console.error('Error signing out:', error);
+    }
+    // Always redirect to login after logout
+    window.location.replace('/auth/login');
   };
 
   const handleGoToLogin = () => {

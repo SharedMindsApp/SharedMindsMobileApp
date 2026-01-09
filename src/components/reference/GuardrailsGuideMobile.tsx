@@ -5,7 +5,7 @@
  * Shows feature index first, then allows navigation between features.
  */
 
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { X, ArrowLeft, ChevronLeft, ChevronRight } from 'lucide-react';
 import { GuardrailsGuideCard } from './GuardrailsGuideCard';
 import { GuardrailsFeaturesIndex } from './GuardrailsFeaturesIndex';
@@ -18,6 +18,9 @@ interface GuardrailsGuideMobileProps {
   sectionId?: string;
 }
 
+const SWIPE_THRESHOLD = 50;
+const SWIPE_VELOCITY_THRESHOLD = 0.3;
+
 export function GuardrailsGuideMobile({
   isOpen,
   onClose,
@@ -25,9 +28,22 @@ export function GuardrailsGuideMobile({
   sectionId: initialSectionId,
 }: GuardrailsGuideMobileProps) {
   const [selectedSectionId, setSelectedSectionId] = useState<string | null>(initialSectionId || null);
+  const [swipeOffset, setSwipeOffset] = useState(0);
+  const [isSwiping, setIsSwiping] = useState(false);
+  const [isTransitioning, setIsTransitioning] = useState(false);
   const features = getAllGuardrailsGuideItems();
   const currentFeature = selectedSectionId ? getGuardrailsGuideItem(selectedSectionId) : null;
   const currentIndex = selectedSectionId ? features.findIndex(f => f.id === selectedSectionId) : -1;
+  const touchStartRef = useRef<{ x: number; y: number; time: number } | null>(null);
+  const modalRef = useRef<HTMLDivElement>(null);
+
+  const isFirst = currentIndex <= 0;
+  const isLast = currentIndex >= features.length - 1;
+
+  useEffect(() => {
+    setSwipeOffset(0);
+    setIsSwiping(false);
+  }, [currentIndex]);
 
   if (!isOpen) return null;
 
@@ -36,20 +52,83 @@ export function GuardrailsGuideMobile({
   };
 
   const handleNext = () => {
-    if (currentIndex >= 0 && currentIndex < features.length - 1) {
-      setSelectedSectionId(features[currentIndex + 1].id);
+    if (currentIndex >= 0 && currentIndex < features.length - 1 && !isTransitioning) {
+      setIsTransitioning(true);
+      setTimeout(() => {
+        setSelectedSectionId(features[currentIndex + 1].id);
+        setIsTransitioning(false);
+      }, 150);
     }
   };
 
   const handlePrevious = () => {
-    if (currentIndex > 0) {
-      setSelectedSectionId(features[currentIndex - 1].id);
+    if (currentIndex > 0 && !isTransitioning) {
+      setIsTransitioning(true);
+      setTimeout(() => {
+        setSelectedSectionId(features[currentIndex - 1].id);
+        setIsTransitioning(false);
+      }, 150);
     }
   };
 
   const handleBackToIndex = () => {
     setSelectedSectionId(null);
   };
+
+  const handleTouchStart = (e: TouchEvent) => {
+    if (isTransitioning || !currentFeature) return;
+    const touch = e.touches[0];
+    touchStartRef.current = { x: touch.clientX, y: touch.clientY, time: Date.now() };
+  };
+
+  const handleTouchMove = (e: TouchEvent) => {
+    if (!touchStartRef.current || isTransitioning || !currentFeature) return;
+    const touch = e.touches[0];
+    const deltaX = touch.clientX - touchStartRef.current.x;
+    const deltaY = touch.clientY - touchStartRef.current.y;
+    if (Math.abs(deltaX) > Math.abs(deltaY) && Math.abs(deltaX) > 10) {
+      e.preventDefault();
+      setIsSwiping(true);
+      setSwipeOffset(Math.max(-100, Math.min(100, deltaX)));
+    }
+  };
+
+  const handleTouchEnd = () => {
+    if (!touchStartRef.current || !isSwiping || isTransitioning || !currentFeature) {
+      touchStartRef.current = null;
+      setIsSwiping(false);
+      setSwipeOffset(0);
+      return;
+    }
+    const touchDuration = Date.now() - touchStartRef.current.time;
+    const velocity = Math.abs(swipeOffset) / touchDuration;
+    if (Math.abs(swipeOffset) >= SWIPE_THRESHOLD || velocity >= SWIPE_VELOCITY_THRESHOLD) {
+      if (swipeOffset < 0 && !isLast) {
+        handleNext();
+      } else if (swipeOffset > 0 && !isFirst) {
+        handlePrevious();
+      } else {
+        setSwipeOffset(0);
+      }
+    } else {
+      setSwipeOffset(0);
+    }
+    touchStartRef.current = null;
+    setIsSwiping(false);
+  };
+
+  useEffect(() => {
+    const modal = modalRef.current;
+    if (!modal || !isOpen || !currentFeature) return;
+    modal.addEventListener('touchmove', handleTouchMove, { passive: false });
+    modal.addEventListener('touchstart', handleTouchStart, { passive: true });
+    modal.addEventListener('touchend', handleTouchEnd, { passive: true });
+    return () => {
+      modal.removeEventListener('touchmove', handleTouchMove);
+      modal.removeEventListener('touchstart', handleTouchStart);
+      modal.removeEventListener('touchend', handleTouchEnd);
+    };
+  }, [isOpen, isTransitioning, isSwiping, swipeOffset, isFirst, isLast, currentFeature]);
 
   return (
     <>
@@ -60,7 +139,11 @@ export function GuardrailsGuideMobile({
       />
 
       {/* Full Screen Modal */}
-      <div className="fixed inset-0 z-50 flex flex-col bg-white safe-top safe-bottom">
+      <div 
+        ref={modalRef}
+        className="fixed inset-0 z-50 flex flex-col bg-white safe-top safe-bottom"
+        style={{ overscrollBehavior: 'contain' }}
+      >
         {/* Header */}
         <div className="sticky top-0 bg-white border-b border-gray-200 px-4 py-4 flex items-center justify-between z-10 safe-top">
           <div className="flex items-center gap-3">
@@ -98,7 +181,13 @@ export function GuardrailsGuideMobile({
         <div className="flex-1 overflow-y-auto px-4 py-6">
           <div className="max-w-md mx-auto">
             {currentFeature ? (
-              <>
+              <div
+                style={{
+                  transform: `translateX(${swipeOffset}px)`,
+                  opacity: isSwiping ? 0.7 : 1,
+                  transition: isSwiping ? 'none' : 'transform 0.3s ease-out, opacity 0.3s ease-out',
+                }}
+              >
                 <GuardrailsGuideCard feature={currentFeature} variant="mobile" />
                 
                 {/* Quick Navigation to Other Features */}
@@ -122,7 +211,7 @@ export function GuardrailsGuideMobile({
                       ))}
                   </div>
                 </div>
-              </>
+              </div>
             ) : (
               <GuardrailsFeaturesIndex
                 features={features}

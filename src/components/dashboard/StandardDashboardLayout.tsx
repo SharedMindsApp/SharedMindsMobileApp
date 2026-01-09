@@ -73,7 +73,24 @@ export function StandardDashboardLayout({
   const [isCheckingMatch, setIsCheckingMatch] = useState(true);
   const [dailyAlignmentEnabled, setDailyAlignmentEnabled] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
-  const [showReferenceGuide, setShowReferenceGuide] = useState(false);
+  // FIXED: Restore app guide state from sessionStorage on load
+  const [showReferenceGuide, setShowReferenceGuide] = useState(() => {
+    // Check if guide was open before reload
+    if (typeof window !== 'undefined') {
+      return sessionStorage.getItem('app_guide_open') === 'true';
+    }
+    return false;
+  });
+
+  useEffect(() => {
+    // Restore guide state on mount if it was open before reload
+    if (typeof window !== 'undefined') {
+      const wasOpen = sessionStorage.getItem('app_guide_open') === 'true';
+      if (wasOpen) {
+        setShowReferenceGuide(true);
+      }
+    }
+  }, []);
 
   useEffect(() => {
     checkForHouseholdMatch();

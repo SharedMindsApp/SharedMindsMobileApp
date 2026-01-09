@@ -47,6 +47,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(true);
   const profileRef = useRef<Profile | null>(null);
+  const hasInitializedRef = useRef(false);
 
   // Keep ref in sync with state
   useEffect(() => {
@@ -63,13 +64,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       if (error) throw error;
       setProfile(data);
-      if (data) {
-        logInfo('Profile loaded successfully', {
-          component: 'AuthContext',
-          action: 'fetchProfile',
-          userId,
-        });
-      }
+      // Removed verbose logging - only log errors
     } catch (error) {
       logError(
         'Failed to fetch profile',
@@ -93,39 +88,60 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     let mounted = true;
     let timeoutId: NodeJS.Timeout | null = null;
+    
+    // Mark initialization started immediately (before async operations)
+    // This helps suppress SIGNED_IN events that fire during initialization
+    const initStartTime = Date.now();
+    let initCompleted = false;
 
     const initAuth = async () => {
       try {
-        // Phase 11: Use retry with backoff for session check with timeout
-        const { data: { session }, error } = await retryWithBackoff(
-          async () => {
-            const timeoutPromise = new Promise<never>((_, reject) =>
-              setTimeout(() => reject(new Error('Session check timeout')), 5000)
-            );
+        // OPTIMIZATION: getSession() already reads from localStorage first (fast, no network)
+        // Only validates/refreshes token if needed - Supabase handles this efficiently
+        // No retry logic needed - getSession() is already optimized
+        const { data: { session }, error } = await supabase.auth.getSession();
 
-            const sessionPromise = supabase.auth.getSession();
-
-            return Promise.race([
-              sessionPromise,
-              timeoutPromise,
-            ]) as Promise<{ data: { session: any }; error: any }>;
-          },
-          3, // Max 3 retries
-          1000 // Initial 1s delay
-        );
-
-        if (error) throw error;
+        if (error) {
+          // Session invalid or expired - clear it
+          logWarning('Invalid session found in storage', {
+            component: 'AuthContext',
+            action: 'initAuth',
+            error: error.message,
+          });
+          if (mounted) {
+            setUser(null);
+            setProfile(null);
+            setLoading(false);
+            initCompleted = true;
+            hasInitializedRef.current = true;
+          }
+          return;
+        }
 
         if (mounted) {
           setUser(session?.user ?? null);
-          // Phase 10: Set loading false immediately, fetch profile in background
+          initCompleted = true;
+          // Mark as initialized after first session check completes
+          hasInitializedRef.current = true;
+          // Set loading false immediately, fetch profile in background
           // This allows UI to render while profile loads
           setLoading(false);
           if (session?.user) {
             // Don't await - let profile load in background
             fetchProfile(session.user.id).catch(err => {
-              console.error('Background profile fetch error:', err);
+              logError(
+                'Background profile fetch error',
+                err instanceof Error ? err : new Error(String(err)),
+                {
+                  component: 'AuthContext',
+                  action: 'initAuth',
+                  userId: session.user.id,
+                }
+              );
             });
+          } else {
+            // Session exists but no user - shouldn't happen, but handle gracefully
+            setProfile(null);
           }
         }
       } catch (error) {
@@ -135,13 +151,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           {
             component: 'AuthContext',
             action: 'initAuth',
-            userId: user?.id,
           }
         );
         if (mounted) {
           setUser(null);
           setProfile(null);
           setLoading(false);
+          initCompleted = true;
+          hasInitializedRef.current = true;
         }
       } finally {
         if (timeoutId) {
@@ -150,21 +167,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
     };
 
+    // Only check auth on initial mount, not on every refresh
+    // The onAuthStateChange subscription will handle session changes
     initAuth();
 
-    // Phase 12: Add a maximum timeout for auth loading to prevent infinite loading
-    // If auth is still loading after 15 seconds, force it to stop
+    // Safety timeout: If auth is still loading after 5 seconds (should be instant with localStorage check), force stop
     timeoutId = setTimeout(() => {
       if (mounted) {
-        // Check current loading state - if still loading after timeout, force stop
         setLoading((currentLoading) => {
           if (currentLoading) {
             logWarning('Auth loading timeout - forcing loading state to false', {
               component: 'AuthContext',
               action: 'initAuth',
-              timeout: 15000,
+              timeout: 5000,
             });
-            // Clear any potentially invalid session state if no user
+            // If still loading after timeout, user is likely logged out
             setUser((currentUser) => {
               if (!currentUser) {
                 setProfile(null);
@@ -176,16 +193,42 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           return currentLoading;
         });
       }
-    }, 15000);
+    }, 5000); // Reduced from 15s to 5s since localStorage check should be instant
 
+    // onAuthStateChange subscription handles:
+    // - User sign in/out
+    // - Token refresh
+    // - Session expiration
+    // - OAuth callbacks
+    // This is the only place we need to react to auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       (event, session) => {
         (async () => {
           if (mounted) {
+            // Only log important events, not routine session restoration on refresh
+            // INITIAL_SESSION and SIGNED_IN (during initial load within 2 seconds) are expected on refresh
+            // Suppress these events during initialization to avoid confusing logs
+            const timeSinceInit = Date.now() - initStartTime;
+            const isRestoreEvent = event === 'INITIAL_SESSION' || 
+                                   (event === 'SIGNED_IN' && (!initCompleted || timeSinceInit < 2000));
+            
+            if (!isRestoreEvent) {
+              logInfo('Auth state changed', {
+                component: 'AuthContext',
+                action: 'onAuthStateChange',
+                event,
+                hasSession: !!session,
+              });
+            }
+            
             setUser(session?.user ?? null);
             setLoading(false); // Clear loading when auth state changes
             if (session?.user) {
-              await fetchProfile(session.user.id);
+              // Only fetch profile if we don't already have it for this user
+              // This prevents duplicate fetches on INITIAL_SESSION/SIGNED_IN events on refresh
+              if (profileRef.current?.user_id !== session.user.id) {
+                await fetchProfile(session.user.id);
+              }
             } else {
               setProfile(null);
             }
@@ -194,61 +237,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
     );
 
-    // Phase 3B: Check session on app visibility change (app resume)
-    // Phase 3C: Enhanced to prevent double redirects and flicker
-    // Ensures session is still valid when app comes back to foreground
-    let isCheckingVisibility = false; // Phase 3C: Prevent concurrent checks
-    const handleVisibilityChange = async () => {
-      if (document.visibilityState === 'visible' && mounted && !isCheckingVisibility) {
-        isCheckingVisibility = true;
-        try {
-          const { data: { session }, error } = await supabase.auth.getSession();
-          if (error || !session) {
-            // Phase 3C: Session expired or invalid - clear state silently
-            // Don't trigger redirects here to avoid flicker
-            if (mounted) {
-              setUser(null);
-              setProfile(null);
-            }
-          } else if (mounted && session.user) {
-            // Phase 3C: Session valid - ensure profile is loaded
-            // Only fetch if profile is missing or user changed
-            // Phase 10: Use ref to check profile without dependency
-            // Phase 11: Use retry with backoff for session validation
-            const currentProfile = profileRef.current;
-            if (!currentProfile || currentProfile.user_id !== session.user.id) {
-              // Fetch in background with retry, don't block
-              retryWithBackoff(
-                () => fetchProfile(session.user.id),
-                2, // Max 2 retries for profile fetch
-                500 // Initial 500ms delay
-              ).catch(err => {
-                console.error('Visibility change profile fetch error:', err);
-              });
-            }
-          }
-        } catch (error) {
-          logError(
-            'Session check on visibility change failed',
-            error instanceof Error ? error : new Error(String(error)),
-            {
-              component: 'AuthContext',
-              action: 'handleVisibilityChange',
-              userId: user?.id,
-            }
-          );
-        } finally {
-          isCheckingVisibility = false;
-        }
-      }
-    };
-
-    document.addEventListener('visibilitychange', handleVisibilityChange);
-
     return () => {
       mounted = false;
       subscription.unsubscribe();
-      document.removeEventListener('visibilitychange', handleVisibilityChange);
       if (timeoutId) {
         clearTimeout(timeoutId);
       }
@@ -256,12 +247,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [fetchProfile]);
 
   const signOut = useCallback(async () => {
-    await supabase.auth.signOut();
-    setUser(null);
-    setProfile(null);
-    // Phase 3B: In installed app, redirect to login after logout
-    if (isStandaloneApp()) {
-      window.location.href = '/auth/login';
+    try {
+      // FIXED: Use clearAuthStateOnly for comprehensive auth clearing
+      const { clearAuthStateOnly } = await import('../lib/hardReset');
+      // Clear auth state first
+      setUser(null);
+      setProfile(null);
+      // Then use hard reset to clear storage
+      await clearAuthStateOnly();
+    } catch (error) {
+      console.error('[AuthContext] Error signing out:', error);
+      // Fallback: manual sign out and redirect
+      try {
+        await supabase.auth.signOut();
+        setUser(null);
+        setProfile(null);
+        window.location.replace('/auth/login');
+      } catch (fallbackError) {
+        console.error('[AuthContext] Fallback sign out failed:', fallbackError);
+        // Last resort: force redirect
+        window.location.replace('/auth/login');
+      }
     }
   }, []);
 

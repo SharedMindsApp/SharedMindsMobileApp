@@ -46,7 +46,8 @@ export function NotificationSettings() {
       const prefs = await getNotificationPreferences(user.id);
 
       if (!prefs) {
-        // Create default preferences
+        // Create default preferences with only base columns (always safe)
+        // Extended columns will be added by updateNotificationPreferences if they exist
         const defaultPrefs: Partial<NotificationPreferences> = {
           notifications_enabled: true,
           push_enabled: false,
@@ -55,14 +56,15 @@ export function NotificationSettings() {
           guardrails_updates: true,
           planner_alerts: true,
           system_messages: true,
-          tracker_reminders: false,
-          habit_reminders: false,
-          sleep_reminders: false,
-          routine_reminders: false,
           calendar_reminders_push: false,
           guardrails_updates_push: false,
           planner_alerts_push: false,
           system_messages_push: false,
+          // Extended columns (will be filtered if they don't exist)
+          tracker_reminders: false,
+          habit_reminders: false,
+          sleep_reminders: false,
+          routine_reminders: false,
           tracker_reminders_push: false,
           habit_reminders_push: false,
           sleep_reminders_push: false,
@@ -70,7 +72,18 @@ export function NotificationSettings() {
         };
         
         const created = await updateNotificationPreferences(user.id, defaultPrefs);
-        setPreferences(created);
+        // Ensure extended columns have defaults if they weren't returned
+        setPreferences({
+          ...created,
+          tracker_reminders: created.tracker_reminders ?? false,
+          habit_reminders: created.habit_reminders ?? false,
+          sleep_reminders: created.sleep_reminders ?? false,
+          routine_reminders: created.routine_reminders ?? false,
+          tracker_reminders_push: created.tracker_reminders_push ?? false,
+          habit_reminders_push: created.habit_reminders_push ?? false,
+          sleep_reminders_push: created.sleep_reminders_push ?? false,
+          routine_reminders_push: created.routine_reminders_push ?? false,
+        });
       } else {
         setPreferences(prefs);
       }

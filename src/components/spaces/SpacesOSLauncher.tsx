@@ -108,12 +108,58 @@ export function SpacesOSLauncher({ widgets, householdId, householdName, onWidget
   const [tappedWidget, setTappedWidget] = useState<{ widget: WidgetWithLayout; rect: DOMRect } | null>(null);
   const [isTransitioning, setIsTransitioning] = useState(false);
   const [pageTransitionDirection, setPageTransitionDirection] = useState<'left' | 'right' | null>(null);
+  const [gridCols, setGridCols] = useState(4); // Responsive grid columns
+  const [cellWidth, setCellWidth] = useState(112); // Dynamic cell width for drag calculations
+  const [cellHeight, setCellHeight] = useState(116); // Dynamic cell height for drag calculations
+  const gridRef = useRef<HTMLDivElement>(null);
   
   // Keep refs in sync with state
   useEffect(() => {
     widgetsRef.current = widgets;
     orderedWidgetsRef.current = orderedWidgets;
   }, [widgets, orderedWidgets]);
+
+  // Calculate responsive grid dimensions based on screen size
+  useEffect(() => {
+    const updateGridDimensions = () => {
+      // Determine number of columns based on screen width
+      const screenWidth = window.innerWidth;
+      const cols = screenWidth < 480 ? 3 : 4;
+      setGridCols(cols);
+      
+      // Calculate cell dimensions based on screen width and responsive sizing
+      // Account for padding (px-3 on mobile = 12px, px-4 on sm+ = 16px)
+      const horizontalPadding = screenWidth < 640 ? 24 : 32; // 12px * 2 or 16px * 2
+      const availableWidth = screenWidth - horizontalPadding;
+      
+      // Gap sizes: gap-4 (16px) on mobile, gap-6 (24px) on sm, gap-8 (32px) on md+
+      const gapSize = screenWidth < 640 ? 16 : screenWidth < 768 ? 24 : 32;
+      
+      // Calculate cell width: (available width - (gaps * (cols - 1))) / cols
+      const cellW = (availableWidth - (gapSize * (cols - 1))) / cols;
+      
+      // Cell height: icon height (64px on mobile, 72px on sm, 80px on md+) + label (18-20px) + gap
+      const iconHeight = screenWidth < 640 ? 64 : screenWidth < 768 ? 72 : 80;
+      const labelHeight = screenWidth < 640 ? 18 : 20;
+      const verticalGap = gapSize;
+      const cellH = iconHeight + labelHeight + verticalGap;
+      
+      setCellWidth(cellW);
+      setCellHeight(cellH);
+    };
+
+    // Update on mount and resize
+    updateGridDimensions();
+    window.addEventListener('resize', updateGridDimensions);
+    
+    // Also update after a short delay to ensure DOM is ready
+    const timeout = setTimeout(updateGridDimensions, 100);
+    
+    return () => {
+      window.removeEventListener('resize', updateGridDimensions);
+      clearTimeout(timeout);
+    };
+  }, []);
   
   // Reset modal state on mount to ensure clean state on navigation
   useEffect(() => {
@@ -176,12 +222,21 @@ export function SpacesOSLauncher({ widgets, householdId, householdName, onWidget
   }, [deduplicatedWidgets, widgetsInitialized]);
 
   // Calculate total pages
-  const totalPages = Math.ceil(orderedWidgets.length / WIDGETS_PER_PAGE);
+  // Calculate widgets per page based on responsive grid columns
+  const widgetsPerPage = gridCols * GRID_ROWS;
+  const totalPages = Math.ceil(orderedWidgets.length / widgetsPerPage);
 
-  // Get widgets for current page
+  // Adjust current page if grid columns change (e.g., screen resize)
+  useEffect(() => {
+    if (currentPage >= totalPages && totalPages > 0) {
+      setCurrentPage(Math.max(0, totalPages - 1));
+    }
+  }, [gridCols, totalPages, currentPage]);
+
+  // Get widgets for current page (using responsive widgetsPerPage)
   const currentPageWidgets = orderedWidgets.slice(
-    currentPage * WIDGETS_PER_PAGE,
-    (currentPage + 1) * WIDGETS_PER_PAGE
+    currentPage * widgetsPerPage,
+    (currentPage + 1) * widgetsPerPage
   );
 
   // Phase 9A: Handle app icon tap - navigate to full-screen app view with smooth animation
@@ -217,33 +272,29 @@ export function SpacesOSLauncher({ widgets, householdId, householdName, onWidget
   const handleTouchStart = (e: React.TouchEvent, widget: WidgetWithLayout, index: number) => {
     const touch = e.touches[0];
     
+    touchStartRef.current = {
+      widgetId: widget.id,
+      startTime: Date.now(),
+      startX: touch.clientX,
+      startY: touch.clientY,
+    };
+
     if (isEditMode) {
-      // In edit mode, start dragging
+      // In edit mode, start dragging immediately
       setDraggedWidget(widget.id);
       setDragPosition({ x: touch.clientX, y: touch.clientY });
       setIsAnimating(true);
-      touchStartRef.current = {
-        widgetId: widget.id,
-        startTime: Date.now(),
-        startX: touch.clientX,
-        startY: touch.clientY,
-      };
-      // Note: preventDefault removed - using CSS touch-action: none instead
+      // Prevent default to avoid scrolling while dragging
+      e.preventDefault();
     } else {
-      // Not in edit mode, check for long press
-      touchStartRef.current = {
-        widgetId: widget.id,
-        startTime: Date.now(),
-        startX: touch.clientX,
-        startY: touch.clientY,
-      };
-
+      // Not in edit mode, start long-press timer to enable drag mode
       const timer = setTimeout(() => {
         setIsEditMode(true);
         setDraggedWidget(widget.id);
+        setDragPosition({ x: touch.clientX, y: touch.clientY });
+        setIsAnimating(true);
         showToast('info', 'Edit mode enabled. Drag apps to reorder.');
-        touchStartRef.current = null;
-      }, 500); // 500ms for long-press
+      }, 300); // 300ms for long-press (reduced from 500ms for better responsiveness)
 
       setLongPressTimer(timer);
     }
@@ -252,7 +303,18 @@ export function SpacesOSLauncher({ widgets, householdId, householdName, onWidget
   const handleTouchMove = (e: React.TouchEvent) => {
     const touch = e.touches[0];
     
-    if (isEditMode && draggedWidget && touchStartRef.current) {
+    if (!touchStartRef.current) return;
+
+    // Check movement distance
+    const deltaX = Math.abs(touch.clientX - touchStartRef.current.startX);
+    const deltaY = Math.abs(touch.clientY - touchStartRef.current.startY);
+    const totalMovement = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
+
+    // If user has moved significantly and we're in edit mode or have a dragged widget, handle drag
+    if ((isEditMode || draggedWidget) && draggedWidget && touchStartRef.current) {
+      // Prevent default scrolling while dragging
+      e.preventDefault();
+      
       // Handle drag in edit mode
       if (containerRef.current) {
         const containerRect = containerRef.current.getBoundingClientRect();
@@ -262,12 +324,13 @@ export function SpacesOSLauncher({ widgets, householdId, householdName, onWidget
         // Update drag position for smooth following (relative to viewport)
         setDragPosition({ x: touch.clientX, y: touch.clientY });
         
-        // Calculate which grid position we're over (accounting for current page)
-        const gridX = Math.floor(relativeX / 112); // ~112px per column (80px icon + 32px gap)
-        const gridY = Math.floor(relativeY / 116); // ~116px per row (80px icon + 36px label gap)
+        // Calculate which grid position we're over (accounting for current page) - using dynamic dimensions
+        const gridX = Math.floor(relativeX / cellWidth);
+        const gridY = Math.floor(relativeY / cellHeight);
         
-        if (gridX >= 0 && gridX < GRID_COLS && gridY >= 0 && gridY < GRID_ROWS) {
-          const targetIndex = gridY * GRID_COLS + gridX + (currentPage * WIDGETS_PER_PAGE);
+        if (gridX >= 0 && gridX < gridCols && gridY >= 0 && gridY < GRID_ROWS) {
+          const widgetsPerPage = gridCols * GRID_ROWS;
+          const targetIndex = gridY * gridCols + gridX + (currentPage * widgetsPerPage);
           if (targetIndex >= 0 && targetIndex < orderedWidgets.length) {
             if (targetIndex !== draggedOverIndex) {
               setIsAnimating(true);
@@ -278,17 +341,34 @@ export function SpacesOSLauncher({ widgets, householdId, householdName, onWidget
           }
         }
       }
-      // Note: preventDefault removed - using CSS touch-action: none instead
-    } else if (!isEditMode && touchStartRef.current) {
-      // Check for swipe gesture (horizontal movement > vertical)
-      const deltaX = Math.abs(touch.clientX - touchStartRef.current.startX);
-      const deltaY = Math.abs(touch.clientY - touchStartRef.current.startY);
-      
-      if (deltaX > 10 || deltaY > 10) {
-        // Cancel long-press if user moves finger significantly
-        if (longPressTimer) {
-          clearTimeout(longPressTimer);
-          setLongPressTimer(null);
+    } else if (!isEditMode && !draggedWidget && touchStartRef.current) {
+      // If user moves finger significantly (more than 10px), check if we should start drag mode
+      if (totalMovement > 10) {
+        // If user has held for at least 200ms and moved, enable drag mode immediately
+        const holdTime = Date.now() - touchStartRef.current.startTime;
+        if (holdTime > 200) {
+          // Cancel long-press timer and enable drag mode
+          if (longPressTimer) {
+            clearTimeout(longPressTimer);
+            setLongPressTimer(null);
+          }
+          
+          // Enable edit mode and start dragging
+          setIsEditMode(true);
+          if (touchStartRef.current.widgetId) {
+            setDraggedWidget(touchStartRef.current.widgetId);
+            setDragPosition({ x: touch.clientX, y: touch.clientY });
+            setIsAnimating(true);
+            showToast('info', 'Drag apps to reorder.');
+            // Prevent scrolling
+            e.preventDefault();
+          }
+        } else if (totalMovement > 30) {
+          // If moved too much too quickly, cancel long-press (might be a swipe)
+          if (longPressTimer) {
+            clearTimeout(longPressTimer);
+            setLongPressTimer(null);
+          }
         }
       }
     }
@@ -296,13 +376,14 @@ export function SpacesOSLauncher({ widgets, householdId, householdName, onWidget
 
   const handleTouchEnd = (e: React.TouchEvent, widget: WidgetWithLayout, index: number) => {
     const wasLongPress = longPressTimer !== null;
+    const wasDragging = isEditMode && draggedWidget;
     
     if (longPressTimer) {
       clearTimeout(longPressTimer);
       setLongPressTimer(null);
     }
     
-    if (isEditMode && draggedWidget) {
+    if (wasDragging) {
       // Handle drop in edit mode
       setIsAnimating(true);
       if (draggedOverIndex !== null) {
@@ -328,8 +409,11 @@ export function SpacesOSLauncher({ widgets, householdId, householdName, onWidget
         setDraggedOverIndex(null);
         setDragPosition(null);
         setIsAnimating(false);
+        // Keep edit mode active so user can continue reordering
+        // setIsEditMode(false); // Commented out - keep edit mode active
       }, 250);
       touchStartRef.current = null;
+      return; // Don't process tap/swipe if we were dragging
     } else if (touchStartRef.current && !wasLongPress && !isEditMode && swipeStartRef.current) {
       // Check for swipe gesture
       const touch = e.changedTouches[0];
@@ -345,27 +429,29 @@ export function SpacesOSLauncher({ widgets, householdId, householdName, onWidget
           // Swipe left - go to next page
           setCurrentPage(currentPage + 1);
         }
-        // Note: preventDefault removed - CSS touch-action handles scroll prevention
+        touchStartRef.current = null;
+        swipeStartRef.current = null;
+        return; // Don't process tap if it was a swipe
       } else if (Math.abs(deltaX) < 30 && Math.abs(deltaY) < 30) {
-      // Quick tap - open the widget with smooth animation
-      const touchDuration = Date.now() - (touchStartRef.current.startTime || Date.now());
-      if (touchDuration < 300 && !isEditMode) {
-        // Get button position for smooth transition
-        const buttonElement = e.currentTarget as HTMLElement;
-        const rect = buttonElement.getBoundingClientRect();
-        setTappedWidget({ widget, rect });
-        setIsTransitioning(true);
-        
-        // Small delay for visual feedback before navigation
-        setTimeout(() => {
-          handleAppTap(widget, e);
-          // Reset after navigation starts
+        // Quick tap - open the widget with smooth animation
+        const touchDuration = Date.now() - (touchStartRef.current.startTime || Date.now());
+        if (touchDuration < 300 && !isEditMode) {
+          // Get button position for smooth transition
+          const buttonElement = e.currentTarget as HTMLElement;
+          const rect = buttonElement.getBoundingClientRect();
+          setTappedWidget({ widget, rect });
+          setIsTransitioning(true);
+          
+          // Small delay for visual feedback before navigation
           setTimeout(() => {
-            setTappedWidget(null);
-            setIsTransitioning(false);
-          }, 300);
-        }, 100);
-      }
+            handleAppTap(widget, e);
+            // Reset after navigation starts
+            setTimeout(() => {
+              setTappedWidget(null);
+              setIsTransitioning(false);
+            }, 300);
+          }, 100);
+        }
       }
     }
     
@@ -376,32 +462,54 @@ export function SpacesOSLauncher({ widgets, householdId, householdName, onWidget
   // Phase 5: State Management Resilience - Save widget order with rollback protection
   const saveWidgetOrder = async (newOrder: WidgetWithLayout[]) => {
     setIsSaving(true);
+    const originalOrder = [...orderedWidgets]; // Snapshot for rollback
     
     // Phase 5: Validate state before saving
     checkStateConsistency('widgets', newOrder, [
-      (w) => w.length > 0 || 'Widget order cannot be empty',
-      (w) => w.every(widget => widget.id && widget.layout?.id) || 'All widgets must have valid IDs',
+      (w) => w.length > 0 ? null : 'Widget order cannot be empty',
+      (w) => w.every(widget => widget.id && widget.layout?.id) ? null : 'All widgets must have valid IDs',
       (w) => {
         const ids = w.map(widget => widget.id);
         const uniqueIds = new Set(ids);
-        return ids.length === uniqueIds.size || 'Widget IDs must be unique';
+        return ids.length === uniqueIds.size ? null : 'Widget IDs must be unique';
       },
     ], { component: 'SpacesOSLauncher', action: 'saveWidgetOrder' });
     
+    // Ensure all widgets have valid layouts (they should, but double-check)
+    // Layouts are per-user (member_id), so each user in a shared space has their own arrangement
+    const widgetsWithoutLayouts = newOrder.filter(w => !w.layout || !w.layout.id);
+    if (widgetsWithoutLayouts.length > 0) {
+      console.error('Some widgets are missing layouts:', widgetsWithoutLayouts);
+      showToast('error', 'Some widgets are missing layouts. Please refresh and try again.');
+      setIsSaving(false);
+      return;
+    }
+    
     // Phase 5: Execute with rollback protection
     const result = await executeWithRollback(
-      'widgets',
-      orderedWidgets,
+      `widget-reorder-${Date.now()}`,
+      originalOrder,
       async () => {
         // Update position_x for each widget to reflect its new order
+        // position_x acts as the display order in launcher view (0, 1, 2, ...)
+        // Each user has their own layout records (member_id), so this only affects the current user's arrangement
         const updatePromises = newOrder.map((widget, index) => {
+          if (!widget.layout || !widget.layout.id) {
+            throw new Error(`Widget ${widget.id} is missing a layout`);
+          }
+          
           return updateWidgetLayout(widget.layout.id, {
             position_x: index,
             position_y: 0, // Keep y at 0 for launcher view
           });
         });
         
+        // Wait for all updates to complete
         await Promise.all(updatePromises);
+        
+        // Update state after successful operation
+        // Note: This only updates the current user's view - other users' arrangements are unaffected
+        setOrderedWidgets(newOrder);
       },
       setOrderedWidgets,
       { component: 'SpacesOSLauncher', action: 'saveWidgetOrder' }
@@ -409,8 +517,20 @@ export function SpacesOSLauncher({ widgets, householdId, householdName, onWidget
     
     if (result.success) {
       showToast('success', 'Widget order saved');
+      // Trigger parent refresh to ensure data is in sync
+      if (onWidgetsChange) {
+        // Small delay to allow database to update
+        setTimeout(() => {
+          onWidgetsChange();
+        }, 500);
+      }
     } else {
-      showToast('error', 'Failed to save order. Changes have been reverted.');
+      console.error('Failed to save widget order:', result.error);
+      showToast('error', 'Failed to save order');
+      if (result.error) {
+        // State will be rolled back by executeWithRollback
+        showToast('error', 'Changes have been reverted');
+      }
     }
     
     setIsSaving(false);
@@ -418,6 +538,17 @@ export function SpacesOSLauncher({ widgets, householdId, householdName, onWidget
 
   // Handle swipe start for page navigation
   const handleSwipeStart = (e: React.TouchEvent) => {
+    // Don't handle swipe if we're in edit mode or dragging
+    if (isEditMode || draggedWidget) {
+      return;
+    }
+    
+    // Don't handle if touch started on a widget button (let button handle it)
+    const target = e.target as HTMLElement;
+    if (target.closest('button[data-widget-button]')) {
+      return;
+    }
+    
     const touch = e.touches[0];
     swipeStartRef.current = {
       x: touch.clientX,
@@ -497,9 +628,10 @@ export function SpacesOSLauncher({ widgets, householdId, householdName, onWidget
 
   // Calculate grid position for a widget index
   const getGridPosition = (index: number) => {
-    const pageIndex = index % WIDGETS_PER_PAGE;
-    const row = Math.floor(pageIndex / GRID_COLS);
-    const col = pageIndex % GRID_COLS;
+    const widgetsPerPage = gridCols * GRID_ROWS;
+    const pageIndex = index % widgetsPerPage;
+    const row = Math.floor(pageIndex / gridCols);
+    const col = pageIndex % gridCols;
     return { row, col };
   };
 
@@ -576,37 +708,37 @@ export function SpacesOSLauncher({ widgets, householdId, householdName, onWidget
       <div className="min-h-screen-safe bg-white safe-top safe-bottom" data-no-glitch="true">
         {/* Header with notification bell even in empty state */}
         <div className="sticky top-0 z-40 bg-white/95 backdrop-blur-md border-b border-gray-100 safe-top">
-          <div className="px-4 py-3 flex items-center justify-between">
-            <div className="flex items-center gap-3 flex-1">
+          <div className="px-3 sm:px-4 py-2.5 sm:py-3 flex items-center justify-between">
+            <div className="flex items-center gap-2 sm:gap-3 flex-1 min-w-0">
               <button
                 onClick={handleBackClick}
-                className="p-2 text-gray-600 active:bg-gray-100 rounded-lg transition-colors min-h-[44px] min-w-[44px] flex items-center justify-center"
+                className="p-2 text-gray-600 active:bg-gray-100 rounded-lg transition-colors min-h-[44px] min-w-[44px] flex items-center justify-center flex-shrink-0"
                 aria-label="Navigation"
               >
                 <ArrowLeft size={20} />
               </button>
-              <h1 className="text-lg font-semibold text-gray-900">{householdName}</h1>
+              <h1 className="text-base sm:text-lg font-semibold text-gray-900 truncate">{householdName}</h1>
             </div>
-            <div className="flex items-center gap-2">
-              {/* Notification Bell - always visible in Spaces */}
-              <NotificationBell alwaysVisible={true} />
+            <div className="flex items-center gap-1.5 sm:gap-2 flex-shrink-0">
+              {/* Notification Bell - always visible in Spaces, full-screen modal on mobile */}
+              <NotificationBell alwaysVisible={true} fullScreenOnMobile={true} />
             </div>
           </div>
         </div>
 
-        {/* Empty state content */}
-        <div className="flex items-center justify-center min-h-[calc(100vh-200px)] p-4">
-          <div className="text-center max-w-md">
-            <div className="w-20 h-20 bg-gray-100 rounded-3xl flex items-center justify-center mx-auto mb-6">
-              <Icons.LayoutGrid size={40} className="text-gray-400" />
+        {/* Empty state content - responsive */}
+        <div className="flex items-center justify-center min-h-[calc(100vh-160px)] p-4">
+          <div className="text-center max-w-md px-4">
+            <div className="w-16 h-16 sm:w-20 sm:h-20 bg-gray-100 rounded-2xl sm:rounded-3xl flex items-center justify-center mx-auto mb-4 sm:mb-6">
+              <Icons.LayoutGrid size={32} className="text-gray-400 sm:w-10 sm:h-10" />
             </div>
-            <h2 className="text-2xl font-bold text-gray-900 mb-2">No Apps Yet</h2>
-            <p className="text-gray-600 mb-6">
+            <h2 className="text-xl sm:text-2xl font-bold text-gray-900 mb-2">No Apps Yet</h2>
+            <p className="text-sm sm:text-base text-gray-600 mb-4 sm:mb-6">
               Add apps to your {householdName} space to get started.
             </p>
             <button
               onClick={() => setShowAddWidgetModal(true)}
-              className="px-6 py-3 bg-blue-600 text-white rounded-xl font-semibold active:scale-95 transition-transform min-h-[44px]"
+              className="px-5 sm:px-6 py-2.5 sm:py-3 bg-blue-600 text-white rounded-xl font-semibold active:scale-95 transition-transform min-h-[44px] text-sm sm:text-base"
             >
               Add Apps
             </button>
@@ -634,25 +766,25 @@ export function SpacesOSLauncher({ widgets, householdId, householdName, onWidget
     <div className="min-h-screen-safe bg-white safe-top safe-bottom" data-no-glitch="true">
       {/* Phase 9A: Minimal header - edge-to-edge, no fake frames, OS-native */}
       <div className="sticky top-0 z-40 bg-white/95 backdrop-blur-md border-b border-gray-100 safe-top">
-        <div className="px-4 py-3 flex items-center justify-between">
-          <div className="flex items-center gap-3 flex-1">
+        <div className="px-3 sm:px-4 py-2.5 sm:py-3 flex items-center justify-between">
+          <div className="flex items-center gap-2 sm:gap-3 flex-1 min-w-0">
             <button
               onClick={handleBackClick}
-              className="p-2 text-gray-600 active:bg-gray-100 rounded-lg transition-colors min-h-[44px] min-w-[44px] flex items-center justify-center"
+              className="p-2 text-gray-600 active:bg-gray-100 rounded-lg transition-colors min-h-[44px] min-w-[44px] flex items-center justify-center flex-shrink-0"
               aria-label="Navigation"
             >
               <ArrowLeft size={20} />
             </button>
-            <h1 className="text-lg font-semibold text-gray-900">{householdName}</h1>
+            <h1 className="text-base sm:text-lg font-semibold text-gray-900 truncate">{householdName}</h1>
             {totalPages > 1 && (
-              <span className="text-xs text-gray-500">
+              <span className="text-xs text-gray-500 flex-shrink-0 hidden sm:inline">
                 {currentPage + 1} / {totalPages}
               </span>
             )}
           </div>
-          <div className="flex items-center gap-2">
-            {/* Notification Bell - always visible in Spaces */}
-            <NotificationBell alwaysVisible={true} />
+          <div className="flex items-center gap-1.5 sm:gap-2 flex-shrink-0">
+            {/* Notification Bell - always visible in Spaces, full-screen modal on mobile */}
+            <NotificationBell alwaysVisible={true} fullScreenOnMobile={true} />
             {/* Add Widget button */}
             <button
               onClick={() => setShowAddWidgetModal(true)}
@@ -675,7 +807,7 @@ export function SpacesOSLauncher({ widgets, householdId, householdName, onWidget
               <button
                 onClick={handleDone}
                 disabled={isSaving}
-                className="px-4 py-2 text-blue-600 font-semibold text-sm active:scale-95 transition-transform min-h-[44px] disabled:opacity-50"
+                className="px-3 sm:px-4 py-2 text-blue-600 font-semibold text-xs sm:text-sm active:scale-95 transition-transform min-h-[44px] disabled:opacity-50"
               >
                 {isSaving ? 'Saving...' : 'Done'}
               </button>
@@ -721,14 +853,29 @@ export function SpacesOSLauncher({ widgets, householdId, householdName, onWidget
       {/* Phase 9A: App icon grid - true OS home screen, edge-to-edge, no shadows/borders */}
       <div
         ref={containerRef}
-        className="px-4 py-8 safe-bottom relative overflow-hidden"
+        className="px-3 py-6 sm:px-4 sm:py-8 safe-bottom relative overflow-hidden"
         style={{
           touchAction: isEditMode && draggedWidget ? 'none' : 'pan-x pan-y',
         }}
-        onTouchStart={handleSwipeStart}
-        onTouchMove={handleTouchMove}
+        onTouchStart={(e) => {
+          // Only handle swipe start if not dragging
+          if (!draggedWidget && !isEditMode) {
+            handleSwipeStart(e);
+          }
+        }}
+        onTouchMove={(e) => {
+          // Only handle container touch move if not dragging a widget
+          if (!draggedWidget && !touchStartRef.current?.widgetId) {
+            // Container can handle swipe gestures
+            // Individual widgets handle their own drag
+          }
+        }}
       >
-        <div className="relative w-full overflow-hidden" style={{ height: 'calc(100vh - 200px)' }}>
+        <div className="relative w-full overflow-hidden" style={{ 
+          height: 'calc(100vh - 140px)', 
+          minHeight: '350px',
+          maxHeight: 'calc(100vh - 140px)'
+        }}>
           {Array.from({ length: totalPages }).map((_, pageIndex) => {
             const isActive = pageIndex === currentPage;
             const offset = pageIndex - currentPage;
@@ -763,11 +910,15 @@ export function SpacesOSLauncher({ widgets, householdId, householdName, onWidget
                   willChange: shouldAnimate ? 'transform, opacity' : 'auto',
                 }}
               >
-              <div className="grid grid-cols-4 gap-8 h-full content-start">
+              {/* Responsive grid: 3 columns on very small screens (< 480px), 4 columns on larger screens */}
+              <div 
+                ref={pageIndex === currentPage ? gridRef : undefined}
+                className="grid grid-cols-3 sm:grid-cols-4 gap-4 sm:gap-6 md:gap-8 content-start justify-items-center pb-4"
+              >
                 {orderedWidgets
-                  .slice(pageIndex * WIDGETS_PER_PAGE, (pageIndex + 1) * WIDGETS_PER_PAGE)
+                  .slice(pageIndex * widgetsPerPage, (pageIndex + 1) * widgetsPerPage)
                   .map((widget, localIndex) => {
-                    const globalIndex = pageIndex * WIDGETS_PER_PAGE + localIndex;
+                    const globalIndex = pageIndex * widgetsPerPage + localIndex;
                     const IconComponent = getIconComponent(widget.widget_type);
                     const color = getWidgetColor(widget.widget_type);
                     const name = getWidgetName(widget);
@@ -782,27 +933,27 @@ export function SpacesOSLauncher({ widgets, householdId, householdName, onWidget
                       const draggedItemIndex = orderedWidgets.findIndex(w => w.id === draggedWidget);
                       if (draggedItemIndex !== -1 && draggedItemIndex !== globalIndex) {
                         // Only calculate offset for widgets on the same page
-                        const draggedItemPage = Math.floor(draggedItemIndex / WIDGETS_PER_PAGE);
+                        const draggedItemPage = Math.floor(draggedItemIndex / widgetsPerPage);
                         if (draggedItemPage === pageIndex) {
-                          // Calculate offset based on whether widget should shift
+                          // Calculate offset based on whether widget should shift - using dynamic cell dimensions
                           if (globalIndex > draggedItemIndex && globalIndex <= draggedOverIndex) {
                             // Widget should shift left (toward the dragged item's old position)
-                            translateX = -112; // Negative: move left (80px icon + 32px gap)
+                            translateX = -cellWidth; // Negative: move left
                           } else if (globalIndex < draggedItemIndex && globalIndex >= draggedOverIndex) {
                             // Widget should shift right (toward the dragged item's new position)
-                            translateX = 112; // Positive: move right
+                            translateX = cellWidth; // Positive: move right
                           }
                           
                           // Handle vertical shifts for wrapping
                           if (translateX !== 0) {
-                            const currentCol = localIndex % GRID_COLS;
+                            const currentCol = localIndex % gridCols;
                             const wouldWrapLeft = translateX < 0 && currentCol === 0;
-                            const wouldWrapRight = translateX > 0 && currentCol === GRID_COLS - 1;
+                            const wouldWrapRight = translateX > 0 && currentCol === gridCols - 1;
                             
                             if (wouldWrapLeft || wouldWrapRight) {
                               // Widget wraps to next/previous row
-                              translateX = wouldWrapLeft ? (GRID_COLS - 1) * 112 : -(GRID_COLS - 1) * 112;
-                              translateY = wouldWrapLeft ? 116 : -116; // 80px icon + 36px label gap
+                              translateX = wouldWrapLeft ? (gridCols - 1) * cellWidth : -(gridCols - 1) * cellWidth;
+                              translateY = wouldWrapLeft ? cellHeight : -cellHeight;
                             }
                           }
                         }
@@ -815,7 +966,7 @@ export function SpacesOSLauncher({ widgets, householdId, householdName, onWidget
                     return (
                       <div
                         key={widget.id}
-                        className="flex flex-col items-center gap-2.5"
+                        className="flex flex-col items-center gap-2 sm:gap-2.5 w-full max-w-[100px] sm:max-w-none"
                         style={{
                           transition: isAnimating && !isDragging
                             ? `transform 0.25s cubic-bezier(0.34, 1.56, 0.64, 1), opacity 0.3s ease-out`
@@ -832,9 +983,19 @@ export function SpacesOSLauncher({ widgets, householdId, householdName, onWidget
                       >
                         <button
                           ref={isDragging ? draggedWidgetRef : null}
-                          onTouchStart={(e) => handleTouchStart(e, widget, globalIndex)}
-                          onTouchEnd={(e) => handleTouchEnd(e, widget, globalIndex)}
-                          onTouchMove={handleTouchMove}
+                          data-widget-button="true"
+                          onTouchStart={(e) => {
+                            e.stopPropagation(); // Prevent event bubbling to container
+                            handleTouchStart(e, widget, globalIndex);
+                          }}
+                          onTouchEnd={(e) => {
+                            e.stopPropagation(); // Prevent event bubbling to container
+                            handleTouchEnd(e, widget, globalIndex);
+                          }}
+                          onTouchMove={(e) => {
+                            e.stopPropagation(); // Prevent event bubbling to container
+                            handleTouchMove(e);
+                          }}
                           onMouseDown={(e) => {
                             if (!isEditMode) {
                               // Store position for smooth transition
@@ -844,7 +1005,7 @@ export function SpacesOSLauncher({ widgets, householdId, householdName, onWidget
                           }}
                           onClick={(e) => {
                             // Fallback for mouse clicks (desktop)
-                            if (!isEditMode) {
+                            if (!isEditMode && !draggedWidget) {
                               e.preventDefault();
                               e.stopPropagation();
                               handleAppTap(widget, e);
@@ -856,7 +1017,7 @@ export function SpacesOSLauncher({ widgets, householdId, householdName, onWidget
                               : ''
                           } ${isDragging ? 'z-50' : 'z-auto'} ${isDraggedOver ? 'ring-2 ring-blue-400 rounded-2xl' : ''}`}
                           style={{
-                            touchAction: isEditMode ? 'none' : 'manipulation',
+                            touchAction: isEditMode || draggedWidget ? 'none' : 'manipulation',
                             WebkitTapHighlightColor: 'transparent',
                             position: isDragging ? 'fixed' : 'relative',
                             transform: isDragging && dragPosition
@@ -881,9 +1042,9 @@ export function SpacesOSLauncher({ widgets, householdId, householdName, onWidget
                             willChange: isDragging || isTransitioning ? 'transform, opacity' : 'auto',
                           }}
                         >
-                          {/* Phase 9A: App icon - OS-native style, flat, no shadows, confident design */}
+                          {/* Phase 9A: App icon - OS-native style, flat, no shadows, confident design - Responsive sizing */}
                           <div
-                            className={`relative w-20 h-20 rounded-3xl ${color} flex items-center justify-center ${
+                            className={`relative w-16 h-16 sm:w-[72px] sm:h-[72px] md:w-20 md:h-20 rounded-2xl sm:rounded-3xl ${color} flex items-center justify-center ${
                               isEditMode ? 'ring-2 ring-blue-500' : ''
                             } ${isDragging ? 'ring-4 ring-blue-400 ring-opacity-50' : ''}`}
                             style={{
@@ -902,7 +1063,7 @@ export function SpacesOSLauncher({ widgets, householdId, householdName, onWidget
                             }}
                           >
                             {IconComponent && (
-                              <IconComponent size={36} className="text-white" />
+                              <IconComponent size={28} className="text-white sm:w-8 sm:h-8 md:w-9 md:h-9" />
                             )}
                             
                             {/* Phase 9A: Edit mode indicator - subtle, OS-style */}
@@ -914,9 +1075,9 @@ export function SpacesOSLauncher({ widgets, householdId, householdName, onWidget
                           </div>
                         </button>
 
-                        {/* Phase 9A: App label - always visible, OS-style typography */}
+                        {/* Phase 9A: App label - always visible, OS-style typography - Responsive sizing */}
                         <span
-                          className="text-xs text-gray-900 font-medium text-center max-w-[80px] truncate leading-tight"
+                          className="text-[10px] sm:text-xs text-gray-900 font-medium text-center max-w-[100%] px-0.5 truncate leading-tight"
                           style={{
                             opacity: isDragging || (tappedWidget?.widget.id === widget.id && isTransitioning) ? 0 : 1,
                             transition: 'opacity 0.15s cubic-bezier(0.4, 0.0, 0.2, 1), transform 0.15s cubic-bezier(0.4, 0.0, 0.2, 1)',

@@ -163,9 +163,20 @@ export function AppBootProvider({ children }: { children: ReactNode }) {
 
   const setStatus = useCallback((status: AppBootStatus) => {
     setState((prev) => {
-      // Don't allow transitions from fatal-error or ready unless explicitly resetting
-      if (prev.status === 'fatal-error' && status !== 'initializing') {
-        return prev;
+      // FIXED: Allow recovery from fatal-error state
+      // Previously, fatal-error was terminal and couldn't be recovered from
+      // Now allow transitions from fatal-error to allow recovery actions
+      if (prev.status === 'fatal-error' && status === 'initializing') {
+        // Reset boot time when recovering from fatal error
+        return {
+          ...prev,
+          status,
+          bootStartTime: Date.now(),
+          elapsedTime: 0,
+          error: null,
+          errorCode: null,
+          isRetrying: false,
+        };
       }
       if (prev.status === 'ready' && status === 'initializing') {
         // Reset boot time when restarting
@@ -214,35 +225,25 @@ export function AppBootProvider({ children }: { children: ReactNode }) {
 
   const resetApp = useCallback(async () => {
     try {
-      // Phase 8: Clear service worker and cache
-      if ('serviceWorker' in navigator) {
-        const registrations = await navigator.serviceWorker.getRegistrations();
-        for (const registration of registrations) {
-          await registration.unregister();
-        }
-      }
-
-      // Clear all caches
-      if ('caches' in window) {
-        const cacheNames = await caches.keys();
-        await Promise.all(cacheNames.map((name) => caches.delete(name)));
-      }
-
-      // Reset boot state
-      setState({
-        ...INITIAL_STATE,
-        bootStartTime: Date.now(),
+      // FIXED: Use hardReset utility for comprehensive state clearing
+      const { hardReset } = await import('../lib/hardReset');
+      await hardReset({
+        clearAuth: false, // Don't clear auth on app reset (only on logout)
+        clearLocalStorage: true,
+        clearSessionStorage: true,
+        clearServiceWorkers: true,
+        clearCaches: true,
+        redirectTo: undefined, // Reload current page
+        reload: true,
       });
-
-      // Reload
-      window.location.reload();
     } catch (error) {
       console.error('[AppBoot] Error resetting app:', error);
-      setState((prev) => ({
-        ...prev,
-        error: error instanceof Error ? error : new Error('Failed to reset app'),
-        errorCode: 'RESET_FAILED',
-      }));
+      // Even if reset fails, try to reload
+      try {
+        window.location.reload();
+      } catch {
+        // Can't do anything more
+      }
     }
   }, []);
 

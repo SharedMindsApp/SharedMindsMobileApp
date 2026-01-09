@@ -62,18 +62,14 @@ class ActiveDataContextStore {
 
     try {
       const stored = localStorage.getItem(ADC_STORAGE_KEY);
-      console.log('[ADC] Loading persisted state from localStorage:', stored);
+      // Removed verbose logging - only log errors
       if (stored) {
         const parsed = JSON.parse(stored);
-        console.log('[ADC] Parsed state:', parsed);
         PERSISTED_FIELDS.forEach((field) => {
           if (parsed[field] !== undefined) {
             (this.state as any)[field] = parsed[field];
           }
         });
-        console.log('[ADC] After loading, activeProjectId:', this.state.activeProjectId);
-      } else {
-        console.log('[ADC] No persisted state found in localStorage');
       }
     } catch (error) {
       console.error('[ADC] Failed to load persisted state:', error);
@@ -138,7 +134,7 @@ class ActiveDataContextStore {
     projectId: string | null,
     domainId: string | null = null
   ): void {
-    console.log('[ADC] setActiveProjectId called:', { projectId, domainId, currentProjectId: this.state.activeProjectId });
+    // Removed verbose logging - only log errors
 
     const changed =
       this.state.activeProjectId !== projectId ||

@@ -13,9 +13,11 @@ import { NotificationPanel } from './NotificationPanel';
 interface NotificationBellProps {
   /** Force the bell to always be visible, even if notifications are disabled */
   alwaysVisible?: boolean;
+  /** If true, renders notification panel as full-screen modal on mobile (e.g., in Spaces) */
+  fullScreenOnMobile?: boolean;
 }
 
-export function NotificationBell({ alwaysVisible = false }: NotificationBellProps = {}) {
+export function NotificationBell({ alwaysVisible = false, fullScreenOnMobile = false }: NotificationBellProps = {}) {
   const { unreadCount } = useNotifications();
   const [isOpen, setIsOpen] = useState(false);
   const buttonRef = useRef<HTMLButtonElement>(null);
@@ -55,6 +57,7 @@ export function NotificationBell({ alwaysVisible = false }: NotificationBellProp
         isOpen={isOpen}
         onClose={handleClose}
         anchorRef={buttonRef}
+        fullScreenOnMobile={fullScreenOnMobile}
       />
     </div>
   );

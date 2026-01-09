@@ -50,32 +50,17 @@ export function AppBootScreen() {
   // Handle clearing auth and redirecting to login
   const handleClearAuthAndLogin = async () => {
     try {
-      // Clear Supabase session
-      await supabase.auth.signOut();
-      
-      // Clear localStorage auth-related items
-      localStorage.removeItem('supabase.auth.token');
-      localStorage.removeItem('sb-auth-token');
-      
-      // Clear any cached auth state
-      if ('caches' in window) {
-        try {
-          const cacheNames = await caches.keys();
-          const authCacheNames = cacheNames.filter(name => 
-            name.includes('auth') || name.includes('session')
-          );
-          await Promise.all(authCacheNames.map(name => caches.delete(name)));
-        } catch (err) {
-          console.error('Error clearing auth caches:', err);
-        }
-      }
-      
-      // Redirect to login
-      window.location.href = '/auth/login';
+      // FIXED: Use hardReset utility for comprehensive auth clearing
+      const { clearAuthStateOnly } = await import('../lib/hardReset');
+      await clearAuthStateOnly();
     } catch (error) {
       console.error('Error clearing auth:', error);
-      // Force redirect even if signOut fails
-      window.location.href = '/auth/login';
+      // Force redirect even if clearAuthStateOnly fails
+      try {
+        window.location.replace('/auth/login');
+      } catch {
+        // Can't do anything more
+      }
     }
   };
 

@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { Settings, Home, FileText, LogOut, Shield, Eye, X, MessageCircle, Brain, Users, Target, User, ChevronDown, Zap, Sun, Moon, Check, Calendar, Menu, MoreHorizontal, Home as HomeIcon } from 'lucide-react';
+import { Home, FileText, LogOut, Shield, Eye, X, MessageCircle, Brain, Users, Target, User, ChevronDown, Zap, Sun, Moon, Check, Calendar, Menu, MoreHorizontal, Home as HomeIcon } from 'lucide-react';
 import { ToastContainer, useToasts } from './Toast';
 import { getUserHousehold, Household } from '../lib/household';
 import { signOut } from '../lib/auth';
@@ -35,7 +35,6 @@ const ICON_MAP: Record<string, any> = {
 
 export function Layout({ children }: LayoutProps) {
   const [household, setHousehold] = useState<Household | null>(null);
-  const [showSettingsMenu, setShowSettingsMenu] = useState(false);
   const [showSpacesMenu, setShowSpacesMenu] = useState(false);
   const [showMoreMenu, setShowMoreMenu] = useState(false);
   const [showMobileMenu, setShowMobileMenu] = useState(false);
@@ -102,9 +101,7 @@ export function Layout({ children }: LayoutProps) {
 
   const handleThemeChange = (theme: AppTheme) => {
     updatePreferences({ appTheme: theme });
-    setShowSettingsMenu(false);
-    // Don't close mobile menu on theme change - let user see the change and close manually
-    // This ensures they can always change it back if needed
+    // Settings menu removed - theme changes are handled in left navigation menu
   };
 
   const isActive = (path: string) => {
@@ -344,94 +341,6 @@ export function Layout({ children }: LayoutProps) {
 
             <div className="flex items-center gap-3">
               {shouldShowNotificationBell() && <NotificationBell />}
-              
-              <div className="relative">
-                <button
-                  onClick={() => setShowSettingsMenu(!showSettingsMenu)}
-                  className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-colors min-h-[44px] ${
-                    showSettingsMenu || location.pathname.startsWith('/settings')
-                      ? 'bg-gray-100 text-gray-900'
-                      : 'text-gray-600 hover:bg-gray-50 active:bg-gray-100'
-                  }`}
-                  aria-label="Settings"
-                >
-                  <Settings size={20} />
-                  <span className="hidden sm:inline">Settings</span>
-                </button>
-
-                {showSettingsMenu && (
-                  <>
-                    <div
-                      className="fixed inset-0 z-10"
-                      onClick={() => setShowSettingsMenu(false)}
-                    ></div>
-                    <div className="absolute right-0 mt-2 w-56 bg-white rounded-lg shadow-lg border border-gray-200 py-2 z-20">
-                      <button
-                        onClick={() => {
-                          setShowSettingsMenu(false);
-                          navigate('/settings');
-                        }}
-                        className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2"
-                      >
-                        <Settings size={16} />
-                        Profile Settings
-                      </button>
-                      <button
-                        onClick={() => {
-                          setShowSettingsMenu(false);
-                          navigate('/brain-profile/cards');
-                        }}
-                        className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2"
-                      >
-                        <Brain size={16} />
-                        My Brain Profile
-                      </button>
-                      <div className="border-t border-gray-200 my-2"></div>
-                      <div className="px-4 py-2">
-                        <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Theme</p>
-                      </div>
-                      <button
-                        onClick={() => handleThemeChange('light')}
-                        className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 flex items-center justify-between"
-                      >
-                        <div className="flex items-center gap-2">
-                          <Sun size={16} />
-                          Light
-                        </div>
-                        {config.appTheme === 'light' && <Check size={16} className="text-blue-600" />}
-                      </button>
-                      <button
-                        onClick={() => handleThemeChange('dark')}
-                        className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 flex items-center justify-between"
-                      >
-                        <div className="flex items-center gap-2">
-                          <Moon size={16} />
-                          Dark
-                        </div>
-                        {config.appTheme === 'dark' && <Check size={16} className="text-blue-600" />}
-                      </button>
-                      <button
-                        onClick={() => handleThemeChange('neon-dark')}
-                        className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 flex items-center justify-between"
-                      >
-                        <div className="flex items-center gap-2">
-                          <Zap size={16} />
-                          Neon Dark
-                        </div>
-                        {config.appTheme === 'neon-dark' && <Check size={16} className="text-blue-600" />}
-                      </button>
-                      <div className="border-t border-gray-200 my-2"></div>
-                      <button
-                        onClick={handleLogout}
-                        className="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50 flex items-center gap-2"
-                      >
-                        <LogOut size={16} />
-                        Log Out
-                      </button>
-                    </div>
-                  </>
-                )}
-              </div>
             </div>
           </div>
         </div>
@@ -667,20 +576,6 @@ export function Layout({ children }: LayoutProps) {
                     : 'border-gray-200'
                 }`}></div>
 
-                <button
-                  onClick={() => {
-                    setShowMobileMenu(false);
-                    navigate('/settings');
-                  }}
-                  className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-colors ${
-                    config.appTheme === 'dark' || config.appTheme === 'neon-dark'
-                      ? 'text-gray-200 hover:bg-gray-800'
-                      : 'text-gray-700 hover:bg-gray-50'
-                  }`}
-                >
-                  <Settings size={20} />
-                  Profile Settings
-                </button>
 
                 <button
                   onClick={() => {

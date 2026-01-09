@@ -198,8 +198,8 @@ async function performHealthCheck(trigger?: string): Promise<boolean> {
       status: 'healthy',
     }, previousStatus);
     
-    // Only log if status changed (recovered from degraded/offline) or in dev mode
-    if (statusChanged || import.meta.env.DEV) {
+    // Only log if status changed (recovered from degraded/offline), not routine checks
+    if (statusChanged) {
       logInfo('Health check successful', {
         component: 'ConnectionHealth',
         action: 'performHealthCheck',
@@ -411,11 +411,7 @@ export function startHealthMonitoring(): void {
   retryAttempts = 0;
   lastRealtimeActivity = Date.now();
   
-  logInfo('Connection health monitoring started (event-driven)', {
-    component: 'ConnectionHealth',
-    action: 'startHealthMonitoring',
-  });
-  
+  // Removed verbose logging - only log errors or important state changes
   // Perform initial health check
   performHealthCheck('initial');
 
@@ -494,10 +490,7 @@ export function startHealthMonitoring(): void {
     window.removeEventListener('offline', handleOffline);
   };
 
-  logInfo('Event-driven health monitoring initialized', {
-    component: 'ConnectionHealth',
-    action: 'startHealthMonitoring',
-  });
+  // Removed verbose logging - monitoring is initialized silently
 }
 
 /**

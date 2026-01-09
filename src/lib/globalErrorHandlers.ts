@@ -172,11 +172,7 @@ export function initGlobalErrorHandlers(): void {
     }
   };
 
-  logInfo('Global error handlers initialized', {
-    component: 'GlobalErrorHandler',
-    action: 'init',
-    userAgent: navigator.userAgent,
-    url: window.location.href,
-  });
+  // Removed verbose logging - error handlers initialize silently
+  // Only log actual errors, not initialization
 }
 

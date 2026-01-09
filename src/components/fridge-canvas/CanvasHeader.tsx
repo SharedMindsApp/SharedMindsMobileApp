@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { Home, Users, MessageCircle, Settings, ChevronUp, Menu, LayoutGrid, Smartphone, User, ChevronDown, Target, Shield, Palette, Bell, Lock, LogOut, Sun, Moon, Zap, Check, BookOpen } from 'lucide-react';
+import { Home, Users, MessageCircle, ChevronUp, Menu, LayoutGrid, Smartphone, User, ChevronDown, Target, Shield, LogOut, Sun, Moon, Zap, Check, BookOpen } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { getUserUIMode, setUserUIMode } from '../../lib/mobileApps';
 import type { UIMode } from '../../lib/mobileTypes';
@@ -15,12 +15,11 @@ interface CanvasHeaderProps {
 export function CanvasHeader({ householdName }: CanvasHeaderProps) {
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [showSpacesMenu, setShowSpacesMenu] = useState(false);
-  const [showSettingsMenu, setShowSettingsMenu] = useState(false);
   const [uiMode, setUIMode] = useState<UIMode>('fridge');
   const [isMobile, setIsMobile] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
-  const { user, signOut } = useAuth();
+  const { user } = useAuth();
   const { appTheme, setAppTheme } = useUIPreferences();
 
   // Phase 9A: Detect mobile/installed app
@@ -257,114 +256,6 @@ export function CanvasHeader({ householdName }: CanvasHeaderProps) {
                 Messages
               </button>
 
-              <div className="relative">
-                <button
-                  onClick={() => setShowSettingsMenu(!showSettingsMenu)}
-                  className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium text-gray-600 hover:bg-orange-50 hover:text-orange-700 transition-colors"
-                >
-                  <Settings size={16} />
-                  Settings
-                  <ChevronDown size={14} className={`transition-transform ${showSettingsMenu ? 'rotate-180' : ''}`} />
-                </button>
-
-                {showSettingsMenu && (
-                  <>
-                    <div
-                      className="fixed inset-0 z-10"
-                      onClick={() => setShowSettingsMenu(false)}
-                    ></div>
-                    <div className="absolute right-0 mt-2 w-64 bg-white rounded-lg shadow-lg border border-gray-200 py-2 z-20">
-                      <div className="px-3 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wider">
-                        Theme
-                      </div>
-                      <button
-                        onClick={() => setAppTheme('light')}
-                        className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 flex items-center justify-between gap-2"
-                      >
-                        <div className="flex items-center gap-2">
-                          <Sun size={16} className="text-amber-500" />
-                          <span>Light Mode</span>
-                        </div>
-                        {appTheme === 'light' && <Check size={16} className="text-amber-600" />}
-                      </button>
-                      <button
-                        onClick={() => setAppTheme('dark')}
-                        className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 flex items-center justify-between gap-2"
-                      >
-                        <div className="flex items-center gap-2">
-                          <Moon size={16} className="text-slate-500" />
-                          <span>Dark Mode</span>
-                        </div>
-                        {appTheme === 'dark' && <Check size={16} className="text-cyan-400" />}
-                      </button>
-                      <button
-                        onClick={() => setAppTheme('neon-dark')}
-                        className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 flex items-center justify-between gap-2"
-                      >
-                        <div className="flex items-center gap-2">
-                          <Zap size={16} className="text-cyan-500" />
-                          <span>Neon Dark</span>
-                        </div>
-                        {appTheme === 'neon-dark' && <Check size={16} className="text-cyan-400" />}
-                      </button>
-
-                      <div className="border-t border-gray-200 my-1"></div>
-
-                      <button
-                        onClick={() => {
-                          setShowSettingsMenu(false);
-                          navigate('/settings/profile');
-                        }}
-                        className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2"
-                      >
-                        <User size={16} />
-                        Profile Settings
-                      </button>
-                      <button
-                        onClick={() => {
-                          setShowSettingsMenu(false);
-                          navigate('/settings/preferences');
-                        }}
-                        className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2"
-                      >
-                        <Palette size={16} />
-                        Preferences
-                      </button>
-                      <button
-                        onClick={() => {
-                          setShowSettingsMenu(false);
-                          navigate('/settings/notifications');
-                        }}
-                        className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2"
-                      >
-                        <Bell size={16} />
-                        Notifications
-                      </button>
-                      <button
-                        onClick={() => {
-                          setShowSettingsMenu(false);
-                          navigate('/settings/privacy');
-                        }}
-                        className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2"
-                      >
-                        <Lock size={16} />
-                        Privacy & Security
-                      </button>
-                      <div className="border-t border-gray-200 my-1"></div>
-                      <button
-                        onClick={() => {
-                          setShowSettingsMenu(false);
-                          signOut();
-                        }}
-                        className="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50 flex items-center gap-2"
-                      >
-                        <LogOut size={16} />
-                        Sign Out
-                      </button>
-                    </div>
-                  </>
-                )}
-              </div>
             </div>
           </div>
 

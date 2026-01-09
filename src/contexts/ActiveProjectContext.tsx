@@ -39,13 +39,7 @@ export function ActiveProjectProvider({ children }: { children: ReactNode }) {
 
   const [initialized, setInitialized] = useState(false);
 
-  // Log only when activeProject reference actually changes
-  useEffect(() => {
-    console.log('[ActiveProjectContext] activeProject changed:', activeProject ? {
-      id: activeProject.id,
-      name: activeProject.name
-    } : null);
-  }, [activeProject]);
+  // Removed verbose logging - only log errors
 
   // Initialize ADC on mount - sync localStorage project to ADC immediately
   useEffect(() => {

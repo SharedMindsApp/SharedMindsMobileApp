@@ -65,11 +65,9 @@ if (import.meta.env.PROD && 'serviceWorker' in navigator) {
     navigator.serviceWorker
       .register('/sw.js')
       .then((registration) => {
-        // Phase 3C: Check for updates periodically (every hour)
-        setInterval(() => {
-          registration.update();
-        }, 60 * 60 * 1000);
+        // FIXED: More frequent update checks (moved below, see above)
 
+        // FIXED: Enhanced service worker update detection
         // Phase 3C: Handle service worker updates
         // Phase 8: Don't auto-reload, let boot system handle it
         // Phase 9: Enhanced update detection for in-app update banner
@@ -80,20 +78,30 @@ if (import.meta.env.PROD && 'serviceWorker' in navigator) {
               if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
                 // Phase 9: Signal update available - service worker is waiting
                 // The update banner will show and allow user to confirm
+                console.log('[ServiceWorker] New version installed, waiting for activation');
                 window.dispatchEvent(new CustomEvent('sw-update-available', {
-                  detail: { waiting: true }
+                  detail: { waiting: true, state: 'installed' }
                 }));
               }
             });
           }
         });
 
-        // Phase 9: Check for waiting service worker on registration
-        if (registration.waiting) {
+        // Phase 9: Check for waiting service worker on registration (immediate check)
+        if (registration.waiting && navigator.serviceWorker.controller) {
+          console.log('[ServiceWorker] Waiting service worker detected on registration');
           window.dispatchEvent(new CustomEvent('sw-update-available', {
-            detail: { waiting: true }
+            detail: { waiting: true, state: 'waiting' }
           }));
         }
+        
+        // FIXED: Also check periodically for updates (more aggressive checking)
+        // Check every 5 minutes instead of just on registration
+        setInterval(() => {
+          registration.update().catch(err => {
+            console.warn('[ServiceWorker] Update check failed:', err);
+          });
+        }, 5 * 60 * 1000); // 5 minutes
       })
       .catch((error) => {
         console.warn('Service Worker registration failed:', error);

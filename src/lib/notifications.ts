@@ -134,42 +134,167 @@ export async function createNotification(
  * Get user notification preferences
  */
 export async function getNotificationPreferences(userId: string): Promise<NotificationPreferences | null> {
-  const { data, error } = await supabase
+  // Try to select all columns first
+  let { data, error } = await supabase
     .from('notification_preferences')
     .select('*')
     .eq('user_id', userId)
     .single();
 
-  if (error) {
+  // If error is about missing columns, try with only base columns
+  if (error && error.code === 'PGRST204' && error.message?.includes('column')) {
+    console.warn('[getNotificationPreferences] Extended columns not found, selecting base columns only');
+    
+    // Explicitly select only base columns that always exist
+    const baseColumns = [
+      'user_id',
+      'notifications_enabled',
+      'push_enabled',
+      'do_not_disturb',
+      'calendar_reminders',
+      'guardrails_updates',
+      'planner_alerts',
+      'system_messages',
+      'calendar_reminders_push',
+      'guardrails_updates_push',
+      'planner_alerts_push',
+      'system_messages_push',
+      'updated_at',
+    ].join(',');
+
+    const baseResult = await supabase
+      .from('notification_preferences')
+      .select(baseColumns)
+      .eq('user_id', userId)
+      .single();
+
+    if (baseResult.error) {
+      if (baseResult.error.code === 'PGRST116') {
+        // No preferences found
+        return null;
+      }
+      console.error('[getNotificationPreferences] Error (base columns):', baseResult.error);
+      throw baseResult.error;
+    }
+
+    data = baseResult.data;
+  } else if (error) {
     if (error.code === 'PGRST116') {
-      // No preferences found, return default
+      // No preferences found
       return null;
     }
     console.error('[getNotificationPreferences] Error:', error);
     throw error;
   }
 
-  return data;
+  // Ensure extended columns have defaults if they weren't returned
+  return {
+    ...data,
+    tracker_reminders: (data as any)?.tracker_reminders ?? false,
+    habit_reminders: (data as any)?.habit_reminders ?? false,
+    sleep_reminders: (data as any)?.sleep_reminders ?? false,
+    routine_reminders: (data as any)?.routine_reminders ?? false,
+    tracker_reminders_push: (data as any)?.tracker_reminders_push ?? false,
+    habit_reminders_push: (data as any)?.habit_reminders_push ?? false,
+    sleep_reminders_push: (data as any)?.sleep_reminders_push ?? false,
+    routine_reminders_push: (data as any)?.routine_reminders_push ?? false,
+  } as NotificationPreferences;
 }
 
 /**
  * Update notification preferences
+ * 
+ * Note: Filters out columns that may not exist in the database (e.g., if migrations haven't run).
+ * Uses a whitelist of known valid columns to prevent schema errors.
  */
 export async function updateNotificationPreferences(
   userId: string,
   preferences: Partial<Omit<NotificationPreferences, 'user_id' | 'created_at' | 'updated_at'>>
 ): Promise<NotificationPreferences> {
+  // Define whitelist of valid columns that always exist (from base migration)
+  const baseColumns = [
+    'notifications_enabled',
+    'push_enabled',
+    'do_not_disturb',
+    'calendar_reminders',
+    'guardrails_updates',
+    'planner_alerts',
+    'system_messages',
+    'calendar_reminders_push',
+    'guardrails_updates_push',
+    'planner_alerts_push',
+    'system_messages_push',
+  ] as const;
+
+  // Extended columns that may not exist if migration hasn't run
+  const extendedColumns = [
+    'tracker_reminders',
+    'habit_reminders',
+    'sleep_reminders',
+    'routine_reminders',
+    'tracker_reminders_push',
+    'habit_reminders_push',
+    'sleep_reminders_push',
+    'routine_reminders_push',
+  ] as const;
+
+  // Filter preferences to only include valid columns
+  // Start with base columns (always safe)
+  const safePreferences: Record<string, any> = {};
+  
+  for (const key of baseColumns) {
+    if (key in preferences && preferences[key as keyof typeof preferences] !== undefined) {
+      safePreferences[key] = preferences[key as keyof typeof preferences];
+    }
+  }
+
+  // Try to include extended columns (they may not exist, so we'll handle errors gracefully)
+  for (const key of extendedColumns) {
+    if (key in preferences && preferences[key as keyof typeof preferences] !== undefined) {
+      safePreferences[key] = preferences[key as keyof typeof preferences];
+    }
+  }
+
   const { data, error } = await supabase
     .from('notification_preferences')
     .upsert({
       user_id: userId,
-      ...preferences,
+      ...safePreferences,
       updated_at: new Date().toISOString(),
     })
     .select()
     .single();
 
   if (error) {
+    // If error is about missing columns, try again with only base columns
+    if (error.code === 'PGRST204' && error.message?.includes('column')) {
+      console.warn('[updateNotificationPreferences] Extended columns not found, retrying with base columns only:', error.message);
+      
+      const baseOnlyPreferences: Record<string, any> = {};
+      for (const key of baseColumns) {
+        if (key in preferences && preferences[key as keyof typeof preferences] !== undefined) {
+          baseOnlyPreferences[key] = preferences[key as keyof typeof preferences];
+        }
+      }
+
+      const { data: retryData, error: retryError } = await supabase
+        .from('notification_preferences')
+        .upsert({
+          user_id: userId,
+          ...baseOnlyPreferences,
+          updated_at: new Date().toISOString(),
+        })
+        .select()
+        .single();
+
+      if (retryError) {
+        console.error('[updateNotificationPreferences] Error (after retry):', retryError);
+        throw retryError;
+      }
+
+      return retryData;
+    }
+
     console.error('[updateNotificationPreferences] Error:', error);
     throw error;
   }

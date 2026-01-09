@@ -39,6 +39,18 @@ export function AppReferenceGuideMobile({
   const [isSwiping, setIsSwiping] = useState(false);
   const [isTransitioning, setIsTransitioning] = useState(false);
   
+  // FIXED: Store app guide state in sessionStorage to preserve across reloads
+  useEffect(() => {
+    if (isOpen) {
+      sessionStorage.setItem('app_guide_open', 'true');
+      // Also store current index to restore position
+      sessionStorage.setItem('app_guide_index', currentIndex.toString());
+    } else {
+      sessionStorage.removeItem('app_guide_open');
+      sessionStorage.removeItem('app_guide_index');
+    }
+  }, [isOpen, currentIndex]);
+  
   const [showWidgetGuide, setShowWidgetGuide] = useState(false);
   const [showGuardrailsGuide, setShowGuardrailsGuide] = useState(false);
   const [showPlannerGuide, setShowPlannerGuide] = useState(false);
@@ -60,6 +72,19 @@ export function AppReferenceGuideMobile({
   const currentItem = items[currentIndex];
   const isFirst = currentIndex === 0;
   const isLast = currentIndex === items.length - 1;
+
+  // FIXED: Restore current index from sessionStorage when guide opens
+  useEffect(() => {
+    if (isOpen && typeof window !== 'undefined') {
+      const savedIndex = sessionStorage.getItem('app_guide_index');
+      if (savedIndex) {
+        const index = parseInt(savedIndex, 10);
+        if (!isNaN(index) && index >= 0 && index < items.length) {
+          setCurrentIndex(index);
+        }
+      }
+    }
+  }, [isOpen, items.length]);
 
   // Reset swipe state when index changes
   useEffect(() => {
@@ -181,6 +206,9 @@ export function AppReferenceGuideMobile({
       <div 
         ref={modalRef}
         className="fixed inset-0 z-50 flex flex-col bg-gradient-to-b from-white to-gray-50 safe-top safe-bottom"
+        style={{
+          overscrollBehavior: 'contain', // FIXED: Prevent pull-to-refresh when guide is open
+        }}
       >
         {/* Header - Minimal and Clean */}
         <div className="sticky top-0 bg-white/80 backdrop-blur-md border-b border-gray-100 px-5 py-4 flex items-center justify-between z-20 safe-top">
@@ -225,6 +253,7 @@ export function AppReferenceGuideMobile({
           className="flex-1 overflow-y-auto relative px-5 py-6"
           style={{
             touchAction: 'pan-y',
+            overscrollBehavior: 'contain', // FIXED: Prevent pull-to-refresh on guide content
           }}
         >
           <div 

@@ -92,33 +92,25 @@ export class AppErrorBoundary extends Component<Props, State> {
 
   handleReset = async () => {
     try {
-      // Phase 8: Clear service worker and cache
-      if ('serviceWorker' in navigator) {
-        const registrations = await navigator.serviceWorker.getRegistrations();
-        for (const registration of registrations) {
-          await registration.unregister();
-        }
-      }
-
-      // Clear all caches
-      if ('caches' in window) {
-        const cacheNames = await caches.keys();
-        await Promise.all(cacheNames.map((name) => caches.delete(name)));
-      }
-
-      // Reset state and reload
-      this.setState({
-        hasError: false,
-        error: null,
-        errorInfo: null,
-        errorCode: null,
+      // FIXED: Use hardReset utility for comprehensive reset
+      const { hardReset } = await import('../lib/hardReset');
+      await hardReset({
+        clearAuth: false, // Don't clear auth on error boundary reset
+        clearLocalStorage: true,
+        clearSessionStorage: true,
+        clearServiceWorkers: true,
+        clearCaches: true,
+        redirectTo: undefined, // Reload current page
+        reload: true,
       });
-
-      window.location.reload();
     } catch (resetError) {
       console.error('[AppErrorBoundary] Error resetting app:', resetError);
       // If reset fails, still try to reload
-      window.location.reload();
+      try {
+        window.location.reload();
+      } catch {
+        // Can't do anything more
+      }
     }
   };
 

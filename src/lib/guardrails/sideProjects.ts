@@ -1,20 +1,8 @@
 import { supabase } from '../supabase';
 
-console.warn(`
-================================================================================
-DEPRECATED MODULE: src/lib/guardrails/sideProjects.ts
-This module uses the legacy side_projects table which is deprecated.
-
-MIGRATION PATH:
-- Side projects are now unified as Track entities with category='side_project'
-- Use trackService from '@/lib/guardrails' instead
-- Replace getSideProjects() with getTracksByCategory(projectId, 'side_project')
-- Replace createSideProject() with createTrack({category: 'side_project'})
-- Replace convertSideProjectToMasterProject() with promoteSideProjectToMaster()
-
-See GUARDRAILS_UNIFIED_ARCHITECTURE.md for details.
-================================================================================
-`);
+// Suppressed deprecation warning - module still in use, will be migrated gradually
+// Uncomment to see migration path when needed:
+// console.warn('[DEPRECATED] src/lib/guardrails/sideProjects.ts - See GUARDRAILS_UNIFIED_ARCHITECTURE.md for migration path');
 
 export interface SideProject {
   id: string;

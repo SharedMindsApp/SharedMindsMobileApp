@@ -5,7 +5,7 @@
  * Shows feature index first, then allows navigation between features.
  */
 
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { X, ChevronLeft, ChevronRight, ArrowLeft } from 'lucide-react';
 import { PlannerGuideCard } from './PlannerGuideCard';
 import { PlannerFeaturesIndex } from './PlannerFeaturesIndex';
@@ -18,6 +18,9 @@ interface PlannerGuideMobileProps {
   featureId?: string;
 }
 
+const SWIPE_THRESHOLD = 50; // Minimum swipe distance (px)
+const SWIPE_VELOCITY_THRESHOLD = 0.3; // Minimum velocity (px/ms)
+
 export function PlannerGuideMobile({
   isOpen,
   onClose,
@@ -25,9 +28,23 @@ export function PlannerGuideMobile({
   featureId: initialFeatureId,
 }: PlannerGuideMobileProps) {
   const [selectedFeatureId, setSelectedFeatureId] = useState<string | null>(initialFeatureId || null);
+  const [swipeOffset, setSwipeOffset] = useState(0);
+  const [isSwiping, setIsSwiping] = useState(false);
+  const [isTransitioning, setIsTransitioning] = useState(false);
   const features = getAllPlannerGuideItems();
   const currentFeature = selectedFeatureId ? getPlannerGuideItem(selectedFeatureId) : null;
   const currentIndex = selectedFeatureId ? features.findIndex(f => f.id === selectedFeatureId) : -1;
+  const touchStartRef = useRef<{ x: number; y: number; time: number } | null>(null);
+  const modalRef = useRef<HTMLDivElement>(null);
+
+  const isFirst = currentIndex <= 0;
+  const isLast = currentIndex >= features.length - 1;
+
+  // Reset swipe state when index changes
+  useEffect(() => {
+    setSwipeOffset(0);
+    setIsSwiping(false);
+  }, [currentIndex]);
 
   if (!isOpen) return null;
 
@@ -36,20 +53,104 @@ export function PlannerGuideMobile({
   };
 
   const handleNext = () => {
-    if (currentIndex >= 0 && currentIndex < features.length - 1) {
-      setSelectedFeatureId(features[currentIndex + 1].id);
+    if (currentIndex >= 0 && currentIndex < features.length - 1 && !isTransitioning) {
+      setIsTransitioning(true);
+      setTimeout(() => {
+        setSelectedFeatureId(features[currentIndex + 1].id);
+        setIsTransitioning(false);
+      }, 150);
     }
   };
 
   const handlePrevious = () => {
-    if (currentIndex > 0) {
-      setSelectedFeatureId(features[currentIndex - 1].id);
+    if (currentIndex > 0 && !isTransitioning) {
+      setIsTransitioning(true);
+      setTimeout(() => {
+        setSelectedFeatureId(features[currentIndex - 1].id);
+        setIsTransitioning(false);
+      }, 150);
     }
   };
 
   const handleBackToIndex = () => {
     setSelectedFeatureId(null);
   };
+
+  // Swipe gesture handlers - only active when viewing a feature (not index)
+  const handleTouchStart = (e: TouchEvent) => {
+    if (isTransitioning || !currentFeature) return;
+    const touch = e.touches[0];
+    touchStartRef.current = {
+      x: touch.clientX,
+      y: touch.clientY,
+      time: Date.now(),
+    };
+  };
+
+  const handleTouchMove = (e: TouchEvent) => {
+    if (!touchStartRef.current || isTransitioning || !currentFeature) return;
+
+    const touch = e.touches[0];
+    const deltaX = touch.clientX - touchStartRef.current.x;
+    const deltaY = touch.clientY - touchStartRef.current.y;
+
+    // Only handle horizontal swipes (more horizontal than vertical)
+    if (Math.abs(deltaX) > Math.abs(deltaY) && Math.abs(deltaX) > 10) {
+      e.preventDefault();
+      setIsSwiping(true);
+      // Clamp swipe offset for visual feedback
+      const clampedOffset = Math.max(-100, Math.min(100, deltaX));
+      setSwipeOffset(clampedOffset);
+    }
+  };
+
+  const handleTouchEnd = () => {
+    if (!touchStartRef.current || !isSwiping || isTransitioning || !currentFeature) {
+      touchStartRef.current = null;
+      setIsSwiping(false);
+      setSwipeOffset(0);
+      return;
+    }
+
+    const touchDuration = Date.now() - touchStartRef.current.time;
+    const velocity = Math.abs(swipeOffset) / touchDuration;
+
+    // Determine swipe action
+    if (Math.abs(swipeOffset) >= SWIPE_THRESHOLD || velocity >= SWIPE_VELOCITY_THRESHOLD) {
+      if (swipeOffset < 0 && !isLast) {
+        // Swipe left → Next
+        handleNext();
+      } else if (swipeOffset > 0 && !isFirst) {
+        // Swipe right → Previous
+        handlePrevious();
+      } else {
+        // Reset if swipe wasn't enough or at boundary
+        setSwipeOffset(0);
+      }
+    } else {
+      // Reset if swipe wasn't sufficient
+      setSwipeOffset(0);
+    }
+
+    touchStartRef.current = null;
+    setIsSwiping(false);
+  };
+
+  // Add touch event listeners when viewing a feature
+  useEffect(() => {
+    const modal = modalRef.current;
+    if (!modal || !isOpen || !currentFeature) return;
+
+    modal.addEventListener('touchmove', handleTouchMove, { passive: false });
+    modal.addEventListener('touchstart', handleTouchStart, { passive: true });
+    modal.addEventListener('touchend', handleTouchEnd, { passive: true });
+
+    return () => {
+      modal.removeEventListener('touchmove', handleTouchMove);
+      modal.removeEventListener('touchstart', handleTouchStart);
+      modal.removeEventListener('touchend', handleTouchEnd);
+    };
+  }, [isOpen, isTransitioning, isSwiping, swipeOffset, isFirst, isLast, currentFeature]);
 
   return (
     <>
@@ -60,7 +161,11 @@ export function PlannerGuideMobile({
       />
 
       {/* Full Screen Modal */}
-      <div className="fixed inset-0 z-50 flex flex-col bg-white safe-top safe-bottom">
+      <div 
+        ref={modalRef}
+        className="fixed inset-0 z-50 flex flex-col bg-white safe-top safe-bottom"
+        style={{ overscrollBehavior: 'contain' }}
+      >
         {/* Header */}
         <div className="sticky top-0 bg-white border-b border-gray-200 px-4 py-4 flex items-center justify-between z-10 safe-top">
           <div className="flex items-center gap-3">
@@ -98,7 +203,13 @@ export function PlannerGuideMobile({
         <div className="flex-1 overflow-y-auto px-4 py-6">
           <div className="max-w-md mx-auto">
             {currentFeature ? (
-              <>
+              <div
+                style={{
+                  transform: `translateX(${swipeOffset}px)`,
+                  opacity: isSwiping ? 0.7 : 1,
+                  transition: isSwiping ? 'none' : 'transform 0.3s ease-out, opacity 0.3s ease-out',
+                }}
+              >
                 <PlannerGuideCard feature={currentFeature} variant="mobile" />
                 
                 {/* Quick Navigation to Other Features */}
@@ -122,7 +233,7 @@ export function PlannerGuideMobile({
                       ))}
                   </div>
                 </div>
-              </>
+              </div>
             ) : (
               <PlannerFeaturesIndex
                 features={features}

@@ -17,7 +17,7 @@ export interface AppUpdateState {
   latestVersion: string | null;
 }
 
-const CHECK_INTERVAL = 30 * 60 * 1000; // 30 minutes
+const CHECK_INTERVAL = 5 * 60 * 1000; // FIXED: Check every 5 minutes instead of 30 (more responsive)
 const FOREGROUND_CHECK_DELAY = 1000; // 1 second after returning to foreground
 const DISMISSED_VERSION_KEY = 'app_update_dismissed_version';
 const LAST_APPLIED_VERSION_KEY = 'app_update_last_applied_version';
@@ -95,23 +95,32 @@ export function useAppUpdate() {
 
       serviceWorkerRegistrationRef.current = registration;
 
-      // Check if there's a waiting service worker (already installed, waiting to activate)
-      // Only show if we haven't dismissed/applied this update
+      // FIXED: Check for waiting service worker first (most reliable indicator)
+      // A waiting service worker means a new version has been installed and is ready
       if (registration.waiting && navigator.serviceWorker.controller) {
+        // When service worker is waiting, we have an update ready
+        // Check version to confirm it's actually newer
+        const latestVersion = await getLatestVersion();
         const lastApplied = getLastAppliedVersion();
         const dismissed = getDismissedVersion();
-        const latestVersion = await getLatestVersion();
         
-        // Only show if there's actually a newer version and we haven't dismissed/applied it
-        if (latestVersion && 
-            isVersionNewer(latestVersion, CURRENT_APP_VERSION) &&
-            dismissed !== latestVersion &&
-            lastApplied !== latestVersion) {
+        // Show update if:
+        // 1. We have a latest version from server
+        // 2. It's newer than current version (or service worker is waiting, which indicates update)
+        // 3. We haven't dismissed/applied this version
+        const hasNewVersion = latestVersion && isVersionNewer(latestVersion, CURRENT_APP_VERSION);
+        const shouldShow = hasNewVersion && 
+                          dismissed !== latestVersion && 
+                          lastApplied !== latestVersion;
+        
+        // Also show if service worker is waiting even if version check fails (fallback)
+        // This handles cases where version.json might not be updated yet
+        if (shouldShow || (registration.waiting && dismissed !== 'pending' && lastApplied !== 'pending')) {
           setState((prev) => ({
             ...prev,
             updateReady: true,
             updateAvailable: true,
-            latestVersion,
+            latestVersion: latestVersion || prev.latestVersion || 'pending',
           }));
         }
         return;
@@ -123,21 +132,24 @@ export function useAppUpdate() {
         const handleStateChange = async () => {
           if (installingWorker.state === 'installed' && navigator.serviceWorker.controller) {
             // Service worker is installed but not yet activated (waiting for skipWaiting)
-            // Only show if we haven't dismissed/applied this update
+            // This means a new version is ready
             const lastApplied = getLastAppliedVersion();
             const dismissed = getDismissedVersion();
             const latestVersion = await getLatestVersion();
             
-            // Only show if there's actually a newer version and we haven't dismissed/applied it
-            if (latestVersion && 
-                isVersionNewer(latestVersion, CURRENT_APP_VERSION) &&
-                dismissed !== latestVersion &&
-                lastApplied !== latestVersion) {
+            // Show update if version is newer or if service worker indicates update
+            const hasNewVersion = latestVersion && isVersionNewer(latestVersion, CURRENT_APP_VERSION);
+            const shouldShow = hasNewVersion && 
+                              dismissed !== latestVersion && 
+                              lastApplied !== latestVersion;
+            
+            // Also show if service worker indicates update (fallback)
+            if (shouldShow || (dismissed !== 'installing' && lastApplied !== 'installing')) {
               setState((prev) => ({
                 ...prev,
                 updateReady: true,
                 updateAvailable: true,
-                latestVersion,
+                latestVersion: latestVersion || prev.latestVersion || 'installing',
               }));
             }
           }
@@ -297,10 +309,14 @@ export function useAppUpdate() {
       clearDismissedVersion();
     }
 
-    // Small delay to avoid checking during app boot
+    // FIXED: More aggressive initial check - check immediately and then again after delay
+    // This ensures we catch updates that happened while app was closed
+    performUpdateCheck();
+    
+    // Also check after a delay to catch any updates that are still installing
     const timeoutId = setTimeout(() => {
       performUpdateCheck();
-    }, 2000); // Wait 2 seconds after mount
+    }, 3000); // Wait 3 seconds after mount for second check
 
     return () => clearTimeout(timeoutId);
   }, []); // Only run on mount

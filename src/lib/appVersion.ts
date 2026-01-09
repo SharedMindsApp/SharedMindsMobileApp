@@ -31,9 +31,13 @@ export async function getLatestVersion(): Promise<string | null> {
       return cachedVersion.version;
     }
 
-    // Fetch version.json with cache-busting timestamp
+    // FIXED: Fetch version.json with cache-busting timestamp and no-cache headers
     const response = await fetch(`/version.json?t=${Date.now()}`, {
       cache: 'no-store',
+      headers: {
+        'Cache-Control': 'no-cache, no-store, must-revalidate',
+        'Pragma': 'no-cache',
+      },
     });
 
     if (!response.ok) {

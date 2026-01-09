@@ -40,6 +40,15 @@ export function initPullToRefreshGuard(): void {
     touchEndY = e.touches[0].clientY;
     const scrollTop = window.pageYOffset || document.documentElement.scrollTop;
     
+    // FIXED: Check if app guide is open - if so, prevent all pull-to-refresh
+    const appGuideOpen = sessionStorage.getItem('app_guide_open') === 'true';
+    if (appGuideOpen && scrollTop === 0 && touchEndY > touchStartY) {
+      // App guide is open - prevent pull-to-refresh completely
+      e.preventDefault();
+      isScrolling = false; // Don't mark as scrolling to prevent reload
+      return;
+    }
+    
     // Phase 8B: If user is at top of page and pulling down, prevent default
     // This prevents native pull-to-refresh that could escape to error page
     if (scrollTop === 0 && touchEndY > touchStartY) {
@@ -52,9 +61,22 @@ export function initPullToRefreshGuard(): void {
   };
 
   const handleTouchEnd = () => {
+    // FIXED: Check if app guide is open before reloading
+    // If guide is open, prevent reload to keep user in guide
+    const appGuideOpen = sessionStorage.getItem('app_guide_open') === 'true';
+    
     // Phase 8B: If user pulled down significantly at top, reload app shell
     // This ensures refresh happens within SPA context
+    // BUT: Don't reload if app guide is open - user should stay in guide
     if (isScrolling && touchEndY - touchStartY > 100) {
+      if (appGuideOpen) {
+        // App guide is open - prevent reload to keep user in guide
+        console.log('[PullToRefreshGuard] App guide is open, preventing reload');
+        touchStartY = 0;
+        touchEndY = 0;
+        isScrolling = false;
+        return;
+      }
       // Reload the app shell (will be handled by service worker)
       window.location.reload();
     }

@@ -1,20 +1,8 @@
 import { supabase } from '../supabase';
 
-console.warn(`
-================================================================================
-DEPRECATED MODULE: src/lib/guardrails/offshoots.ts
-This module uses a legacy approach to offshoots based on is_offshoot flags.
-
-MIGRATION PATH:
-- Offshoots are now unified as Track entities with category='offshoot_idea'
-- Use trackService from '@/lib/guardrails' instead
-- Replace markAsOffshoot() with createTrack({category: 'offshoot_idea'})
-- Replace getAllOffshootsForProject() with getTracksByCategory(projectId, 'offshoot_idea')
-- Replace convertOffshootToSideIdea() with convertTrackToSideProject()
-
-See GUARDRAILS_UNIFIED_ARCHITECTURE.md for details.
-================================================================================
-`);
+// Suppressed deprecation warning - module still in use, will be migrated gradually
+// Uncomment to see migration path when needed:
+// console.warn('[DEPRECATED] src/lib/guardrails/offshoots.ts - See GUARDRAILS_UNIFIED_ARCHITECTURE.md for migration path');
 
 export type OffshootType = 'node' | 'roadmap_item' | 'side_idea';
 
