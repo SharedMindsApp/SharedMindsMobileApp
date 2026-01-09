@@ -49,9 +49,10 @@ export function useCalendarSyncSettings(): UseCalendarSyncSettingsResult {
       }
 
       if (!data) {
-        const { data: newSettings, error: insertError } = await supabase
+        // Use upsert to handle race conditions where row might be created between check and insert
+        const { error: upsertError } = await supabase
           .from('calendar_sync_settings')
-          .insert({
+          .upsert({
             user_id: user.id,
             sync_guardrails_to_personal: true,
             sync_roadmap_events: true,
@@ -59,25 +60,38 @@ export function useCalendarSyncSettings(): UseCalendarSyncSettingsResult {
             sync_mindmesh_events: true,
             sync_personal_to_guardrails: false,
             require_confirmation_for_personal_sync: true,
-          })
-          .select()
-          .single();
+          }, {
+            onConflict: 'user_id',
+          });
 
-        if (insertError) {
-          throw insertError;
+        if (upsertError) {
+          throw upsertError;
         }
 
-        setSettings({
-          userId: newSettings.user_id,
-          syncGuardrailsToPersonal: newSettings.sync_guardrails_to_personal,
-          syncRoadmapEvents: newSettings.sync_roadmap_events,
-          syncTasksWithDates: newSettings.sync_tasks_with_dates,
-          syncMindMeshEvents: newSettings.sync_mindmesh_events,
-          syncPersonalToGuardrails: newSettings.sync_personal_to_guardrails,
-          requireConfirmationForPersonalSync: newSettings.require_confirmation_for_personal_sync,
-          createdAt: newSettings.created_at,
-          updatedAt: newSettings.updated_at,
-        });
+        // Fetch the row after upsert (in case it already existed, we want the actual values)
+        const { data: fetchedData, error: fetchError2 } = await supabase
+          .from('calendar_sync_settings')
+          .select('*')
+          .eq('user_id', user.id)
+          .single();
+
+        if (fetchError2) {
+          throw fetchError2;
+        }
+
+        if (fetchedData) {
+          setSettings({
+            userId: fetchedData.user_id,
+            syncGuardrailsToPersonal: fetchedData.sync_guardrails_to_personal,
+            syncRoadmapEvents: fetchedData.sync_roadmap_events,
+            syncTasksWithDates: fetchedData.sync_tasks_with_dates,
+            syncMindMeshEvents: fetchedData.sync_mindmesh_events,
+            syncPersonalToGuardrails: fetchedData.sync_personal_to_guardrails,
+            requireConfirmationForPersonalSync: fetchedData.require_confirmation_for_personal_sync,
+            createdAt: fetchedData.created_at,
+            updatedAt: fetchedData.updated_at,
+          });
+        }
       } else {
         setSettings({
           userId: data.user_id,

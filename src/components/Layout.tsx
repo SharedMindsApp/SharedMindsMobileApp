@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { Home, FileText, LogOut, Shield, Eye, X, MessageCircle, Brain, Users, Target, User, ChevronDown, Zap, Sun, Moon, Check, Calendar, Menu, MoreHorizontal, Home as HomeIcon } from 'lucide-react';
+import { Home, FileText, LogOut, Shield, Eye, X, MessageCircle, Brain, Users, Target, User, ChevronDown, Zap, Sun, Moon, Check, Calendar, Menu, MoreHorizontal, Home as HomeIcon, Settings } from 'lucide-react';
 import { ToastContainer, useToasts } from './Toast';
 import { getUserHousehold, Household } from '../lib/household';
 import { signOut } from '../lib/auth';
@@ -16,6 +16,9 @@ import { FloatingAIChatWidget } from './ai-chat/FloatingAIChatWidget';
 import { OfflineIndicator } from './OfflineIndicator';
 import { AppUpdateBanner } from './system/AppUpdateBanner';
 import { NotificationBell } from './notifications/NotificationBell';
+import { SharedSpaceSwitcher } from './shared/SharedSpaceSwitcher';
+import { SharedSpacesManagementPanel } from './shared/SharedSpacesManagementPanel';
+import { CreateSpaceModal } from './shared/CreateSpaceModal';
 
 type LayoutProps = {
   children: React.ReactNode;
@@ -38,6 +41,9 @@ export function Layout({ children }: LayoutProps) {
   const [showSpacesMenu, setShowSpacesMenu] = useState(false);
   const [showMoreMenu, setShowMoreMenu] = useState(false);
   const [showMobileMenu, setShowMobileMenu] = useState(false);
+  const [showManageSpaces, setShowManageSpaces] = useState(false);
+  const [showCreateSpace, setShowCreateSpace] = useState(false);
+  const [createSpaceType, setCreateSpaceType] = useState<'household' | 'team' | undefined>();
   const [uiMode, setUIMode] = useState<UIMode>('fridge');
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
@@ -180,15 +186,15 @@ export function Layout({ children }: LayoutProps) {
         <div key={tab.id} className="relative">
           <button
             onClick={() => setShowSpacesMenu(!showSpacesMenu)}
-            className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+            className={`flex items-center gap-1.5 lg:gap-2 px-2 lg:px-3 py-2 rounded-lg text-xs lg:text-sm font-medium transition-colors ${
               isSpacesActive()
                 ? 'bg-amber-50 text-amber-700'
                 : 'text-gray-600 hover:bg-gray-50'
             }`}
           >
-            <Icon size={18} />
-            {tab.label}
-            <ChevronDown size={16} className={`transition-transform ${showSpacesMenu ? 'rotate-180' : ''}`} />
+            <Icon size={16} className="lg:w-[18px] lg:h-[18px]" />
+            <span className="hidden lg:inline">{tab.label}</span>
+            <ChevronDown size={14} className={`transition-transform lg:w-4 lg:h-4 ${showSpacesMenu ? 'rotate-180' : ''}`} />
           </button>
 
           {showSpacesMenu && (
@@ -239,57 +245,63 @@ export function Layout({ children }: LayoutProps) {
       <button
         key={tab.id}
         onClick={() => navigate(tab.path)}
-        className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${
+        className={`flex items-center gap-1.5 lg:gap-2 px-2 lg:px-3 py-2 rounded-lg text-xs lg:text-sm font-medium transition-all duration-200 ${
           isTabActive(tab.path)
             ? tab.id === 'admin' ? 'bg-violet-50 text-violet-700 ring-2 ring-violet-200 shadow-sm font-semibold' : 'bg-blue-50 text-blue-700 ring-2 ring-blue-200 shadow-sm font-semibold'
             : 'text-gray-600 hover:bg-gray-50 active:bg-gray-100'
         }`}
       >
-        <Icon size={18} />
-        {tab.label}
+        <Icon size={16} className="lg:w-[18px] lg:h-[18px]" />
+        <span className="hidden lg:inline">{tab.label}</span>
       </button>
     );
   };
 
   return (
     <div className="min-h-screen-safe bg-[#f7f7f9]">
-      <nav className={`border-b shadow-sm ${
+      <nav className={`border-b shadow-sm overflow-x-hidden ${
         config.appTheme === 'dark'
           ? 'bg-gray-900 border-gray-700'
           : config.appTheme === 'neon-dark'
           ? 'bg-gray-950 border-gray-800'
           : 'bg-white border-gray-200'
       }`}>
-        <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between h-16">
-            <div className="flex items-center gap-4 md:gap-8">
+        <div className="max-w-6xl mx-auto px-2 sm:px-4 lg:px-8">
+          <div className="flex items-center justify-between h-14 sm:h-16 min-h-[56px]">
+            <div className="flex items-center gap-2 sm:gap-4 md:gap-8 flex-1 min-w-0">
               {/* Mobile Menu Button - Always visible and accessible */}
               <button
                 onClick={() => setShowMobileMenu(!showMobileMenu)}
-                className={`md:hidden p-3 rounded-lg min-w-[44px] min-h-[44px] flex items-center justify-center transition-colors z-50 ${
+                className={`md:hidden p-2 rounded-lg min-w-[44px] min-h-[44px] flex items-center justify-center transition-colors z-50 flex-shrink-0 ${
                   config.appTheme === 'dark' || config.appTheme === 'neon-dark'
                     ? 'text-gray-300 hover:bg-gray-800 active:bg-gray-700'
                     : 'text-gray-600 hover:bg-gray-50 active:bg-gray-100'
                 }`}
                 aria-label="Open menu"
               >
-                <Menu size={24} />
+                <Menu size={20} />
               </button>
 
-              <div>
-                <h1 className="text-lg md:text-xl font-bold text-gray-900">SharedMinds</h1>
-                {household && (
-                  <p className="text-xs text-gray-500">{household.name}</p>
-                )}
-                {role && (
-                  <span className={`text-xs px-2 py-0.5 rounded ${
-                    role === 'premium' ? 'bg-teal-100 text-teal-700' :
-                    role === 'admin' ? 'bg-violet-100 text-violet-700' :
-                    'bg-gray-100 text-gray-700'
-                  }`}>
-                    {role.toUpperCase()}
-                  </span>
-                )}
+              <div className="flex items-center gap-2 sm:gap-3 flex-1 min-w-0">
+                {/* Logo Icon */}
+                <img 
+                  src="/icon-192.png" 
+                  alt="SharedMinds" 
+                  className="w-8 h-8 sm:w-9 sm:h-9 flex-shrink-0"
+                />
+                <div className="flex items-center gap-1.5 sm:gap-2 flex-1 min-w-0">
+                  <SharedSpaceSwitcher
+                    onManageSpaces={() => setShowManageSpaces(true)}
+                    onCreateHousehold={() => {
+                      setCreateSpaceType('household');
+                      setShowCreateSpace(true);
+                    }}
+                    onCreateTeam={() => {
+                      setCreateSpaceType('team');
+                      setShowCreateSpace(true);
+                    }}
+                  />
+                </div>
               </div>
 
               <div className="hidden md:flex items-center gap-2">
@@ -299,11 +311,11 @@ export function Layout({ children }: LayoutProps) {
                   <div className="relative">
                     <button
                       onClick={() => setShowMoreMenu(!showMoreMenu)}
-                      className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-colors text-gray-600 hover:bg-gray-50"
+                      className="flex items-center gap-1.5 lg:gap-2 px-2 lg:px-3 py-2 rounded-lg text-xs lg:text-sm font-medium transition-colors text-gray-600 hover:bg-gray-50"
                     >
-                      <MoreHorizontal size={18} />
-                      More
-                      <ChevronDown size={16} className={`transition-transform ${showMoreMenu ? 'rotate-180' : ''}`} />
+                      <MoreHorizontal size={16} className="lg:w-[18px] lg:h-[18px]" />
+                      <span className="hidden lg:inline">More</span>
+                      <ChevronDown size={14} className={`transition-transform lg:w-4 lg:h-4 ${showMoreMenu ? 'rotate-180' : ''}`} />
                     </button>
 
                     {showMoreMenu && (
@@ -339,7 +351,7 @@ export function Layout({ children }: LayoutProps) {
               </div>
             </div>
 
-            <div className="flex items-center gap-3">
+            <div className="flex items-center flex-shrink-0">
               {shouldShowNotificationBell() && <NotificationBell />}
             </div>
           </div>
@@ -462,7 +474,7 @@ export function Layout({ children }: LayoutProps) {
                     setShowMobileMenu(false);
                     // Mobile-first: go to daily view directly for faster access
                     if (window.innerWidth < 1024) {
-                      navigate('/planner/daily');
+                      navigate('/planner/calendar?view=month');
                     } else {
                       navigate('/planner');
                     }
@@ -549,6 +561,24 @@ export function Layout({ children }: LayoutProps) {
                 >
                   <FileText size={20} />
                   Report
+                </button>
+
+                <button
+                  onClick={() => {
+                    setShowMobileMenu(false);
+                    navigate('/settings');
+                  }}
+                  className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-colors ${
+                    location.pathname === '/settings' || location.pathname.startsWith('/settings/')
+                      ? 'bg-blue-50 text-blue-700 ring-2 ring-blue-200'
+                      : config.appTheme === 'dark' || config.appTheme === 'neon-dark'
+                      ? 'text-gray-200 hover:bg-gray-800 active:bg-gray-700'
+                      : 'text-gray-700 hover:bg-gray-50 active:bg-gray-100'
+                  }`}
+                  aria-current={location.pathname === '/settings' || location.pathname.startsWith('/settings/') ? 'page' : undefined}
+                >
+                  <Settings size={20} />
+                  Settings
                 </button>
 
                 {isAdmin && (
@@ -760,6 +790,39 @@ export function Layout({ children }: LayoutProps) {
           </div>
         </div>
       )}
+
+      <SharedSpacesManagementPanel
+        isOpen={showManageSpaces}
+        onClose={() => setShowManageSpaces(false)}
+        onCreateHousehold={() => {
+          setShowManageSpaces(false);
+          setCreateSpaceType('household');
+          setShowCreateSpace(true);
+        }}
+        onCreateTeam={() => {
+          setShowManageSpaces(false);
+          setCreateSpaceType('team');
+          setShowCreateSpace(true);
+        }}
+      />
+
+      <CreateSpaceModal
+        isOpen={showCreateSpace}
+        onClose={() => {
+          setShowCreateSpace(false);
+          setCreateSpaceType(undefined);
+        }}
+        defaultType={createSpaceType}
+        onSpaceCreated={() => {
+          // Space switching is handled in the modal
+          // Refresh spaces list if management panel is open
+          if (showManageSpaces) {
+            // Trigger refresh by closing and reopening
+            setShowManageSpaces(false);
+            setTimeout(() => setShowManageSpaces(true), 100);
+          }
+        }}
+      />
     </div>
   );
 }

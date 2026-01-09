@@ -141,7 +141,7 @@ export function GuestGuard({ children }: GuestGuardProps) {
   if (authenticated) {
     // Phase 8C: Authenticated users should not see guest pages
     if (hasHousehold) {
-      return <Navigate to="/planner/daily" replace />;
+      return <Navigate to="/planner/calendar?view=month" replace />;
     } else {
       return <Navigate to="/onboarding/household" replace />;
     }

@@ -254,28 +254,15 @@ export function PlannerIndex() {
             <p className="text-sm text-gray-600 mt-1">Quick navigation</p>
           </div>
 
-          {/* Primary view tabs (thumb-reachable) */}
+          {/* Calendar Navigation - Direct access */}
           <div className="px-1 -mt-2">
-            <div className="flex gap-2 overflow-x-auto scrollbar-hide">
-              <button
-                onClick={() => navigate('/planner/daily')}
-                className="px-4 py-2 rounded-full text-sm font-medium bg-blue-600 text-white whitespace-nowrap min-h-[40px]"
-              >
-                Daily
-              </button>
-              <button
-                onClick={() => navigate('/planner/weekly')}
-                className="px-4 py-2 rounded-full text-sm font-medium bg-gray-100 text-gray-800 hover:bg-gray-200 whitespace-nowrap min-h-[40px]"
-              >
-                Weekly
-              </button>
-              <button
-                onClick={() => navigate('/planner/monthly')}
-                className="px-4 py-2 rounded-full text-sm font-medium bg-gray-100 text-gray-800 hover:bg-gray-200 whitespace-nowrap min-h-[40px]"
-              >
-                Monthly
-              </button>
-            </div>
+            <button
+              onClick={() => navigate('/planner/calendar?view=month')}
+              className="w-full px-4 py-3 rounded-xl text-sm font-medium bg-blue-600 text-white hover:bg-blue-700 active:bg-blue-800 transition-colors min-h-[44px] flex items-center justify-center gap-2"
+            >
+              <Calendar className="w-5 h-5" />
+              Open Calendar
+            </button>
           </div>
 
           {/* Calendar Navigation - Compact */}

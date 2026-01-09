@@ -1,6 +1,7 @@
 import { PlannerShell } from './PlannerShell';
 import { Target, CheckSquare, Calendar, CalendarDays, Clock, Lightbulb, Zap } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import { LifeAreaMobileMenu, type LifeAreaFeature } from './LifeAreaMobileMenu';
 
 export function PlannerPlanning() {
   const navigate = useNavigate();
@@ -67,15 +68,28 @@ export function PlannerPlanning() {
     yellow: 'bg-yellow-100 text-yellow-700'
   };
 
+  const mobileFeatures: LifeAreaFeature[] = features.map(f => ({
+    id: f.path,
+    icon: f.icon,
+    label: f.title,
+    description: f.description,
+    route: f.path,
+  }));
+
   return (
     <PlannerShell>
-      <div className="max-w-7xl mx-auto p-8">
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold text-slate-800 mb-2">Planning</h1>
-          <p className="text-slate-600">Turning intention into action</p>
+      <div className="max-w-7xl mx-auto p-4 md:p-8">
+        {/* Header - Compact on mobile */}
+        <div className="mb-4 md:mb-8">
+          <h1 className="text-xl md:text-3xl font-semibold text-slate-800 mb-1 md:mb-2">Planning</h1>
+          <p className="text-xs md:text-sm text-gray-500">Turning intention into action</p>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        {/* Mobile Menu */}
+        <LifeAreaMobileMenu features={mobileFeatures} className="mb-4 md:mb-6" themeColor="violet" />
+
+        {/* Desktop Grid - Hidden on mobile */}
+        <div className="hidden md:grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {features.map((feature) => {
             const Icon = feature.icon;
             return (

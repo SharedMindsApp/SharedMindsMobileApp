@@ -37,11 +37,11 @@ export function AppRouteGuard({ children }: AppRouteGuardProps) {
       // Phase 8C: Check for last planner view (mobile-first)
       if (typeof window !== 'undefined' && window.innerWidth < 1024) {
         const lastView = localStorage.getItem('last_planner_view');
-        if (lastView && ['/planner/daily', '/planner/weekly', '/planner/monthly'].includes(lastView)) {
+        if (lastView && lastView.startsWith('/planner')) {
           return <Navigate to={lastView} replace />;
         }
       }
-      return <Navigate to="/planner/daily" replace />;
+      return <Navigate to="/planner/calendar?view=month" replace />;
     } else {
       // Phase 8C: Always redirect unauthenticated users to /login
       return <Navigate to="/auth/login" replace />;

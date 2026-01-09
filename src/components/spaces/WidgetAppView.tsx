@@ -139,6 +139,7 @@ export function WidgetAppView() {
             onNewEvent={() => {
               // Handle new event creation
             }}
+            mode="app" // Use app mode for full-screen view (matches PlannerCalendar)
           />
         );
 

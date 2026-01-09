@@ -12,6 +12,7 @@ import {
   Flower2,
   CloudOff,
 } from 'lucide-react';
+import { LifeAreaMobileMenu, type LifeAreaFeature } from './LifeAreaMobileMenu';
 
 interface SelfCareFeature {
   id: string;
@@ -110,27 +111,35 @@ export function PlannerSelfCare() {
 
   return (
     <PlannerShell>
-      <div className="max-w-7xl mx-auto p-8">
-        <div className="mb-12">
-          <div className="flex items-center gap-3 mb-3">
-            <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-rose-100 to-pink-100 flex items-center justify-center">
-              <Heart className="w-7 h-7 text-rose-600" />
-            </div>
-            <div>
-              <h1 className="text-4xl font-bold text-slate-800">Self-Care & Wellness</h1>
-              <p className="text-slate-600 mt-1">Nurture your physical, mental, and emotional wellbeing</p>
-            </div>
-          </div>
-
-          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mt-6">
-            <p className="text-sm text-blue-800">
-              <span className="font-semibold">Privacy Note:</span> All self-care data is private by default.
-              You control what gets shared and with whom.
+      <div className="max-w-7xl mx-auto p-4 md:p-8">
+        {/* Header - Compact on mobile */}
+        <div className="mb-4 md:mb-8">
+          <h1 className="text-xl md:text-3xl font-semibold text-slate-800 mb-1 md:mb-2">Self-Care & Wellness</h1>
+          <p className="text-xs md:text-sm text-gray-500">Nurture your physical, mental, and emotional wellbeing</p>
+          
+          {/* Privacy Note - Hidden on mobile */}
+          <div className="hidden md:block bg-blue-50 border border-blue-200 rounded-lg p-3 mt-4">
+            <p className="text-xs text-blue-800">
+              <span className="font-medium">Privacy Note:</span> All self-care data is private by default.
             </p>
           </div>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        {/* Mobile Menu */}
+        <LifeAreaMobileMenu 
+          features={features.map(f => ({
+            id: f.id,
+            icon: f.icon,
+            label: f.title,
+            description: f.description,
+            route: f.route,
+          }))} 
+          className="mb-4 md:mb-6"
+          themeColor="rose"
+        />
+
+        {/* Desktop Grid - Hidden on mobile */}
+        <div className="hidden md:grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {features.map((feature) => {
             const Icon = feature.icon;
             return (

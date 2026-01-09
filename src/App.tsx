@@ -126,10 +126,7 @@ import { SignalDetailPage } from './components/regulation/SignalDetailPage';
 import { TestingModePage } from './components/regulation/TestingModePage';
 import { BehavioralInsightsDashboard } from './components/behavioral-insights/BehavioralInsightsDashboard';
 import { PlannerIndex } from './components/planner/PlannerIndex';
-import { PlannerDailyV2 } from './components/planner/PlannerDailyV2';
-import { PlannerWeekly } from './components/planner/PlannerWeekly';
-import { PlannerMonthly } from './components/planner/PlannerMonthly';
-import { PlannerQuarterly } from './components/planner/PlannerQuarterly';
+import { PlannerCalendar } from './components/planner/PlannerCalendar';
 import { PlannerReview } from './components/planner/PlannerReview';
 import { PlannerAreas } from './components/planner/PlannerAreas';
 import { PlannerPersonal } from './components/planner/PlannerPersonal';
@@ -1171,59 +1168,17 @@ function AppContent() {
             }
           />
           <Route
-            path="/planner/daily"
+            path="/planner/calendar"
             element={
               <AuthGuard>
                 <Layout>
                   <ErrorBoundary
-                    context="Planner Daily"
+                    context="Planner Calendar"
                     fallbackRoute="/planner"
-                    errorMessage="An error occurred while loading the daily planner."
+                    errorMessage="An error occurred while loading the planner calendar."
                   >
-                    <PlannerDailyV2 />
+                    <PlannerCalendar />
                   </ErrorBoundary>
-                </Layout>
-              </AuthGuard>
-            }
-          />
-          <Route
-            path="/planner/weekly"
-            element={
-              <AuthGuard>
-                <Layout>
-                  <ErrorBoundary
-                    context="Planner Weekly"
-                    fallbackRoute="/planner"
-                    errorMessage="An error occurred while loading the weekly planner."
-                  >
-                    <PlannerWeekly />
-                  </ErrorBoundary>
-                </Layout>
-              </AuthGuard>
-            }
-          />
-          <Route
-            path="/planner/monthly"
-            element={
-              <AuthGuard>
-                <Layout>
-                  <ErrorBoundary
-                    context="Planner Monthly"
-                    fallbackRoute="/planner"
-                    errorMessage="An error occurred while loading the monthly planner."
-                  >
-                    <PlannerMonthly />
-                  </ErrorBoundary>
-                </Layout>
-              </AuthGuard>
-            }
-          />
-          <Route
-            path="/planner/quarterly"
-            element={
-              <AuthGuard>
-                <Layout>
-                  <PlannerQuarterly />
                 </Layout>
               </AuthGuard>
             }

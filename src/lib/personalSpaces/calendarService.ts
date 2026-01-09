@@ -120,6 +120,9 @@ export interface CreatePersonalEventInput {
   endAt?: string;
   allDay?: boolean;
   event_type?: CalendarEventType;
+  sourceType?: 'personal' | 'guardrails' | 'context';
+  sourceEntityId?: string | null;
+  sourceProjectId?: string | null;
 }
 
 export interface UpdatePersonalEventInput {
@@ -440,9 +443,9 @@ export async function createPersonalCalendarEvent(
       end_at: input.endAt || null,
       all_day: input.allDay || false,
       event_type: input.event_type || 'event', // Default to 'event' if not provided
-      source_type: 'personal',
-      source_entity_id: null,
-      source_project_id: null,
+      source_type: input.sourceType || 'personal',
+      source_entity_id: input.sourceEntityId || null,
+      source_project_id: input.sourceProjectId || null,
       // Phase 8: Track who created the event (for auditing)
       created_by: effectiveActorId, // This should already exist in schema, but we're explicit
     })

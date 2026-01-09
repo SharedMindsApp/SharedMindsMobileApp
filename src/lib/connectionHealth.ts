@@ -11,11 +11,11 @@ import { supabase } from './supabase';
 import { logError, logWarning, logInfo } from './errorLogger';
 
 // Timing constants
-const SAFETY_TIMER_INTERVAL = 5 * 60 * 1000; // 5 minutes (optional safety net - very slow)
-const MIN_COOLDOWN_MS = 2 * 60 * 1000; // 2 minutes minimum between checks (increased from 1 minute)
-const REALTIME_SILENCE_THRESHOLD = 2 * 60 * 1000; // 2 minutes of silence before checking (increased from 90s)
-const REALTIME_SILENCE_CHECK_INTERVAL = 3 * 60 * 1000; // Check for silence every 3 minutes (not every threshold)
-const SESSION_REFRESH_BEFORE_EXPIRY = 5 * 60 * 1000; // 5 minutes before expiry
+const SAFETY_TIMER_INTERVAL = 15 * 60 * 1000; // 15 minutes (optional safety net - very slow)
+const MIN_COOLDOWN_MS = 5 * 60 * 1000; // 5 minutes minimum between checks (increased to prevent excessive checks)
+const REALTIME_SILENCE_THRESHOLD = 5 * 60 * 1000; // 5 minutes of silence before checking (increased to reduce checks)
+const REALTIME_SILENCE_CHECK_INTERVAL = 10 * 60 * 1000; // Check for silence every 10 minutes (reduced frequency)
+const SESSION_REFRESH_BEFORE_EXPIRY = 10 * 60 * 1000; // 10 minutes before expiry (less aggressive)
 const MAX_RETRY_DELAY = 30000; // 30 seconds max delay
 const INITIAL_RETRY_DELAY = 1000; // 1 second initial delay
 
@@ -144,9 +144,18 @@ async function performHealthCheck(trigger?: string): Promise<boolean> {
         const timeUntilExpiry = expiresAt - Date.now();
         
         // If session expires within refresh window, proactively refresh
-        if (timeUntilExpiry > 0 && timeUntilExpiry < SESSION_REFRESH_BEFORE_EXPIRY) {
+        // Only refresh if session is actually close to expiring (not just within window)
+        // This prevents unnecessary refresh attempts on every health check
+        if (timeUntilExpiry > 0 && timeUntilExpiry < SESSION_REFRESH_BEFORE_EXPIRY && timeUntilExpiry > 2 * 60 * 1000) {
           try {
-            await supabase.auth.refreshSession(session);
+            // Use a timeout to prevent hanging on refresh
+            const refreshPromise = supabase.auth.refreshSession(session);
+            const timeoutPromise = new Promise<never>((_, reject) =>
+              setTimeout(() => reject(new Error('Session refresh timeout')), 10000)
+            );
+            
+            await Promise.race([refreshPromise, timeoutPromise]);
+            
             logInfo('Proactively refreshed session before expiry', {
               component: 'ConnectionHealth',
               action: 'refreshSession',
@@ -154,30 +163,24 @@ async function performHealthCheck(trigger?: string): Promise<boolean> {
               timeUntilExpiry: `${Math.floor(timeUntilExpiry / 1000)}s`,
             });
           } catch (refreshError) {
-            logError(
-              'Failed to refresh session',
-              refreshError instanceof Error ? refreshError : new Error(String(refreshError)),
-              {
+            // Don't treat refresh failures as critical - session might still be valid
+            // Only log warning, don't change connection status unless it's a critical error
+            const errorMessage = refreshError instanceof Error ? refreshError.message : String(refreshError);
+            const isTimeout = errorMessage.includes('timeout');
+            const isNetworkError = errorMessage.includes('network') || errorMessage.includes('fetch');
+            
+            if (!isTimeout && !isNetworkError) {
+              // Only log non-network errors as warnings
+              logWarning('Session refresh failed (non-critical)', {
                 component: 'ConnectionHealth',
                 action: 'refreshSession',
                 trigger: trigger || 'unknown',
                 timeUntilExpiry: `${Math.floor(timeUntilExpiry / 1000)}s`,
-              }
-            );
-            
-            retryAttempts++;
-            const nextStatus = navigator.onLine ? 'degraded' : 'offline';
-            lastHealthCheck = Date.now();
-            connectionStatus = nextStatus;
-            notifyHealthState({
-              isHealthy: false,
-              lastCheck: lastHealthCheck,
-              retryAttempts,
-              status: nextStatus,
-            }, previousStatus);
-            
-            isChecking = false;
-            return false;
+                error: errorMessage,
+              });
+            }
+            // Don't change connection status or retry attempts for refresh failures
+            // The session might still be valid, just couldn't refresh proactively
           }
         }
       }

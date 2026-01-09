@@ -85,8 +85,16 @@ export function formatEventTime(event: CalendarEventWithMembers): string {
   return `${formatTime(start)} - ${formatTime(end)}`;
 }
 
-export function getEventColor(color: EventColor): string {
-  const colors = {
+// Legacy function for EventColor enum (backward compatibility)
+// Also handles hex colors (new system)
+export function getEventColor(color: EventColor | string): string {
+  // If it's a hex color, use the hex color function
+  if (typeof color === 'string' && color.startsWith('#')) {
+    return getEventColorFromHex(color);
+  }
+
+  // Legacy EventColor enum handling
+  const colors: Record<string, string> = {
     blue: 'bg-blue-100 border-blue-500 text-blue-900',
     red: 'bg-red-100 border-red-500 text-red-900',
     yellow: 'bg-yellow-100 border-yellow-500 text-yellow-900',
@@ -97,11 +105,19 @@ export function getEventColor(color: EventColor): string {
     pink: 'bg-pink-100 border-pink-500 text-pink-900'
   };
 
-  return colors[color] || colors.blue;
+  return colors[color as string] || colors.blue;
 }
 
-export function getEventColorDot(color: EventColor): string {
-  const colors = {
+// Legacy function for EventColor enum (backward compatibility)
+// Also handles hex colors (new system)
+export function getEventColorDot(color: EventColor | string): string {
+  // If it's a hex color, use the hex color function
+  if (typeof color === 'string' && color.startsWith('#')) {
+    return getEventColorDotFromHex(color);
+  }
+
+  // Legacy EventColor enum handling
+  const colors: Record<string, string> = {
     blue: 'bg-blue-500',
     red: 'bg-red-500',
     yellow: 'bg-yellow-500',
@@ -112,7 +128,101 @@ export function getEventColorDot(color: EventColor): string {
     pink: 'bg-pink-500'
   };
 
-  return colors[color] || colors.blue;
+  return colors[color as string] || colors.blue;
+}
+
+/**
+ * Convert hex color to Tailwind classes for event background/border/text
+ * Returns a string of Tailwind classes suitable for event cards
+ */
+export function getEventColorFromHex(hexColor: string): string {
+  // Map common hex colors to Tailwind classes
+  const colorMap: Record<string, string> = {
+    '#3B82F6': 'bg-blue-100 border-blue-500 text-blue-900', // blue
+    '#6366F1': 'bg-indigo-100 border-indigo-500 text-indigo-900', // indigo
+    '#10B981': 'bg-green-100 border-green-500 text-green-900', // green
+    '#6B7280': 'bg-gray-100 border-gray-500 text-gray-900', // gray
+    '#F59E0B': 'bg-amber-100 border-amber-500 text-amber-900', // amber
+    '#22C55E': 'bg-emerald-100 border-emerald-500 text-emerald-900', // emerald
+    '#F97316': 'bg-orange-100 border-orange-500 text-orange-900', // orange
+    '#8B5CF6': 'bg-violet-100 border-violet-500 text-violet-900', // violet
+    '#EF4444': 'bg-red-100 border-red-500 text-red-900', // red
+    '#0EA5E9': 'bg-sky-100 border-sky-500 text-sky-900', // sky
+    '#EC4899': 'bg-pink-100 border-pink-500 text-pink-900', // pink
+  };
+
+  // Normalize hex color (uppercase, ensure #)
+  const normalized = hexColor.toUpperCase().startsWith('#') ? hexColor.toUpperCase() : `#${hexColor.toUpperCase()}`;
+  
+  return colorMap[normalized] || `bg-blue-100 border-blue-500 text-blue-900`; // Default to blue
+}
+
+/**
+ * Convert hex color to Tailwind class for event color dot/indicator
+ */
+export function getEventColorDotFromHex(hexColor: string): string {
+  const colorMap: Record<string, string> = {
+    '#3B82F6': 'bg-blue-500',
+    '#6366F1': 'bg-indigo-500',
+    '#10B981': 'bg-green-500',
+    '#6B7280': 'bg-gray-500',
+    '#F59E0B': 'bg-amber-500',
+    '#22C55E': 'bg-emerald-500',
+    '#F97316': 'bg-orange-500',
+    '#8B5CF6': 'bg-violet-500',
+    '#EF4444': 'bg-red-500',
+    '#0EA5E9': 'bg-sky-500',
+    '#EC4899': 'bg-pink-500',
+  };
+
+  const normalized = hexColor.toUpperCase().startsWith('#') ? hexColor.toUpperCase() : `#${hexColor.toUpperCase()}`;
+  
+  return colorMap[normalized] || 'bg-blue-500';
+}
+
+/**
+ * Get inline style for event background color (for custom hex colors not in Tailwind map)
+ */
+export function getEventColorStyle(hexColor: string): { backgroundColor: string; borderColor: string; color: string } {
+  // Calculate lighter background color (20% opacity)
+  const bgColor = hexToRgba(hexColor, 0.2);
+  // Use full opacity for border
+  const borderColor = hexColor;
+  // Use darker version for text (or black if light)
+  const textColor = getContrastColor(hexColor);
+
+  return {
+    backgroundColor: bgColor,
+    borderColor: borderColor,
+    color: textColor,
+  };
+}
+
+/**
+ * Convert hex to rgba
+ */
+function hexToRgba(hex: string, alpha: number): string {
+  const normalized = hex.startsWith('#') ? hex.slice(1) : hex;
+  const r = parseInt(normalized.slice(0, 2), 16);
+  const g = parseInt(normalized.slice(2, 4), 16);
+  const b = parseInt(normalized.slice(4, 6), 16);
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+}
+
+/**
+ * Get contrasting text color (black or white) based on background brightness
+ */
+function getContrastColor(hex: string): string {
+  const normalized = hex.startsWith('#') ? hex.slice(1) : hex;
+  const r = parseInt(normalized.slice(0, 2), 16);
+  const g = parseInt(normalized.slice(2, 4), 16);
+  const b = parseInt(normalized.slice(4, 6), 16);
+  
+  // Calculate relative luminance
+  const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+  
+  // Return black for light colors, white for dark colors
+  return luminance > 0.5 ? '#1F2937' : '#FFFFFF';
 }
 
 export function getEventsForDay(

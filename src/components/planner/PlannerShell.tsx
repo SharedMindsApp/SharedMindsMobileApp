@@ -10,10 +10,13 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { Settings, Home, X, Menu, Plus, Calendar, Target, ChevronLeft, ChevronRight, BarChart3, Bell, Activity, TrendingUp, CheckCircle2, Clock } from 'lucide-react';
+import { Settings, X, Menu, Plus, Calendar, Target, ChevronLeft, ChevronRight, BarChart3, Bell, Activity, TrendingUp, CheckCircle2, Clock, Layers } from 'lucide-react';
+import { CalendarSettingsSheet } from '../calendar/CalendarSettingsSheet';
 import { useUIPreferences } from '../../contexts/UIPreferencesContext';
 import { PlannerSettings } from './PlannerSettings';
 import { QuickActionsMenu } from './QuickActionsMenu';
+import { CollapsibleMobileNav } from '../shared/CollapsibleMobileNav';
+import { PlannerQuickViewDrawer } from './PlannerQuickViewDrawer';
 import {
   DEFAULT_PLANNER_SETTINGS,
   PLANNER_STYLE_PRESETS,
@@ -37,7 +40,17 @@ export function PlannerShell({ children }: PlannerShellProps) {
   const [sidecarTab, setSidecarTab] = useState<'analytics' | 'notifications'>('notifications');
   const [windowWidth, setWindowWidth] = useState(0);
   const [quickActionsOpen, setQuickActionsOpen] = useState(false);
-  const fabRef = useRef<HTMLButtonElement>(null);
+  const [quickViewDrawerOpen, setQuickViewDrawerOpen] = useState(false);
+  const [calendarSettingsOpen, setCalendarSettingsOpen] = useState(false);
+  const quickActionsButtonRef = useRef<HTMLButtonElement>(null);
+
+  // Detect if we're on the calendar view (mobile only)
+  const isCalendarView = location.pathname === '/planner/calendar' || location.pathname.startsWith('/planner/calendar');
+
+  // Open Quick View drawer
+  const openQuickViewDrawer = () => {
+    setQuickViewDrawerOpen(true);
+  };
 
   // Layout Detector: Show sidecar on screens >= 1024px (lg), always visible on >= 1920px (2xl)
   useEffect(() => {
@@ -70,10 +83,11 @@ export function PlannerShell({ children }: PlannerShellProps) {
   const getTabColor = (path: string): string => {
     const colorMap: Record<string, string> = {
       '/planner': stylePreset.colors.leftTabs.index,
-      '/planner/daily': stylePreset.colors.leftTabs.daily,
-      '/planner/weekly': stylePreset.colors.leftTabs.weekly,
-      '/planner/monthly': stylePreset.colors.leftTabs.monthly,
-      '/planner/quarterly': stylePreset.colors.leftTabs.quarterly,
+      '/planner/calendar': stylePreset.colors.leftTabs.daily, // Use daily color for calendar
+      '/planner/calendar?view=day': stylePreset.colors.leftTabs.daily,
+      '/planner/calendar?view=week': stylePreset.colors.leftTabs.weekly,
+      '/planner/calendar?view=month': stylePreset.colors.leftTabs.monthly,
+      '/settings': stylePreset.colors.leftTabs.settings,
       '/planner/personal': stylePreset.colors.rightTabs.personal,
       '/planner/work': stylePreset.colors.rightTabs.work,
       '/planner/education': stylePreset.colors.rightTabs.education,
@@ -121,8 +135,8 @@ export function PlannerShell({ children }: PlannerShellProps) {
     return () => window.removeEventListener('resize', checkMobile);
   }, []);
   const defaultFavourites = isMobile 
-    ? ['/planner/daily', '/planner/weekly', '/planner/monthly', '/planner']
-    : ['/planner', '/planner/daily', '/planner/weekly', '/planner/monthly'];
+    ? ['/planner/calendar?view=day', '/planner/calendar?view=week', '/planner/calendar?view=month', '/planner']
+    : ['/planner', '/planner/calendar?view=day', '/planner/calendar?view=week', '/planner/calendar?view=month'];
   const favouritesList = plannerSettings.favouriteTabs?.length
     ? plannerSettings.favouriteTabs
     : defaultFavourites;
@@ -135,16 +149,42 @@ export function PlannerShell({ children }: PlannerShellProps) {
     if (path === '/planner') {
       return location.pathname === '/planner' || location.pathname === '/planner/index';
     }
+    // Handle settings path - match /settings and any /settings/* routes
+    if (path === '/settings') {
+      return location.pathname === '/settings' || location.pathname.startsWith('/settings/');
+    }
+    // Handle calendar paths with query params
+    if (path.startsWith('/planner/calendar')) {
+      const currentPath = location.pathname;
+      const currentSearch = location.search;
+      
+      // If path has query params, match both path and view param
+      if (path.includes('?')) {
+        const [pathPart, queryPart] = path.split('?');
+        if (currentPath === pathPart) {
+          const viewParam = new URLSearchParams(queryPart).get('view');
+          const currentView = new URLSearchParams(currentSearch).get('view') || 'month';
+          return viewParam === currentView;
+        }
+        return false;
+      }
+      // If path is just /planner/calendar, match any calendar route
+      return currentPath === '/planner/calendar';
+    }
     return location.pathname === path;
   };
 
+
   // Phase 4A: Remember last planner view when navigating
   useEffect(() => {
-    const plannerViews = ['/planner/daily', '/planner/weekly', '/planner/monthly', '/planner/quarterly'];
-    if (plannerViews.includes(location.pathname)) {
-      saveLastPlannerView(location.pathname);
+    // Save calendar route (with view param if present)
+    if (location.pathname === '/planner/calendar') {
+      const viewParam = new URLSearchParams(location.search).get('view') || 'month';
+      saveLastPlannerView(`/planner/calendar?view=${viewParam}`);
+    } else if (location.pathname === '/planner') {
+      saveLastPlannerView('/planner');
     }
-  }, [location.pathname]);
+  }, [location.pathname, location.search]);
 
   // Apply color intensity reduction
   const getTabColorClass = (baseColor: string) => {
@@ -171,7 +211,10 @@ export function PlannerShell({ children }: PlannerShellProps) {
                 return (
                   <button
                     key={tab.path}
-                    onClick={() => navigate(tab.path)}
+                    onClick={() => {
+                      // Navigate directly - React Router handles query params
+                      navigate(tab.path);
+                    }}
                     className={`
                       ${getTabColorClass(tab.color)}
                       w-full flex-shrink-0
@@ -208,7 +251,10 @@ export function PlannerShell({ children }: PlannerShellProps) {
               return (
                 <button
                   key={tab.path}
-                  onClick={() => navigate(tab.path)}
+                  onClick={() => {
+                    // Navigate directly - React Router handles query params
+                    navigate(tab.path);
+                  }}
                   className={`
                     ${getTabColorClass(tab.color)}
                     w-12 h-12 rounded-lg
@@ -242,49 +288,70 @@ export function PlannerShell({ children }: PlannerShellProps) {
             `}>
               <div className="w-full flex items-center justify-between gap-2">
                 {/* Favourites Tabs - Scrollable on mobile */}
-                {/* Phase 2C: Add padding at scroll edges for better mobile ergonomics */}
-                <div className="flex items-center gap-1 sm:gap-2 overflow-x-auto flex-1 min-w-0 scrollbar-hide overscroll-contain px-1 sm:px-0">
-                  <div className="flex items-center gap-1 sm:gap-2 min-w-max">
-                    {favouriteTabs.map((tab) => (
-                      <button
-                        key={tab.path}
-                        onClick={() => navigate(tab.path)}
-                        className={`
-                          ${getTabColorClass(tab.color)}
-                          ${isActive(tab.path) ? 'opacity-100 shadow-md ring-2 ring-white/50' : 'opacity-70 hover:opacity-90 active:opacity-100'}
-                          transition-opacity duration-200
-                          ${spacing === 'compact' ? 'px-3 py-2.5' : 'px-4 py-3'} rounded-lg
-                          text-white text-xs font-bold uppercase
-                          whitespace-nowrap
-                          backdrop-blur-sm bg-opacity-90
-                          min-h-[44px] flex items-center justify-center
-                        `}
-                        aria-label={tab.label}
-                        aria-current={isActive(tab.path) ? 'page' : undefined}
-                      >
-                        {tab.label}
-                      </button>
-                    ))}
+                {/* Hide on mobile when on calendar view */}
+                {!(isMobile && isCalendarView) && (
+                  <div className="flex items-center gap-1 sm:gap-2 overflow-x-auto flex-1 min-w-0 scrollbar-hide overscroll-contain px-1 sm:px-0">
+                    <div className="flex items-center gap-1 sm:gap-2 min-w-max">
+                      {favouriteTabs.map((tab) => {
+                        const isCalendarPath = tab.path.startsWith('/planner/calendar');
+                        return (
+                          <button
+                            key={tab.path}
+                            onClick={() => {
+                              if (isCalendarPath && tab.path.includes('?')) {
+                                // Already has query params, navigate as-is
+                                navigate(tab.path);
+                              } else if (isCalendarPath) {
+                                // Calendar path without params, add default view
+                                navigate('/planner/calendar?view=month');
+                              } else {
+                                navigate(tab.path);
+                              }
+                            }}
+                            className={`
+                              ${getTabColorClass(tab.color)}
+                              ${isActive(tab.path.split('?')[0]) ? 'opacity-100 shadow-md ring-2 ring-white/50' : 'opacity-70 hover:opacity-90 active:opacity-100'}
+                              transition-opacity duration-200
+                              ${spacing === 'compact' ? 'px-3 py-2.5' : 'px-4 py-3'} rounded-lg
+                              text-white text-xs font-bold uppercase
+                              whitespace-nowrap
+                              backdrop-blur-sm bg-opacity-90
+                              min-h-[44px] flex items-center justify-center
+                            `}
+                            aria-label={tab.label}
+                            aria-current={isActive(tab.path.split('?')[0]) ? 'page' : undefined}
+                          >
+                            {tab.label}
+                          </button>
+                        );
+                      })}
+                    </div>
                   </div>
-                </div>
+                )}
 
                 {/* Action Buttons */}
                 {/* Phase 2C: Reduce gap on mobile to prevent header crowding */}
                 <div className="flex items-center gap-1 sm:gap-2 ml-2 sm:ml-4 flex-shrink-0">
-                  {/* Phase 2D: On mobile, navigate to daily view (more actionable) instead of index */}
+                  {/* Quick View Button - Mobile only, when on calendar view */}
+                  {isMobile && isCalendarView && (
+                    <button
+                      onClick={openQuickViewDrawer}
+                      className="p-2 sm:p-3 text-blue-600 hover:text-blue-700 hover:bg-blue-100/50 active:bg-blue-100/70 rounded-lg transition-colors backdrop-blur-sm min-w-[44px] min-h-[44px] flex items-center justify-center"
+                      aria-label="Quick View"
+                      title="Quick View"
+                    >
+                      <Layers className="w-4 h-4 sm:w-5 sm:h-5" />
+                    </button>
+                  )}
+                  {/* Quick Actions Button - Replaces Home icon */}
                   <button
-                    onClick={() => {
-                      if (window.innerWidth < 1024) {
-                        navigate('/planner/daily');
-                      } else {
-                        navigate('/planner');
-                      }
-                    }}
-                    className="p-2 sm:p-3 text-amber-600 hover:text-amber-700 hover:bg-amber-100/50 active:bg-amber-100/70 rounded-lg transition-colors backdrop-blur-sm min-w-[44px] min-h-[44px] flex items-center justify-center"
-                    aria-label="Go to Planner"
-                    title="Go to Planner"
+                    ref={quickActionsButtonRef}
+                    onClick={() => setQuickActionsOpen(!quickActionsOpen)}
+                    className="p-2 sm:p-3 text-blue-600 hover:text-blue-700 hover:bg-blue-100/50 active:bg-blue-100/70 rounded-lg transition-colors backdrop-blur-sm min-w-[44px] min-h-[44px] flex items-center justify-center"
+                    aria-label="Quick Actions"
+                    title="Quick Actions"
                   >
-                    <Home className="w-4 h-4 sm:w-5 sm:h-5" />
+                    <Plus className="w-4 h-4 sm:w-5 sm:h-5" />
                   </button>
                   <button
                     onClick={() => setSettingsOpen(true)}
@@ -657,71 +724,29 @@ export function PlannerShell({ children }: PlannerShellProps) {
           )}
         </div>
 
-        {/* Mobile Bottom Navigation */}
-        <nav className="lg:hidden fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur-md border-t border-gray-300 shadow-2xl z-50 safe-bottom overscroll-contain">
-          {/* Quick Access - High Frequency Tabs */}
-          {/* Phase 2C: Add padding at scroll edges and ensure smooth touch scrolling */}
-          <div className="flex overflow-x-auto scrollbar-hide overscroll-contain px-1">
-            <div className="flex min-w-max">
-              {favouriteTabs.map((tab) => (
-                <button
-                  key={tab.path}
-                  onClick={() => navigate(tab.path)}
-                  className={`
-                    ${getTabColorClass(tab.color)}
-                    ${isActive(tab.path) ? 'opacity-100 ring-2 ring-white/70 shadow-lg scale-105' : 'opacity-70 active:opacity-100'}
-                    flex-shrink-0 min-w-[80px] ${spacing === 'compact' ? 'py-3 px-2' : 'py-3.5 px-3'}
-                    text-white text-[10px] font-bold uppercase
-                    border-r border-white/20
-                    transition-all duration-200
-                    min-h-[44px] flex items-center justify-center
-                  `}
-                  aria-label={tab.label}
-                  aria-current={isActive(tab.path) ? 'page' : undefined}
-                >
-                  {tab.label}
-                </button>
-              ))}
-            </div>
-          </div>
-          
-          {/* Menu Toggle Buttons */}
-          {/* Phase 2D: Improve active state clarity and reduce visual noise */}
-          <div className="flex items-center border-t border-gray-200">
-            <button
-              onClick={() => {
-                setMobileMenuSide(mobileMenuSide === 'left' ? null : 'left');
-                setMobileMenuOpen(mobileMenuSide !== 'left');
-              }}
-              className={`flex-1 py-3 px-2 text-xs font-bold uppercase transition-colors min-h-[44px] flex flex-col items-center justify-center ${
-                mobileMenuSide === 'left' 
-                  ? 'bg-blue-100 text-blue-700 active:bg-blue-200 ring-2 ring-blue-300' 
-                  : 'text-gray-600 hover:bg-gray-100 active:bg-gray-200'
-              }`}
-              aria-label="Time Views"
-              aria-pressed={mobileMenuSide === 'left'}
-            >
-              <Menu className="w-4 h-4 mb-1" />
-              Time
-            </button>
-            <button
-              onClick={() => {
-                setMobileMenuSide(mobileMenuSide === 'right' ? null : 'right');
-                setMobileMenuOpen(mobileMenuSide !== 'right');
-              }}
-              className={`flex-1 py-3 px-2 text-xs font-bold uppercase transition-colors min-h-[44px] flex flex-col items-center justify-center ${
-                mobileMenuSide === 'right' 
-                  ? 'bg-blue-100 text-blue-700 active:bg-blue-200 ring-2 ring-blue-300' 
-                  : 'text-gray-600 hover:bg-gray-100 active:bg-gray-200'
-              }`}
-              aria-label="Life Areas"
-              aria-pressed={mobileMenuSide === 'right'}
-            >
-              <Menu className="w-4 h-4 mb-1" />
-              Areas
-            </button>
-          </div>
-        </nav>
+        {/* Mobile Bottom Navigation - Collapsible */}
+        <CollapsibleMobileNav
+          leftButton={{
+            label: 'Calendar',
+            icon: Menu,
+            onClick: () => {
+              setMobileMenuSide(mobileMenuSide === 'left' ? null : 'left');
+              setMobileMenuOpen(mobileMenuSide !== 'left');
+            },
+            isActive: mobileMenuSide === 'left',
+            ariaLabel: 'Calendar',
+          }}
+          rightButton={{
+            label: 'Areas',
+            icon: Menu,
+            onClick: () => {
+              setMobileMenuSide(mobileMenuSide === 'right' ? null : 'right');
+              setMobileMenuOpen(mobileMenuSide !== 'right');
+            },
+            isActive: mobileMenuSide === 'right',
+            ariaLabel: 'Life Areas',
+          }}
+        />
 
         {/* Mobile Side Drawers */}
         {mobileMenuOpen && mobileMenuSide === 'left' && (
@@ -732,38 +757,53 @@ export function PlannerShell({ children }: PlannerShellProps) {
             >
               {/* Phase 2D: Ensure close button is always visible and reachable */}
               <div className="p-4 border-b border-gray-200 flex items-center justify-between bg-white/80 backdrop-blur-sm sticky top-0 z-10">
-                <h3 className="font-bold text-gray-900">Time Views</h3>
-                <button
-                  onClick={() => setMobileMenuOpen(false)}
-                  className="p-3 text-gray-600 hover:text-gray-900 active:text-gray-700 rounded-lg hover:bg-gray-100 active:bg-gray-200 min-w-[44px] min-h-[44px] flex items-center justify-center"
-                  aria-label="Close menu"
-                >
-                  <X className="w-5 h-5" />
-                </button>
+                <h3 className="font-bold text-gray-900">Calendar</h3>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => {
+                      setMobileMenuOpen(false);
+                      setCalendarSettingsOpen(true);
+                    }}
+                    className="p-3 text-gray-600 hover:text-gray-900 active:text-gray-700 rounded-lg hover:bg-gray-100 active:bg-gray-200 min-w-[44px] min-h-[44px] flex items-center justify-center"
+                    aria-label="Calendar settings"
+                  >
+                    <Settings className="w-5 h-5" />
+                  </button>
+                  <button
+                    onClick={() => setMobileMenuOpen(false)}
+                    className="p-3 text-gray-600 hover:text-gray-900 active:text-gray-700 rounded-lg hover:bg-gray-100 active:bg-gray-200 min-w-[44px] min-h-[44px] flex items-center justify-center"
+                    aria-label="Close menu"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
               </div>
               <div className="py-2">
-                {leftTabs.map((tab) => (
-                  <button
-                    key={tab.path}
-                    onClick={() => {
-                      navigate(tab.path);
-                      setMobileMenuOpen(false);
-                    }}
-                    className={`
-                      w-full ${getTabColorClass(tab.color)}
-                      ${isActive(tab.path) ? 'opacity-100 ring-2 ring-white/70 shadow-lg' : 'opacity-80 active:opacity-100'}
-                      px-4 py-4 text-left text-white font-bold uppercase
-                      border-b border-white/20
-                      transition-all duration-200
-                      min-h-[44px] flex items-center
-                      ${isActive(tab.path) ? 'pl-6 border-l-4 border-white/80' : 'pl-4'}
-                    `}
-                    aria-label={tab.label}
-                    aria-current={isActive(tab.path) ? 'page' : undefined}
-                  >
-                    {tab.label}
-                  </button>
-                ))}
+                {leftTabs.map((tab) => {
+                  return (
+                    <button
+                      key={tab.path}
+                      onClick={() => {
+                        // Navigate directly - React Router handles query params
+                        navigate(tab.path);
+                        setMobileMenuOpen(false);
+                      }}
+                      className={`
+                        w-full ${getTabColorClass(tab.color)}
+                        ${isActive(tab.path) ? 'opacity-100 ring-2 ring-white/70 shadow-lg' : 'opacity-80 active:opacity-100'}
+                        px-4 py-4 text-left text-white font-bold uppercase
+                        border-b border-white/20
+                        transition-all duration-200
+                        min-h-[44px] flex items-center
+                        ${isActive(tab.path) ? 'pl-6 border-l-4 border-white/80' : 'pl-4'}
+                      `}
+                      aria-label={tab.label}
+                      aria-current={isActive(tab.path) ? 'page' : undefined}
+                    >
+                      {tab.label}
+                    </button>
+                  );
+                })}
               </div>
             </div>
           </div>
@@ -814,31 +854,33 @@ export function PlannerShell({ children }: PlannerShellProps) {
           </div>
         )}
 
-        {/* Floating Action Button (FAB) - Global Quick Actions */}
-        {/* Phase 2C: Position FAB above bottom nav on mobile to avoid overlap */}
-        {/* Phase 2D: Ensure FAB doesn't compete with bottom nav visually */}
-        <button
-          ref={fabRef}
-          onClick={() => setQuickActionsOpen(!quickActionsOpen)}
-          className="fixed bottom-24 sm:bottom-28 lg:bottom-8 left-4 sm:left-6 lg:left-8 w-14 h-14 sm:w-16 sm:h-16 bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white rounded-full shadow-2xl flex items-center justify-center z-40 transition-all hover:scale-110 active:scale-95 shadow-blue-500/50 backdrop-blur-sm lg:shadow-lg"
-          aria-label="Quick Actions"
-          title="Quick Actions"
-        >
-          <Plus className="w-6 h-6 sm:w-7 sm:h-7" />
-        </button>
+        {/* Calendar Settings Sheet */}
+        <CalendarSettingsSheet
+          isOpen={calendarSettingsOpen}
+          onClose={() => setCalendarSettingsOpen(false)}
+        />
 
-        {/* Quick Actions Menu */}
-        {fabRef.current && (
-          <QuickActionsMenu
-            isOpen={quickActionsOpen}
-            onClose={() => setQuickActionsOpen(false)}
-            actions={enabledQuickActions}
-            position={{
-              x: fabRef.current.getBoundingClientRect().left,
-              y: fabRef.current.getBoundingClientRect().top,
-            }}
-          />
-        )}
+        {/* Quick Actions Menu - Positioned relative to header button */}
+        <QuickActionsMenu
+          isOpen={quickActionsOpen}
+          onClose={() => setQuickActionsOpen(false)}
+          actions={enabledQuickActions}
+          position={
+            quickActionsButtonRef.current
+              ? {
+                  x: quickActionsButtonRef.current.getBoundingClientRect().left,
+                  y: quickActionsButtonRef.current.getBoundingClientRect().top,
+                }
+              : { x: 0, y: 0 } // Fallback position
+          }
+        />
+
+        {/* Mobile Quick View Drawer */}
+        <PlannerQuickViewDrawer
+          isOpen={quickViewDrawerOpen}
+          onClose={() => setQuickViewDrawerOpen(false)}
+          activeTab={sidecarTab}
+        />
       </div>
     </>
   );

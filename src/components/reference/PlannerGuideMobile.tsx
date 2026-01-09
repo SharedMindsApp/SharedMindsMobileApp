@@ -5,7 +5,7 @@
  * Shows feature index first, then allows navigation between features.
  */
 
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import { X, ChevronLeft, ChevronRight, ArrowLeft } from 'lucide-react';
 import { PlannerGuideCard } from './PlannerGuideCard';
 import { PlannerFeaturesIndex } from './PlannerFeaturesIndex';
@@ -42,17 +42,16 @@ export function PlannerGuideMobile({
 
   // Reset swipe state when index changes
   useEffect(() => {
+    if (!isOpen) return;
     setSwipeOffset(0);
     setIsSwiping(false);
-  }, [currentIndex]);
-
-  if (!isOpen) return null;
+  }, [currentIndex, isOpen]);
 
   const handleSelectFeature = (featureId: string) => {
     setSelectedFeatureId(featureId);
   };
 
-  const handleNext = () => {
+  const handleNext = useCallback(() => {
     if (currentIndex >= 0 && currentIndex < features.length - 1 && !isTransitioning) {
       setIsTransitioning(true);
       setTimeout(() => {
@@ -60,9 +59,9 @@ export function PlannerGuideMobile({
         setIsTransitioning(false);
       }, 150);
     }
-  };
+  }, [currentIndex, features, isTransitioning]);
 
-  const handlePrevious = () => {
+  const handlePrevious = useCallback(() => {
     if (currentIndex > 0 && !isTransitioning) {
       setIsTransitioning(true);
       setTimeout(() => {
@@ -70,14 +69,14 @@ export function PlannerGuideMobile({
         setIsTransitioning(false);
       }, 150);
     }
-  };
+  }, [currentIndex, features, isTransitioning]);
 
   const handleBackToIndex = () => {
     setSelectedFeatureId(null);
   };
 
   // Swipe gesture handlers - only active when viewing a feature (not index)
-  const handleTouchStart = (e: TouchEvent) => {
+  const handleTouchStart = useCallback((e: TouchEvent) => {
     if (isTransitioning || !currentFeature) return;
     const touch = e.touches[0];
     touchStartRef.current = {
@@ -85,9 +84,9 @@ export function PlannerGuideMobile({
       y: touch.clientY,
       time: Date.now(),
     };
-  };
+  }, [isTransitioning, currentFeature]);
 
-  const handleTouchMove = (e: TouchEvent) => {
+  const handleTouchMove = useCallback((e: TouchEvent) => {
     if (!touchStartRef.current || isTransitioning || !currentFeature) return;
 
     const touch = e.touches[0];
@@ -102,9 +101,9 @@ export function PlannerGuideMobile({
       const clampedOffset = Math.max(-100, Math.min(100, deltaX));
       setSwipeOffset(clampedOffset);
     }
-  };
+  }, [isTransitioning, currentFeature]);
 
-  const handleTouchEnd = () => {
+  const handleTouchEnd = useCallback(() => {
     if (!touchStartRef.current || !isSwiping || isTransitioning || !currentFeature) {
       touchStartRef.current = null;
       setIsSwiping(false);
@@ -134,12 +133,14 @@ export function PlannerGuideMobile({
 
     touchStartRef.current = null;
     setIsSwiping(false);
-  };
+  }, [isSwiping, isTransitioning, currentFeature, swipeOffset, isFirst, isLast, handleNext, handlePrevious]);
 
   // Add touch event listeners when viewing a feature
   useEffect(() => {
+    if (!isOpen) return;
+    
     const modal = modalRef.current;
-    if (!modal || !isOpen || !currentFeature) return;
+    if (!modal || !currentFeature) return;
 
     modal.addEventListener('touchmove', handleTouchMove, { passive: false });
     modal.addEventListener('touchstart', handleTouchStart, { passive: true });
@@ -150,7 +151,9 @@ export function PlannerGuideMobile({
       modal.removeEventListener('touchstart', handleTouchStart);
       modal.removeEventListener('touchend', handleTouchEnd);
     };
-  }, [isOpen, isTransitioning, isSwiping, swipeOffset, isFirst, isLast, currentFeature]);
+  }, [isOpen, currentFeature, handleTouchStart, handleTouchMove, handleTouchEnd]);
+
+  if (!isOpen) return null;
 
   return (
     <>

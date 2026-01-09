@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { Target, Heart, Sparkles, Trophy, BookOpen, TrendingUp, Star, Lightbulb, Award, Calendar, ArrowLeft } from 'lucide-react';
 import { PlannerShell } from './PlannerShell';
 import { LifeAreaFeatureCard } from './LifeAreaFeatureCard';
+import { LifeAreaMobileMenu, type LifeAreaFeature } from './LifeAreaMobileMenu';
 import { GoalTrackerView } from './personal/GoalTrackerView';
 import { MotivationBoardView } from './personal/MotivationBoardView';
 import { PersonalJournalView } from './personal/PersonalJournalView';
@@ -78,17 +79,94 @@ export function PlannerPersonal() {
     );
   }
 
+  const features: LifeAreaFeature[] = [
+    {
+      id: 'goals',
+      icon: Target,
+      label: 'Goal Tracker',
+      description: 'Set and track personal development goals with progress monitoring',
+      onClick: () => setCurrentView('goals'),
+    },
+    {
+      id: 'motivation',
+      icon: Heart,
+      label: 'Motivation Board',
+      description: 'Visual inspiration board with quotes, images, and affirmations',
+      onClick: () => setCurrentView('motivation'),
+      badge: 'NEW',
+    },
+    {
+      id: 'hobbies',
+      icon: Sparkles,
+      label: 'Hobbies & Interests',
+      description: 'Track hobbies, interests, and time spent on personal activities',
+      onClick: () => setCurrentView('hobbies'),
+    },
+    {
+      id: 'milestones',
+      icon: Trophy,
+      label: 'Life Milestones',
+      description: 'Record and celebrate major life achievements and milestones',
+      onClick: () => setCurrentView('milestones'),
+    },
+    {
+      id: 'journal',
+      icon: BookOpen,
+      label: 'Personal Journal',
+      description: 'Daily journaling for reflection, gratitude, and self-awareness',
+      onClick: () => setCurrentView('journal'),
+    },
+    {
+      id: 'growth',
+      icon: TrendingUp,
+      label: 'Growth Tracking',
+      description: 'Measure personal growth across different life dimensions',
+      onClick: () => setCurrentView('growth'),
+    },
+    {
+      id: 'values',
+      icon: Star,
+      label: 'Values & Principles',
+      description: 'Define and align actions with your core values and beliefs',
+      onClick: () => setCurrentView('values'),
+    },
+    {
+      id: 'ideas',
+      icon: Lightbulb,
+      label: 'Ideas & Inspiration',
+      description: 'Capture creative ideas and personal project inspirations',
+      onClick: () => setCurrentView('ideas'),
+    },
+    {
+      id: 'skills',
+      icon: Award,
+      label: 'Skills Development',
+      description: 'Track skills you want to develop and progress made',
+      onClick: () => setCurrentView('skills'),
+    },
+    {
+      id: 'habits',
+      icon: Calendar,
+      label: 'Habit Tracker',
+      description: 'Build positive habits and break negative ones with daily tracking',
+      onClick: () => setCurrentView('habits'),
+    },
+  ];
+
   return (
     <PlannerShell>
-      <div className="space-y-6">
-        <div className="bg-gradient-to-r from-pink-500 to-rose-500 rounded-xl p-8 text-white shadow-lg">
-          <h1 className="text-4xl font-bold mb-3">Personal Development</h1>
-          <p className="text-white/90 text-lg">
-            Your journey of growth, discovery, and self-improvement
-          </p>
+      <div className="p-4 md:p-8 space-y-4 md:space-y-6">
+        {/* Header - Compact on mobile */}
+        <div className="mb-4 md:mb-8">
+          <h1 className="text-xl md:text-3xl font-semibold text-slate-800 mb-1 md:mb-2">Personal Development</h1>
+          <p className="text-xs md:text-sm text-gray-500">Your journey of growth, discovery, and self-improvement</p>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        {/* Mobile Menu */}
+        <LifeAreaMobileMenu features={features} themeColor="indigo" />
+
+        {/* Desktop Grid - Hidden on mobile */}
+        <div className="hidden md:grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           <LifeAreaFeatureCard
             icon={Target}
             title="Goal Tracker"

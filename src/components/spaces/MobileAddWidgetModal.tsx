@@ -257,7 +257,10 @@ export function MobileAddWidgetModal({ isOpen, onClose, householdId, onWidgetAdd
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 bg-white z-50 flex flex-col safe-top safe-bottom">
+    <div 
+      className="fixed inset-0 bg-white z-50 flex flex-col safe-top safe-bottom"
+      style={{ overscrollBehavior: 'contain' }} // Prevent pull-to-refresh
+    >
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-4 border-b border-gray-200 bg-white sticky top-0 z-10">
         <div className="flex-1">

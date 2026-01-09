@@ -35,11 +35,11 @@ export function NotificationBell({ alwaysVisible = false, fullScreenOnMobile = f
   // This ensures the bell is always visible unless explicitly hidden
 
   return (
-    <div className="relative">
+    <div className="relative flex-shrink-0">
       <button
         ref={buttonRef}
         onClick={handleToggle}
-        className="relative p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 active:bg-gray-200 rounded-lg transition-colors min-h-[44px] min-w-[44px] flex items-center justify-center"
+        className="relative p-1.5 sm:p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 active:bg-gray-200 rounded-lg transition-colors min-h-[44px] min-w-[44px] flex items-center justify-center flex-shrink-0"
         aria-label="Notifications"
         title="Notifications"
       >

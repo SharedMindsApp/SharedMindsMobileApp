@@ -21,6 +21,9 @@ import { MobileAddWidgetModal } from './MobileAddWidgetModal';
 import { MobileNavigationPanel } from './MobileNavigationPanel';
 import { NotificationBell } from '../notifications/NotificationBell';
 import { executeWithRollback, checkStateConsistency, createStateSnapshot } from '../../lib/stateManagement';
+import { SharedSpaceSwitcher } from '../shared/SharedSpaceSwitcher';
+import { SharedSpacesManagementPanel } from '../shared/SharedSpacesManagementPanel';
+import { CreateSpaceModal } from '../shared/CreateSpaceModal';
 
 interface SpacesOSLauncherProps {
   widgets: WidgetWithLayout[];
@@ -96,6 +99,18 @@ export function SpacesOSLauncher({ widgets, householdId, householdName, onWidget
   const [isSaving, setIsSaving] = useState(false);
   const [showAddWidgetModal, setShowAddWidgetModal] = useState(false);
   const [showNavigationPanel, setShowNavigationPanel] = useState(false);
+  const [showManageSpaces, setShowManageSpaces] = useState(false);
+  const [showCreateSpace, setShowCreateSpace] = useState(false);
+  const [createSpaceType, setCreateSpaceType] = useState<'household' | 'team' | undefined>();
+
+  // Track add widget modal state in sessionStorage to prevent pull-to-refresh
+  useEffect(() => {
+    if (showAddWidgetModal) {
+      sessionStorage.setItem('add_widget_modal_open', 'true');
+    } else {
+      sessionStorage.removeItem('add_widget_modal_open');
+    }
+  }, [showAddWidgetModal]);
   const touchStartRef = useRef<{ widgetId: string; startTime: number; startX: number; startY: number } | null>(null);
   const swipeStartRef = useRef<{ x: number; y: number; time: number } | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -705,7 +720,11 @@ export function SpacesOSLauncher({ widgets, householdId, householdName, onWidget
   // Show Add Widget modal if no widgets (auto-opens)
   if (orderedWidgets.length === 0) {
     return (
-      <div className="min-h-screen-safe bg-white safe-top safe-bottom" data-no-glitch="true">
+      <div 
+        className="min-h-screen-safe bg-white safe-top safe-bottom" 
+        data-no-glitch="true"
+        style={{ overscrollBehavior: 'contain' }} // Prevent pull-to-refresh
+      >
         {/* Header with notification bell even in empty state */}
         <div className="sticky top-0 z-40 bg-white/95 backdrop-blur-md border-b border-gray-100 safe-top">
           <div className="px-3 sm:px-4 py-2.5 sm:py-3 flex items-center justify-between">
@@ -717,7 +736,17 @@ export function SpacesOSLauncher({ widgets, householdId, householdName, onWidget
               >
                 <ArrowLeft size={20} />
               </button>
-              <h1 className="text-base sm:text-lg font-semibold text-gray-900 truncate">{householdName}</h1>
+              <SharedSpaceSwitcher
+                onManageSpaces={() => setShowManageSpaces(true)}
+                onCreateHousehold={() => {
+                  setCreateSpaceType('household');
+                  setShowCreateSpace(true);
+                }}
+                onCreateTeam={() => {
+                  setCreateSpaceType('team');
+                  setShowCreateSpace(true);
+                }}
+              />
             </div>
             <div className="flex items-center gap-1.5 sm:gap-2 flex-shrink-0">
               {/* Notification Bell - always visible in Spaces, full-screen modal on mobile */}
@@ -763,7 +792,11 @@ export function SpacesOSLauncher({ widgets, householdId, householdName, onWidget
   }
 
   return (
-    <div className="min-h-screen-safe bg-white safe-top safe-bottom" data-no-glitch="true">
+    <div 
+      className="min-h-screen-safe bg-white safe-top safe-bottom" 
+      data-no-glitch="true"
+      style={{ overscrollBehavior: 'contain' }} // Prevent pull-to-refresh
+    >
       {/* Phase 9A: Minimal header - edge-to-edge, no fake frames, OS-native */}
       <div className="sticky top-0 z-40 bg-white/95 backdrop-blur-md border-b border-gray-100 safe-top">
         <div className="px-3 sm:px-4 py-2.5 sm:py-3 flex items-center justify-between">
@@ -775,7 +808,17 @@ export function SpacesOSLauncher({ widgets, householdId, householdName, onWidget
             >
               <ArrowLeft size={20} />
             </button>
-            <h1 className="text-base sm:text-lg font-semibold text-gray-900 truncate">{householdName}</h1>
+            <SharedSpaceSwitcher
+              onManageSpaces={() => setShowManageSpaces(true)}
+              onCreateHousehold={() => {
+                setCreateSpaceType('household');
+                setShowCreateSpace(true);
+              }}
+              onCreateTeam={() => {
+                setCreateSpaceType('team');
+                setShowCreateSpace(true);
+              }}
+            />
             {totalPages > 1 && (
               <span className="text-xs text-gray-500 flex-shrink-0 hidden sm:inline">
                 {currentPage + 1} / {totalPages}
@@ -856,6 +899,7 @@ export function SpacesOSLauncher({ widgets, householdId, householdName, onWidget
         className="px-3 py-6 sm:px-4 sm:py-8 safe-bottom relative overflow-hidden"
         style={{
           touchAction: isEditMode && draggedWidget ? 'none' : 'pan-x pan-y',
+          overscrollBehavior: 'contain', // Prevent pull-to-refresh
         }}
         onTouchStart={(e) => {
           // Only handle swipe start if not dragging
@@ -1132,6 +1176,40 @@ export function SpacesOSLauncher({ widgets, householdId, householdName, onWidget
         isOpen={showNavigationPanel}
         onClose={() => setShowNavigationPanel(false)}
         currentSpaceName={householdName}
+      />
+
+      {/* Shared Spaces Management Panel */}
+      <SharedSpacesManagementPanel
+        isOpen={showManageSpaces}
+        onClose={() => setShowManageSpaces(false)}
+        onCreateHousehold={() => {
+          setShowManageSpaces(false);
+          setCreateSpaceType('household');
+          setShowCreateSpace(true);
+        }}
+        onCreateTeam={() => {
+          setShowManageSpaces(false);
+          setCreateSpaceType('team');
+          setShowCreateSpace(true);
+        }}
+      />
+
+      {/* Create Space Modal */}
+      <CreateSpaceModal
+        isOpen={showCreateSpace}
+        onClose={() => {
+          setShowCreateSpace(false);
+          setCreateSpaceType(undefined);
+        }}
+        defaultType={createSpaceType}
+        onSpaceCreated={(spaceId, spaceName, type) => {
+          // Refresh the page or navigate to the new space
+          if (onWidgetsChange) {
+            onWidgetsChange();
+          }
+          // Navigate to the new space
+          navigate(`/spaces/${spaceId}`);
+        }}
       />
 
       <style>{`

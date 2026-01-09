@@ -59,7 +59,7 @@ export function PlannerSettings({ isOpen, onClose }: PlannerSettingsProps) {
 
   const toggleTabEnabled = (path: string) => {
     // Core tabs cannot be disabled
-    const coreTabs = ['/planner', '/planner/daily', '/planner/weekly', '/planner/monthly'];
+    const coreTabs = ['/planner', '/planner/calendar'];
     if (coreTabs.includes(path)) return;
 
     setSettings({
@@ -148,7 +148,7 @@ export function PlannerSettings({ isOpen, onClose }: PlannerSettingsProps) {
     .filter((t) => t.side === 'right')
     .sort((a, b) => a.order - b.order);
 
-  const coreTabs = ['/planner', '/planner/daily', '/planner/weekly', '/planner/monthly'];
+  const coreTabs = ['/planner', '/planner/calendar'];
 
   const allPlannerTabs = [...leftTabs, ...rightTabs];
   const currentFavourites = settings.favouriteTabs || [];

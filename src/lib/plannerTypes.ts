@@ -61,6 +61,7 @@ export interface PlannerStylePresetConfig {
       weekly: string;
       monthly: string;
       quarterly: string;
+      settings: string;
     };
     rightTabs: {
       personal: string;
@@ -95,6 +96,7 @@ export const PLANNER_STYLE_PRESETS: Record<PlannerStylePreset, PlannerStylePrese
         weekly: 'bg-gray-600',
         monthly: 'bg-gray-500',
         quarterly: 'bg-gray-500',
+        settings: 'bg-gray-600',
       },
       rightTabs: {
         personal: 'bg-stone-500',
@@ -127,6 +129,7 @@ export const PLANNER_STYLE_PRESETS: Record<PlannerStylePreset, PlannerStylePrese
         weekly: 'bg-blue-800',
         monthly: 'bg-slate-700',
         quarterly: 'bg-slate-800',
+        settings: 'bg-slate-600',
       },
       rightTabs: {
         personal: 'bg-slate-600',
@@ -159,6 +162,7 @@ export const PLANNER_STYLE_PRESETS: Record<PlannerStylePreset, PlannerStylePrese
         weekly: 'bg-stone-500',
         monthly: 'bg-stone-400',
         quarterly: 'bg-stone-400',
+        settings: 'bg-stone-500',
       },
       rightTabs: {
         personal: 'bg-neutral-400',
@@ -191,6 +195,7 @@ export const PLANNER_STYLE_PRESETS: Record<PlannerStylePreset, PlannerStylePrese
         weekly: 'bg-green-500',
         monthly: 'bg-amber-500',
         quarterly: 'bg-purple-500',
+        settings: 'bg-indigo-500',
       },
       rightTabs: {
         personal: 'bg-pink-500',
@@ -223,6 +228,7 @@ export const PLANNER_STYLE_PRESETS: Record<PlannerStylePreset, PlannerStylePrese
         weekly: 'bg-gray-800',
         monthly: 'bg-black',
         quarterly: 'bg-gray-900',
+        settings: 'bg-gray-700',
       },
       rightTabs: {
         personal: 'bg-gray-900',
@@ -247,10 +253,10 @@ export const DEFAULT_PLANNER_SETTINGS: PlannerSettings = {
   tabConfig: [
     // Left tabs
     { path: '/planner', label: 'Index', enabled: true, side: 'left', order: 0 },
-    { path: '/planner/daily', label: 'Daily', enabled: true, side: 'left', order: 1 },
-    { path: '/planner/weekly', label: 'Weekly', enabled: true, side: 'left', order: 2 },
-    { path: '/planner/monthly', label: 'Monthly', enabled: true, side: 'left', order: 3 },
-    { path: '/planner/quarterly', label: 'Quarterly', enabled: true, side: 'left', order: 4 },
+    { path: '/planner/calendar?view=day', label: 'Daily', enabled: true, side: 'left', order: 1 },
+    { path: '/planner/calendar?view=week', label: 'Weekly', enabled: true, side: 'left', order: 2 },
+    { path: '/planner/calendar?view=month', label: 'Monthly', enabled: true, side: 'left', order: 3 },
+    { path: '/settings', label: 'Settings', enabled: true, side: 'left', order: 4 },
     // Right tabs
     { path: '/planner/personal', label: 'Personal', enabled: true, side: 'right', order: 0 },
     { path: '/planner/work', label: 'Work', enabled: true, side: 'right', order: 1 },
@@ -267,9 +273,9 @@ export const DEFAULT_PLANNER_SETTINGS: PlannerSettings = {
   ],
   favouriteTabs: [
     '/planner',
-    '/planner/daily',
-    '/planner/weekly',
-    '/planner/monthly',
+    '/planner/calendar?view=day',
+    '/planner/calendar?view=week',
+    '/planner/calendar?view=month',
   ],
   comfort: {
     spacing: 'comfortable',
@@ -285,7 +291,7 @@ export const DEFAULT_PLANNER_SETTINGS: PlannerSettings = {
       iconColor: 'text-blue-600',
       color: 'bg-blue-100',
       type: 'navigate',
-      path: '/planner/daily',
+      path: '/planner/calendar?view=day',
       enabled: true,
       order: 0,
     },
