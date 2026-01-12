@@ -115,7 +115,7 @@ async function fetchTrackMetadata(trackId: string, containerMetadata: any, creat
   }
 
   const { data, error } = await supabase
-    .from('guardrails_tracks_v2')
+    .from('guardrails_tracks')
     .select('name, description, color, master_project_id, parent_track_id')
     .eq('id', trackId)
     .maybeSingle();
@@ -154,7 +154,7 @@ async function fetchRoadmapItemMetadata(itemId: string, containerMetadata: any, 
       start_date,
       end_date,
       status,
-      track:guardrails_tracks_v2!roadmap_items_track_id_v2_fkey(name)
+      track:guardrails_tracks!roadmap_items_track_id_fkey(name)
     `)
     .eq('id', itemId)
     .maybeSingle();

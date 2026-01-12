@@ -1,6 +1,8 @@
 /**
  * Roadmap Mobile Timeline
  * 
+ * Phase 1: Projection Pipeline Rebuild (Read-Only, Hierarchy-Correct)
+ * 
  * Mobile-first vertical timeline view for roadmap items.
  * Replaces Gantt chart on mobile with a native vertical scrolling experience.
  * 
@@ -11,20 +13,35 @@
  * - Track filter tabs
  * - Compact item cards with swipe actions
  * - Bottom sheet for item details
+ * 
+ * ARCHITECTURAL RULES (Non-Negotiable):
+ * 
+ * What this component CAN do:
+ * - ✅ Render projection data (tracks, subtracks, items)
+ * - ✅ Filter items by track (user selection)
+ * - ✅ Group items by time period
+ * - ✅ Display timeline visualization
+ * 
+ * What this component MUST NOT do:
+ * - ❌ Filter tracks/subtracks based on item presence
+ * - ❌ Hide tracks/subtracks when items.length === 0
+ * - ❌ Mutate domain data
+ * - ❌ Query Supabase directly
+ * 
+ * Phase 1: Empty State Validity
+ * - Tracks/subtracks render even with zero items
+ * - Items filtering is for display only (tracks still visible in filter tabs)
  */
 
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { Calendar, ChevronDown, ChevronUp } from 'lucide-react';
-import { getTrackTree, type TrackWithChildren } from '../../../lib/guardrails/trackService';
-import type { Track } from '../../../lib/guardrails/coreTypes';
-import {
-  getTimelineEligibleItems,
-  type RoadmapItem,
-} from '../../../lib/guardrails/roadmapService';
+import { useRoadmapProjection } from '../../../hooks/useRoadmapProjection';
+import type { RoadmapItem } from '../../../lib/guardrails/coreTypes';
 import { parseDateFromDB, formatDateForDisplay } from '../../../lib/guardrails/infiniteTimelineUtils';
 import { ItemDrawer } from './ItemDrawer';
 import { showToast } from '../../Toast';
 import { updateRoadmapItem } from '../../../lib/guardrails';
+import { RoadmapEmptyState, isProjectionEmpty } from './RoadmapEmptyState';
 
 interface RoadmapMobileTimelineProps {
   masterProjectId: string;
@@ -45,9 +62,9 @@ const STATUS_COLORS = {
 };
 
 export function RoadmapMobileTimeline({ masterProjectId }: RoadmapMobileTimelineProps) {
-  const [trackTree, setTrackTree] = useState<TrackWithChildren[]>([]);
-  const [roadmapItems, setRoadmapItems] = useState<RoadmapItem[]>([]);
-  const [loading, setLoading] = useState(true);
+  // Phase 2: Use projection adapter instead of direct service calls
+  const projection = useRoadmapProjection(masterProjectId);
+  
   const [selectedTrackId, setSelectedTrackId] = useState<string | null>(null); // null = "All Tracks"
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
   const [selectedItem, setSelectedItem] = useState<RoadmapItem | null>(null);
@@ -59,73 +76,62 @@ export function RoadmapMobileTimeline({ masterProjectId }: RoadmapMobileTimeline
 
   const today = useMemo(() => new Date(), []);
 
-  useEffect(() => {
-    loadData();
-  }, [masterProjectId]);
-
   // Scroll to today on load
   useEffect(() => {
-    if (!loading && todayRef.current) {
+    if (!projection.loading && todayRef.current) {
       setTimeout(() => {
         todayRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
       }, 300);
     }
-  }, [loading]);
+  }, [projection.loading]);
 
-  async function loadData() {
-    try {
-      setLoading(true);
-      const [tree, items] = await Promise.all([
-        getTrackTree(masterProjectId),
-        getTimelineEligibleItems(masterProjectId),
-      ]);
-      setTrackTree(tree);
-      setRoadmapItems(items);
-
-      // Auto-expand groups containing today's items
-      const todayGroups = new Set<string>();
-      items.forEach(item => {
-        if (item.startDate) {
-          const itemDate = parseDateFromDB(item.startDate);
-          if (isTodayOrNearby(itemDate, today)) {
-            const group = getPeriodLabel(itemDate);
-            todayGroups.add(group);
+  // Phase 2: Get all items from projection (flatten tracks and subtracks)
+  // Only include items from expanded tracks/subtracks (respect collapse state)
+  const allRoadmapItems = useMemo(() => {
+    const items: RoadmapItem[] = [];
+    projection.tracks.forEach(track => {
+      // Add track items only if track is expanded
+      if (!track.uiState.collapsed) {
+        items.push(...track.items);
+        // Add subtrack items only if subtrack is expanded
+        track.subtracks.forEach(subtrack => {
+          if (!subtrack.uiState.collapsed) {
+            items.push(...subtrack.items);
           }
-        }
-      });
-      setExpandedGroups(new Set(todayGroups));
-    } catch (error) {
-      console.error('Failed to load roadmap data:', error);
-      showToast('error', 'Failed to load roadmap data');
-    } finally {
-      setLoading(false);
-    }
-  }
+        });
+      }
+    });
+    return items;
+  }, [projection.tracks]);
 
-  // Get flat list of tracks for filter tabs (flatten tree)
+  // Phase 2: Get flat list of tracks for filter tabs from projection
   const flatTracks = useMemo(() => {
-    const result: Track[] = [];
+    const result: Array<{ id: string; name: string; color: string | null }> = [];
     
-    function flatten(tracks: TrackWithChildren[]) {
-      tracks.forEach(track => {
-        if (track.includeInRoadmap) {
-          result.push(track as Track);
-          if (track.children && track.children.length > 0) {
-            flatten(track.children);
-          }
-        }
+    projection.tracks.forEach(track => {
+      result.push({
+        id: track.track.id,
+        name: track.track.name,
+        color: track.track.color,
       });
-    }
+      // Include subtracks in filter list
+      track.subtracks.forEach(subtrack => {
+        result.push({
+          id: subtrack.track.id,
+          name: subtrack.track.name,
+          color: subtrack.track.color,
+        });
+      });
+    });
     
-    flatten(trackTree);
     return result;
-  }, [trackTree]);
+  }, [projection.tracks]);
 
-  // Filter items by selected track
+  // Phase 2: Filter items by selected track from projection data
   const filteredItems = useMemo(() => {
-    if (!selectedTrackId) return roadmapItems;
-    return roadmapItems.filter(item => item.trackId === selectedTrackId);
-  }, [roadmapItems, selectedTrackId]);
+    if (!selectedTrackId) return allRoadmapItems;
+    return allRoadmapItems.filter(item => item.trackId === selectedTrackId);
+  }, [allRoadmapItems, selectedTrackId]);
 
   // Group items by month/quarter
   const groupedItems = useMemo((): GroupedItems[] => {
@@ -206,7 +212,7 @@ export function RoadmapMobileTimeline({ masterProjectId }: RoadmapMobileTimeline
       try {
         await updateRoadmapItem(swipingItemId, { status: 'completed' });
         showToast('success', 'Marked as completed');
-        await loadData();
+        await projection.refresh();
       } catch (error) {
         console.error('Failed to update item:', error);
         showToast('error', 'Failed to update item');
@@ -217,7 +223,7 @@ export function RoadmapMobileTimeline({ masterProjectId }: RoadmapMobileTimeline
       try {
         await updateRoadmapItem(swipingItemId, { status: 'blocked' });
         showToast('success', 'Marked as blocked');
-        await loadData();
+        await projection.refresh();
       } catch (error) {
         console.error('Failed to update item:', error);
         showToast('error', 'Failed to update item');
@@ -247,10 +253,10 @@ export function RoadmapMobileTimeline({ masterProjectId }: RoadmapMobileTimeline
   };
 
   const handleItemUpdate = async () => {
-    await loadData();
+    await projection.refresh();
   };
 
-  if (loading) {
+  if (projection.loading) {
     return (
       <div className="flex-1 flex items-center justify-center bg-gray-50">
         <div className="text-center">
@@ -258,6 +264,26 @@ export function RoadmapMobileTimeline({ masterProjectId }: RoadmapMobileTimeline
           <p className="text-gray-600">Loading roadmap...</p>
         </div>
       </div>
+    );
+  }
+
+  if (projection.error) {
+    return (
+      <div className="flex-1 flex items-center justify-center bg-gray-50">
+        <div className="text-center">
+          <p className="text-red-600">Error loading roadmap: {projection.error.message}</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Phase 9: Show empty state if projection is empty
+  if (isProjectionEmpty(projection)) {
+    return (
+      <RoadmapEmptyState
+        masterProjectId={masterProjectId}
+        projection={projection}
+      />
     );
   }
 

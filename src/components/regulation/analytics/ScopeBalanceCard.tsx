@@ -81,7 +81,7 @@ export function ScopeBalanceCard() {
           .gte('created_at', startDateStr),
 
         supabase
-          .from('guardrails_tracks_v2')
+          .from('guardrails_tracks')
           .select('id', { count: 'exact', head: true })
           .in('master_project_id', projectIds)
           .gte('created_at', startDateStr),

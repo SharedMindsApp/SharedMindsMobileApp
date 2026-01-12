@@ -74,8 +74,8 @@ CREATE INDEX IF NOT EXISTS idx_roadmap_items_project_status_dates
   WHERE start_date IS NOT NULL AND end_date IS NOT NULL;
 
 -- Guardrails Tracks: Frequently filtered by master_project_id
-CREATE INDEX IF NOT EXISTS idx_guardrails_tracks_v2_project 
-  ON guardrails_tracks_v2(master_project_id);
+CREATE INDEX IF NOT EXISTS idx_guardrails_tracks_project 
+  ON guardrails_tracks(master_project_id);
 
 -- Guardrails Subtracks: Frequently filtered by track_id
 CREATE INDEX IF NOT EXISTS idx_guardrails_subtracks_track_id 

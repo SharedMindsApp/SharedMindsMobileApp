@@ -228,6 +228,7 @@ export async function createTrackFromUserTemplate(
     .from('guardrails_tracks')
     .insert({
       master_project_id: input.master_project_id,
+      template_id: input.user_track_template_id,
       name: trackName,
       color: trackColor,
       description: template.description,
@@ -238,21 +239,38 @@ export async function createTrackFromUserTemplate(
   if (trackError) throw trackError;
 
   if (input.include_subtracks !== false) {
-    const subtracks = await getUserSubTrackTemplates(template.id);
+    const subtrackTemplates = await getUserSubTrackTemplates(template.id);
 
-    if (subtracks.length > 0) {
-      const subtrackInserts = subtracks.map((st) => ({
-        track_id: track.id,
-        name: st.name,
-        description: st.description,
-        ordering_index: st.ordering_index,
-      }));
+    if (subtrackTemplates.length > 0) {
+      // Get existing subtracks for this parent track to calculate next ordering_index
+      const { getTrackChildren } = await import('./trackService');
+      const existingSubtracks = await getTrackChildren(track.id);
+      const maxOrderingIndex = existingSubtracks.length > 0
+        ? Math.max(...existingSubtracks.map(st => st.orderingIndex))
+        : -1;
 
-      const { error: subtracksError } = await supabase
-        .from('guardrails_subtracks')
-        .insert(subtrackInserts);
+      // Create subtracks as tracks with parent_track_id set (hierarchical architecture)
+      for (let i = 0; i < subtrackTemplates.length; i++) {
+        const subtrackTemplate = subtrackTemplates[i];
+        const subtrackOrderingIndex = maxOrderingIndex + 1 + i;
 
-      if (subtracksError) throw subtracksError;
+        const { data: subtrackData, error: subtrackError } = await supabase
+          .from('guardrails_tracks')
+          .insert({
+            master_project_id: input.master_project_id,
+            parent_track_id: track.id,
+            name: subtrackTemplate.name,
+            description: subtrackTemplate.description || null,
+            ordering_index: subtrackOrderingIndex,
+          })
+          .select()
+          .single();
+
+        if (subtrackError) {
+          console.error('Error creating subtrack from user template:', subtrackError);
+          throw new Error(`Failed to create subtrack "${subtrackTemplate.name}": ${subtrackError.message}`);
+        }
+      }
     }
   }
 

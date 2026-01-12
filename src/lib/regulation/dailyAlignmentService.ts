@@ -353,7 +353,7 @@ export async function getAvailableWorkItems(userId: string): Promise<WorkItem[]>
         });
 
         const { data: tracks } = await supabase
-          .from('guardrails_tracks_v2')
+          .from('guardrails_tracks')
           .select('id, name')
           .eq('master_project_id', project.id)
           .is('deleted_at', null)
@@ -370,9 +370,9 @@ export async function getAvailableWorkItems(userId: string): Promise<WorkItem[]>
             });
 
             const { data: subtracks } = await supabase
-              .from('guardrails_subtracks')
+              .from('guardrails_tracks')
               .select('id, name')
-              .eq('track_id', track.id)
+              .eq('parent_track_id', track.id)
               .is('deleted_at', null)
               .order('name');
 
@@ -394,14 +394,14 @@ export async function getAvailableWorkItems(userId: string): Promise<WorkItem[]>
 
     const { data: roadmapItems } = await supabase
       .from('roadmap_items')
-      .select('id, title, roadmap_sections(guardrails_tracks_v2(name, master_projects(name)))')
+      .select('id, title, roadmap_sections(guardrails_tracks(name, master_projects(name)))')
       .order('title')
       .limit(50);
 
     if (roadmapItems) {
       for (const item of roadmapItems as any[]) {
         const section = item.roadmap_sections;
-        const track = section?.guardrails_tracks_v2;
+        const track = section?.guardrails_tracks;
         const project = track?.master_projects;
 
         items.push({
@@ -438,7 +438,7 @@ export async function getHierarchicalWorkItems(userId: string): Promise<ProjectW
       const tracks: TrackWithSubtracks[] = [];
 
       const { data: tracksData } = await supabase
-        .from('guardrails_tracks_v2')
+        .from('guardrails_tracks')
         .select('id, name')
         .eq('master_project_id', project.id)
         .order('name');
@@ -446,10 +446,11 @@ export async function getHierarchicalWorkItems(userId: string): Promise<ProjectW
       if (tracksData) {
         for (const track of tracksData) {
           const { data: subtracksData } = await supabase
-            .from('guardrails_subtracks')
+            .from('guardrails_tracks')
             .select('id, name')
-            .eq('track_id', track.id)
-            .order('name');
+            .eq('parent_track_id', track.id)
+            .is('deleted_at', null)
+            .order('ordering_index');
 
           const { data: tasksData } = await supabase
             .from('roadmap_items')

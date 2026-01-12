@@ -1,7 +1,7 @@
-import { Check, Briefcase, Heart, Lightbulb, Rocket, MapPin, Network, LayoutGrid, Archive } from 'lucide-react';
+import { useState } from 'react';
+import { Check, Briefcase, Heart, Lightbulb, Rocket, MapPin, Network, LayoutGrid, Archive, Loader2, X } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useActiveProject } from '../../../contexts/ActiveProjectContext';
-import { setActiveProjectId } from '../../../state/activeDataContext';
 import type { Domain, MasterProject } from '../../../lib/guardrailsTypes';
 
 interface ProjectSwitcherProps {
@@ -50,12 +50,43 @@ const DOMAIN_COLORS = {
 
 export function ProjectSwitcher({ domainProjectsGrouped, onRefresh }: ProjectSwitcherProps) {
   const navigate = useNavigate();
-  const { activeProjectId, setActiveProject } = useActiveProject();
+  const { activeProjectId, setActiveProject, clearActiveProject } = useActiveProject();
+  const [settingActive, setSettingActive] = useState<string | null>(null);
 
-  const handleSetActive = (project: MasterProject) => {
-    setActiveProject(project);
-    setActiveProjectId(project.id, project.domain_id);
-    onRefresh();
+  const handleSetActive = async (project: MasterProject) => {
+    if (settingActive === project.id || settingActive === 'clear') {
+      return;
+    }
+    
+    try {
+      setSettingActive(project.id);
+      await setActiveProject(project);
+      onRefresh();
+    } catch (error) {
+      console.error('[ProjectSwitcher] Failed to set active project:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Failed to set active project. Please try again.';
+      const { showToast } = await import('../Toast');
+      showToast('error', errorMessage);
+    } finally {
+      setSettingActive(null);
+    }
+  };
+
+  const handleClearActive = async () => {
+    if (settingActive !== null) return;
+    
+    try {
+      setSettingActive('clear');
+      await clearActiveProject();
+      onRefresh();
+    } catch (error) {
+      console.error('[ProjectSwitcher] Failed to clear active project:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Failed to clear active project. Please try again.';
+      const { showToast } = await import('../Toast');
+      showToast('error', errorMessage);
+    } finally {
+      setSettingActive(null);
+    }
   };
 
   const handleOpenRoadmap = (projectId: string) => {
@@ -115,17 +146,45 @@ export function ProjectSwitcher({ domainProjectsGrouped, onRefresh }: ProjectSwi
       >
         {project.status === 'active' && (
           <button
-            onClick={isActiveProject ? undefined : () => handleSetActive(project)}
-            disabled={isActiveProject}
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              if (isActiveProject) {
+                handleClearActive();
+              } else {
+                handleSetActive(project);
+              }
+            }}
+            disabled={settingActive !== null && (isActiveProject ? settingActive !== 'clear' : settingActive !== project.id)}
             className={`absolute top-3 right-3 flex items-center gap-1.5 px-2.5 py-1 text-xs font-semibold rounded-full transition-all ${
               isActiveProject
-                ? 'bg-blue-600 text-white cursor-default'
+                ? 'bg-blue-600 text-white hover:bg-blue-700'
                 : 'bg-gray-100 text-gray-700 hover:bg-blue-100 hover:text-blue-700 border border-gray-300 hover:border-blue-300'
-            }`}
-            title={isActiveProject ? 'Currently selected as active project' : 'Click to select as active project'}
+            } ${(settingActive === project.id || (isActiveProject && settingActive === 'clear')) ? 'opacity-50 cursor-wait' : ''}`}
+            title={
+              isActiveProject 
+                ? 'Click to deselect this project' 
+                : settingActive === project.id 
+                ? 'Setting as active...'
+                : 'Click to select as active project'
+            }
           >
-            <Check className="w-3 h-3" />
-            {isActiveProject ? 'Selected' : 'Select'}
+            {settingActive === project.id || (isActiveProject && settingActive === 'clear') ? (
+              <>
+                <Loader2 className="w-3 h-3 animate-spin" />
+                {isActiveProject ? 'Clearing...' : 'Setting...'}
+              </>
+            ) : isActiveProject ? (
+              <>
+                <X className="w-3 h-3" />
+                Deselect
+              </>
+            ) : (
+              <>
+                <Check className="w-3 h-3" />
+                Select
+              </>
+            )}
           </button>
         )}
 

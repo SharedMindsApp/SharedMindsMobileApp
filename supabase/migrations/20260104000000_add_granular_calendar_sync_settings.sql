@@ -79,7 +79,7 @@ CREATE TABLE IF NOT EXISTS track_calendar_sync_settings (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
   project_id uuid NOT NULL REFERENCES master_projects(id) ON DELETE CASCADE,
-  track_id uuid NOT NULL REFERENCES guardrails_tracks_v2(id) ON DELETE CASCADE,
+  track_id uuid NOT NULL REFERENCES guardrails_tracks(id) ON DELETE CASCADE,
   
   -- Sync configuration
   sync_enabled boolean NOT NULL DEFAULT false,  -- Explicit opt-in
@@ -111,7 +111,7 @@ CREATE TABLE IF NOT EXISTS subtrack_calendar_sync_settings (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
   project_id uuid NOT NULL REFERENCES master_projects(id) ON DELETE CASCADE,
-  track_id uuid NOT NULL REFERENCES guardrails_tracks_v2(id) ON DELETE CASCADE,
+  track_id uuid NOT NULL REFERENCES guardrails_tracks(id) ON DELETE CASCADE,
   subtrack_id uuid NOT NULL REFERENCES guardrails_subtracks(id) ON DELETE CASCADE,
   
   -- Sync configuration
@@ -151,7 +151,7 @@ CREATE TABLE IF NOT EXISTS event_calendar_sync_settings (
     CHECK (entity_type IN ('roadmap_event', 'task', 'mindmesh_event')),
   
   -- Optional hierarchy context (for explainability)
-  track_id uuid NULL REFERENCES guardrails_tracks_v2(id) ON DELETE SET NULL,
+  track_id uuid NULL REFERENCES guardrails_tracks(id) ON DELETE SET NULL,
   subtrack_id uuid NULL REFERENCES guardrails_subtracks(id) ON DELETE SET NULL,
   
   -- Sync configuration

@@ -105,7 +105,7 @@ export async function handleIncomingGuardrailsEvent(
  *   .on('postgres_changes', {
  *     event: '*',
  *     schema: 'public',
- *     table: 'tracks_v2'
+ *     table: 'guardrails_tracks'
  *   }, async (payload) => {
  *     // Convert database change to GuardrailsEvent
  *     const event: GuardrailsEvent = {

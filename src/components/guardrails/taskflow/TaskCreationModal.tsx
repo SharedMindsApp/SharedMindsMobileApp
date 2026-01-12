@@ -79,9 +79,10 @@ export function TaskCreationModal({
 
   async function loadSubtracks(trackId: string) {
     const { data } = await supabase
-      .from('guardrails_subtracks')
+      .from('guardrails_tracks')
       .select('id, name')
-      .eq('track_id', trackId)
+      .eq('parent_track_id', trackId)
+      .is('deleted_at', null)
       .order('ordering_index');
     if (data) setSubtracks(data);
   }

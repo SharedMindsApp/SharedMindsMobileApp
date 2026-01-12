@@ -61,6 +61,7 @@ export interface PlannerStylePresetConfig {
       weekly: string;
       monthly: string;
       quarterly: string;
+      tasks: string;
       settings: string;
     };
     rightTabs: {
@@ -96,6 +97,7 @@ export const PLANNER_STYLE_PRESETS: Record<PlannerStylePreset, PlannerStylePrese
         weekly: 'bg-gray-600',
         monthly: 'bg-gray-500',
         quarterly: 'bg-gray-500',
+        tasks: 'bg-gray-600',
         settings: 'bg-gray-600',
       },
       rightTabs: {
@@ -129,6 +131,7 @@ export const PLANNER_STYLE_PRESETS: Record<PlannerStylePreset, PlannerStylePrese
         weekly: 'bg-blue-800',
         monthly: 'bg-slate-700',
         quarterly: 'bg-slate-800',
+        tasks: 'bg-slate-600',
         settings: 'bg-slate-600',
       },
       rightTabs: {
@@ -162,6 +165,7 @@ export const PLANNER_STYLE_PRESETS: Record<PlannerStylePreset, PlannerStylePrese
         weekly: 'bg-stone-500',
         monthly: 'bg-stone-400',
         quarterly: 'bg-stone-400',
+        tasks: 'bg-stone-500',
         settings: 'bg-stone-500',
       },
       rightTabs: {
@@ -195,6 +199,7 @@ export const PLANNER_STYLE_PRESETS: Record<PlannerStylePreset, PlannerStylePrese
         weekly: 'bg-green-500',
         monthly: 'bg-amber-500',
         quarterly: 'bg-purple-500',
+        tasks: 'bg-purple-500',
         settings: 'bg-indigo-500',
       },
       rightTabs: {
@@ -228,6 +233,7 @@ export const PLANNER_STYLE_PRESETS: Record<PlannerStylePreset, PlannerStylePrese
         weekly: 'bg-gray-800',
         monthly: 'bg-black',
         quarterly: 'bg-gray-900',
+        tasks: 'bg-gray-700',
         settings: 'bg-gray-700',
       },
       rightTabs: {
@@ -256,7 +262,8 @@ export const DEFAULT_PLANNER_SETTINGS: PlannerSettings = {
     { path: '/planner/calendar?view=day', label: 'Daily', enabled: true, side: 'left', order: 1 },
     { path: '/planner/calendar?view=week', label: 'Weekly', enabled: true, side: 'left', order: 2 },
     { path: '/planner/calendar?view=month', label: 'Monthly', enabled: true, side: 'left', order: 3 },
-    { path: '/settings', label: 'Settings', enabled: true, side: 'left', order: 4 },
+    { path: '/planner/tasks', label: 'Tasks', enabled: true, side: 'left', order: 4 },
+    { path: '/settings', label: 'Settings', enabled: true, side: 'left', order: 5 },
     // Right tabs
     { path: '/planner/personal', label: 'Personal', enabled: true, side: 'right', order: 0 },
     { path: '/planner/work', label: 'Work', enabled: true, side: 'right', order: 1 },

@@ -133,6 +133,7 @@ export function useCalendarEvents(
 
         // Convert to CalendarEventWithMembers format, resolving colors from event types
         const convertedEvents = personalEvents.map(event => convertPersonalToCalendarEvent(event, customColors));
+        
         setEvents(convertedEvents);
       }
     } catch (err) {
@@ -146,6 +147,7 @@ export function useCalendarEvents(
 
   // Only reload if actual values changed (not just object references)
   useEffect(() => {
+    const isInitialMount = prevContextRef.current === null;
     const contextChanged = prevContextRef.current !== context;
     const scopeChanged = 
       prevScopeRef.current?.householdId !== scope.householdId ||
@@ -156,7 +158,8 @@ export function useCalendarEvents(
     const viewChanged = prevViewRef.current !== view;
     const userChanged = prevUserIdRef.current !== user?.id;
 
-    if (contextChanged || scopeChanged || dateChanged || viewChanged || userChanged) {
+    // Always load on initial mount or if any dependency changed
+    if (isInitialMount || contextChanged || scopeChanged || dateChanged || viewChanged || userChanged) {
       prevContextRef.current = context;
       prevScopeRef.current = { ...scope };
       prevDateRef.current = new Date(currentDate);
@@ -165,8 +168,7 @@ export function useCalendarEvents(
       
       loadEvents();
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [context, scope.householdId, scope.userId, currentDate, view, user?.id]);
+  }, [context, scope.householdId, scope.userId, currentDate, view, user?.id, loadEvents]);
 
   return {
     events,

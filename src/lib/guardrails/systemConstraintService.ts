@@ -198,7 +198,7 @@ export async function validateSharedTrack(
   const warnings: string[] = [];
 
   const { data: track } = await supabase
-    .from('guardrails_tracks_v2')
+    .from('guardrails_tracks')
     .select('master_project_id, is_shared')
     .eq('id', trackId)
     .maybeSingle();
@@ -513,11 +513,11 @@ export function enforceArchitecturalBoundaries(
 ): void {
   const FORBIDDEN_FLOWS = [
     { source: 'ai', target: 'roadmap_items', operation: 'write' },
-    { source: 'ai', target: 'guardrails_tracks_v2', operation: 'write' },
+    { source: 'ai', target: 'guardrails_tracks', operation: 'write' },
     { source: 'personal_spaces', target: 'roadmap_items', operation: 'write' },
     { source: 'task_flow', target: 'roadmap_items', operation: 'create' },
     { source: 'mind_mesh', target: 'roadmap_items', operation: 'create' },
-    { source: 'household', target: 'guardrails_tracks_v2', operation: 'write' },
+    { source: 'household', target: 'guardrails_tracks', operation: 'write' },
   ];
 
   const forbidden = FORBIDDEN_FLOWS.find(

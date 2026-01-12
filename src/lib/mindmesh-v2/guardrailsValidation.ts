@@ -105,7 +105,7 @@ export async function validateIntegratedTrackCreation(
   if (input.name && input.name.trim().length > 0) {
     try {
       const { data: existingTracks, error: trackError } = await supabase
-        .from('guardrails_tracks_v2')
+        .from('guardrails_tracks')
         .select('id, title')
         .eq('master_project_id', input.masterProjectId)
         .is('parent_track_id', null)
@@ -159,7 +159,7 @@ export async function validateIntegratedSubtrackCreation(
   // Check parent track exists and belongs to correct project
   try {
     const { data: parentTrack, error: parentError } = await supabase
-      .from('guardrails_tracks_v2')
+      .from('guardrails_tracks')
       .select('id, title, master_project_id, parent_track_id')
       .eq('id', input.parentTrackId)
       .maybeSingle();
@@ -187,7 +187,7 @@ export async function validateIntegratedSubtrackCreation(
   if (input.name && input.name.trim().length > 0) {
     try {
       const { data: existingSubtracks, error: subtrackError } = await supabase
-        .from('guardrails_tracks_v2')
+        .from('guardrails_tracks')
         .select('id, title')
         .eq('parent_track_id', input.parentTrackId)
         .ilike('title', input.name.trim());
@@ -226,7 +226,7 @@ async function calculateTrackDepth(trackId: string): Promise<number> {
 
   while (currentId && iterations < maxIterations) {
     const { data, error } = await supabase
-      .from('guardrails_tracks_v2')
+      .from('guardrails_tracks')
       .select('parent_track_id')
       .eq('id', currentId)
       .maybeSingle();
@@ -288,7 +288,7 @@ export async function validateIntegratedTaskCreation(
   // Check parent track exists and is integrated
   try {
     const { data: parentTrack, error: trackError } = await supabase
-      .from('guardrails_tracks_v2')
+      .from('guardrails_tracks')
       .select('id, title, master_project_id')
       .eq('id', input.parentTrackId)
       .maybeSingle();
@@ -390,7 +390,7 @@ export async function validateIntegratedEventCreation(
   // Check parent track exists and is integrated
   try {
     const { data: parentTrack, error: trackError } = await supabase
-      .from('guardrails_tracks_v2')
+      .from('guardrails_tracks')
       .select('id, title, master_project_id')
       .eq('id', input.parentTrackId)
       .maybeSingle();

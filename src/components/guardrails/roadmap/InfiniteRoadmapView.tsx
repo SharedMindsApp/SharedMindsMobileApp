@@ -1,56 +1,106 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
-import { Plus, ZoomIn, ZoomOut, Calendar, ChevronRight, ChevronDown, Sparkles, Eye, EyeOff } from 'lucide-react';
-import { getTrackTree, type TrackWithChildren } from '../../../lib/guardrails/trackService';
-import {
-  getTimelineEligibleItems,
-  createRoadmapItem,
-  updateRoadmapItem,
-  deleteRoadmapItem,
-  type RoadmapItem,
-} from '../../../lib/guardrails/roadmapService';
+import { useRoadmapProjection, useRoadmapUIState } from '../../../hooks/useRoadmapProjection';
+import { useRoadmapViewPreferences } from '../../../hooks/useRoadmapViewPreferences';
+import { createRoadmapItem, type RoadmapItem } from '../../../lib/guardrails/roadmapService';
 import {
   generateTimelineColumns,
   dateToPosition,
-  positionToDate,
   getColumnWidth,
-  formatDateForDB,
-  formatDateForDisplay,
   parseDateFromDB,
   getTodayIndicatorPosition,
-  isToday,
   type ZoomLevel,
-  type TimelineColumn,
 } from '../../../lib/guardrails/infiniteTimelineUtils';
 import { RoadmapItemModal } from './RoadmapItemModal';
+import { RoadmapHeader } from './RoadmapHeader';
+import { RoadmapTimeline } from './RoadmapTimeline';
+import { RoadmapEmptyState, isProjectionEmpty } from './RoadmapEmptyState';
+import type { RoadmapProjectionTrack } from '../../../lib/guardrails/roadmapProjectionTypes';
 
 interface InfiniteRoadmapViewProps {
   masterProjectId: string;
+  // Phase 4: Optional callbacks for settings control
+  onZoomLevelReady?: (setZoom: (zoom: ZoomLevel) => void, getZoom: () => ZoomLevel) => void;
+  onProjectionReady?: (refresh: () => Promise<void>) => void;
+  // Phase 5: Optional callbacks for creation (for architectural compliance)
+  onAddSubtrack?: (parentTrackId: string) => void;
+  // Phase 6a: Optional callback for editing items
+  onItemClick?: (item: RoadmapItem) => void;
 }
 
 const ROW_HEIGHT = 48;
 const SIDEBAR_WIDTH = 300;
 
-const STATUS_COLORS = {
-  not_started: { bg: 'bg-gray-300', border: 'border-gray-400', text: 'text-gray-700' },
-  in_progress: { bg: 'bg-blue-400', border: 'border-blue-600', text: 'text-white' },
-  blocked: { bg: 'bg-red-400', border: 'border-red-600', text: 'text-white' },
-  completed: { bg: 'bg-green-400', border: 'border-green-600', text: 'text-white' },
-  on_hold: { bg: 'bg-yellow-300', border: 'border-yellow-500', text: 'text-gray-900' },
-};
-
-interface FlatTrack extends TrackWithChildren {
-  depth: number;
-  isVisible: boolean;
+// Phase 3: Export FlatTrackRow type for use in RoadmapTimeline
+export interface FlatTrackRow {
+  id: string;
+  trackId: string;
+  name: string;
+  color: string | null;
+  depth: number; // 0 = track, 1+ = subtrack
+  isSubtrack: boolean;
+  isCollapsed: boolean;
+  hasChildren: boolean;
+  itemCount: number;
+  totalItemCount: number;
+  items: RoadmapItem[];
+  category: string;
+  canEdit: boolean;
+  isVisible: boolean; // Based on parent collapse state
 }
 
-export function InfiniteRoadmapView({ masterProjectId }: InfiniteRoadmapViewProps) {
-  const [trackTree, setTrackTree] = useState<TrackWithChildren[]>([]);
-  const [roadmapItems, setRoadmapItems] = useState<RoadmapItem[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [zoomLevel, setZoomLevel] = useState<ZoomLevel>('week');
+
+/**
+ * InfiniteRoadmapView Component
+ * 
+ * Phase 0 Architectural Lock-In: Desktop Roadmap Visualization
+ * 
+ * ARCHITECTURAL RULES (Non-Negotiable):
+ * 
+ * What this component CAN do:
+ * - ✅ Render projection data (tracks, subtracks, items)
+ * - ✅ Handle UI state (collapse, highlight, focus via localStorage)
+ * - ✅ Visualize time relationships
+ * - ✅ Navigate to workspaces (via callbacks)
+ * - ✅ Display timeline with zoom controls
+ * 
+ * What this component MUST NOT do:
+ * - ❌ Mutate domain data
+ * - ❌ Create/edit/delete tracks or items
+ * - ❌ Filter tracks based on item presence
+ * - ❌ Access workspace data directly
+ * - ❌ Apply business logic
+ * - ❌ Persist UI state to database
+ * 
+ * Empty State Validity:
+ * - Empty is a valid state — tracks/subtracks render even with zero items
+ * - Empty state check only verifies track existence, not item presence
+ * 
+ * See: docs/ARCHITECTURE_TRACKS_ROADMAP.md for full architectural documentation.
+ */
+export function InfiniteRoadmapView({ masterProjectId, onZoomLevelReady, onProjectionReady, onAddSubtrack, onItemClick }: InfiniteRoadmapViewProps) {
+  // Phase 2: Use projection adapter instead of direct service calls
+  const projection = useRoadmapProjection(masterProjectId);
+  const { toggleTrackCollapse, toggleSubtrackCollapse, expandAllTracks, collapseAllTracks } = useRoadmapUIState(masterProjectId);
+  
+  // Phase 4: Initialize zoom level from preferences or default
+  const { viewPrefs } = useRoadmapViewPreferences();
+  const [zoomLevel, setZoomLevel] = useState<ZoomLevel>(viewPrefs.defaultZoomLevel);
+
+  // Phase 4: Expose zoom controls to parent via callback
+  useEffect(() => {
+    if (onZoomLevelReady) {
+      onZoomLevelReady(setZoomLevel, () => zoomLevel);
+    }
+  }, [onZoomLevelReady, zoomLevel]);
+
+  // Phase 4: Expose projection refresh to parent
+  useEffect(() => {
+    if (onProjectionReady) {
+      onProjectionReady(projection.refresh);
+    }
+  }, [onProjectionReady, projection.refresh]);
   const [scrollX, setScrollX] = useState(0);
   const [viewportWidth, setViewportWidth] = useState(1200);
-  const [collapsedTracks, setCollapsedTracks] = useState<Set<string>>(new Set());
   const [showSideProjects, setShowSideProjects] = useState(true);
   const [addItemModal, setAddItemModal] = useState<{
     open: boolean;
@@ -63,18 +113,14 @@ export function InfiniteRoadmapView({ masterProjectId }: InfiniteRoadmapViewProp
   const today = useMemo(() => new Date(), []);
 
   useEffect(() => {
-    loadData();
-  }, [masterProjectId]);
-
-  useEffect(() => {
-    if (timelineRef.current && !hasInitializedScroll.current) {
+    if (timelineRef.current && !hasInitializedScroll.current && !projection.loading) {
       const columnWidth = getColumnWidth(zoomLevel);
       const todayX = getTodayIndicatorPosition(zoomLevel, columnWidth);
       const centerOffset = viewportWidth / 2;
       timelineRef.current.scrollLeft = todayX + (viewportWidth / 2) - centerOffset;
       hasInitializedScroll.current = true;
     }
-  }, [loading, zoomLevel, viewportWidth]);
+  }, [projection.loading, zoomLevel, viewportWidth]);
 
   useEffect(() => {
     const handleResize = () => {
@@ -88,42 +134,95 @@ export function InfiniteRoadmapView({ masterProjectId }: InfiniteRoadmapViewProp
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
-  async function loadData() {
-    try {
-      setLoading(true);
-      const [tree, items] = await Promise.all([
-        getTrackTree(masterProjectId),
-        getTimelineEligibleItems(masterProjectId),
-      ]);
-      setTrackTree(tree);
-      setRoadmapItems(items);
-    } catch (error) {
-      console.error('Failed to load roadmap data:', error);
-    } finally {
-      setLoading(false);
-    }
-  }
+  // Phase 3: Keyboard shortcuts for zoom
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0;
+      const modKey = isMac ? e.metaKey : e.ctrlKey;
 
-  const flatTracks = useMemo((): FlatTrack[] => {
-    const result: FlatTrack[] = [];
+      if (!modKey) return;
 
-    function flatten(tracks: TrackWithChildren[], depth: number, parentVisible: boolean) {
-      tracks.forEach(track => {
-        if (!track.includeInRoadmap) return;
-        if (!showSideProjects && track.category === 'side_project') return;
+      if (e.key === '+' || e.key === '=') {
+        e.preventDefault();
+        handleZoomIn();
+      } else if (e.key === '-') {
+        e.preventDefault();
+        handleZoomOut();
+      } else if (e.key === '0') {
+        e.preventDefault();
+        handleFitToItems();
+      }
+    };
 
-        const isVisible = parentVisible && !collapsedTracks.has(track.parentTrackId || '');
-        result.push({ ...track, depth, isVisible });
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [zoomLevel]); // eslint-disable-line react-hooks/exhaustive-deps
 
-        if (track.children && track.children.length > 0 && !collapsedTracks.has(track.id)) {
-          flatten(track.children, depth + 1, isVisible);
-        }
+  // Phase 2: Flatten projection tracks into renderable rows
+  const flatTracks = useMemo((): FlatTrackRow[] => {
+    const result: FlatTrackRow[] = [];
+
+    function processTrack(
+      projectionTrack: RoadmapProjectionTrack,
+      depth: number,
+      parentVisible: boolean
+    ): void {
+      // Filter out side projects if needed
+      if (!showSideProjects && projectionTrack.track.category === 'side_project') {
+        return;
+      }
+
+      const isVisible = parentVisible && !projectionTrack.uiState.collapsed;
+      
+      // Add track row
+      result.push({
+        id: projectionTrack.track.id,
+        trackId: projectionTrack.track.id,
+        name: projectionTrack.track.name,
+        color: projectionTrack.track.color,
+        depth,
+        isSubtrack: false,
+        isCollapsed: projectionTrack.uiState.collapsed,
+        hasChildren: projectionTrack.subtracks.length > 0,
+        itemCount: projectionTrack.itemCount,
+        totalItemCount: projectionTrack.totalItemCount,
+        items: projectionTrack.items,
+        category: projectionTrack.track.category,
+        canEdit: projectionTrack.canEdit,
+        isVisible,
       });
+
+      // Add subtrack rows if track is expanded
+      if (!projectionTrack.uiState.collapsed && projectionTrack.subtracks.length > 0) {
+        projectionTrack.subtracks.forEach(subtrack => {
+          const subtrackVisible = isVisible && !subtrack.uiState.collapsed;
+          
+          result.push({
+            id: subtrack.track.id,
+            trackId: subtrack.track.id,
+            name: subtrack.track.name,
+            color: subtrack.track.color,
+            depth: depth + 1,
+            isSubtrack: true,
+            isCollapsed: subtrack.uiState.collapsed,
+            hasChildren: false,
+            itemCount: subtrack.itemCount,
+            totalItemCount: subtrack.itemCount,
+            items: subtrack.items,
+            category: subtrack.track.category,
+            canEdit: subtrack.canEdit,
+            isVisible: subtrackVisible,
+          });
+        });
+      }
     }
 
-    flatten(trackTree, 0, true);
+    projection.tracks.forEach(track => {
+      processTrack(track, 0, true);
+    });
+
     return result;
-  }, [trackTree, collapsedTracks, showSideProjects]);
+  }, [projection.tracks, showSideProjects]);
 
   const visibleTracks = useMemo(() => {
     return flatTracks.filter(t => t.isVisible);
@@ -140,26 +239,23 @@ export function InfiniteRoadmapView({ masterProjectId }: InfiniteRoadmapViewProp
     });
   }, [zoomLevel, scrollX, viewportWidth, today]);
 
-  const itemsByTrack = useMemo(() => {
-    const map = new Map<string, RoadmapItem[]>();
-    roadmapItems.forEach(item => {
-      const items = map.get(item.trackId) || [];
-      items.push(item);
-      map.set(item.trackId, items);
-    });
-    return map;
-  }, [roadmapItems]);
+  // Phase 2: Handle collapse via UI state hook
+  function handleToggleCollapse(trackId: string, isSubtrack: boolean) {
+    if (isSubtrack) {
+      toggleSubtrackCollapse(trackId);
+    } else {
+      toggleTrackCollapse(trackId);
+    }
+  }
 
-  function toggleCollapse(trackId: string) {
-    setCollapsedTracks(prev => {
-      const next = new Set(prev);
-      if (next.has(trackId)) {
-        next.delete(trackId);
-      } else {
-        next.add(trackId);
-      }
-      return next;
-    });
+  // Phase 2: Bulk actions (desktop only)
+  function handleExpandAll() {
+    expandAllTracks();
+  }
+
+  function handleCollapseAll() {
+    const topLevelTrackIds = projection.tracks.map(t => t.track.id);
+    collapseAllTracks(topLevelTrackIds);
   }
 
   function handleScroll(e: React.UIEvent<HTMLDivElement>) {
@@ -182,6 +278,54 @@ export function InfiniteRoadmapView({ masterProjectId }: InfiniteRoadmapViewProp
     });
   }
 
+  // Phase 3: Fit to Items - calculate optimal zoom and scroll position
+  function handleFitToItems() {
+    if (visibleTracks.length === 0 || !timelineRef.current) return;
+
+    // Collect all item dates
+    const allDates: Date[] = [];
+    visibleTracks.forEach(track => {
+      if (!track.isCollapsed) {
+        track.items.forEach(item => {
+          if (item.startDate) {
+            allDates.push(parseDateFromDB(item.startDate));
+          }
+          if (item.endDate) {
+            allDates.push(parseDateFromDB(item.endDate));
+          }
+        });
+      }
+    });
+
+    if (allDates.length === 0) return;
+
+    // Find date range
+    const minDate = new Date(Math.min(...allDates.map(d => d.getTime())));
+    const maxDate = new Date(Math.max(...allDates.map(d => d.getTime())));
+
+    // Calculate optimal zoom level
+    const daysDiff = Math.ceil((maxDate.getTime() - minDate.getTime()) / (1000 * 60 * 60 * 24));
+    let optimalZoom: ZoomLevel = 'month';
+    
+    if (daysDiff <= 14) {
+      optimalZoom = 'day';
+    } else if (daysDiff <= 90) {
+      optimalZoom = 'week';
+    }
+
+    setZoomLevel(optimalZoom);
+
+    // Scroll to show the range (with some padding)
+    setTimeout(() => {
+      if (timelineRef.current) {
+        const columnWidth = getColumnWidth(optimalZoom);
+        const minX = dateToPosition(minDate, optimalZoom, columnWidth, today);
+        const padding = viewportWidth * 0.1; // 10% padding on each side
+        timelineRef.current.scrollLeft = Math.max(0, minX - padding);
+      }
+    }, 0);
+  }
+
   async function handleAddItem(trackId: string, data: { type: string; title: string; startDate?: string; endDate?: string; status?: string }) {
     try {
       await createRoadmapItem({
@@ -193,7 +337,7 @@ export function InfiniteRoadmapView({ masterProjectId }: InfiniteRoadmapViewProp
         endDate: data.endDate || null,
         status: (data.status as any) || 'not_started',
       });
-      await loadData();
+      await projection.refresh();
       setAddItemModal(null);
     } catch (error: any) {
       console.error('Failed to create roadmap item:', error);
@@ -201,38 +345,7 @@ export function InfiniteRoadmapView({ masterProjectId }: InfiniteRoadmapViewProp
     }
   }
 
-  function renderItem(item: RoadmapItem, track: FlatTrack) {
-    if (!item.startDate) return null;
-
-    const columnWidth = getColumnWidth(zoomLevel);
-    const startX = dateToPosition(parseDateFromDB(item.startDate), zoomLevel, columnWidth, today);
-    const endX = item.endDate
-      ? dateToPosition(parseDateFromDB(item.endDate), zoomLevel, columnWidth, today)
-      : startX + columnWidth * 0.8;
-
-    const width = Math.max(endX - startX, 40);
-    const statusColors = STATUS_COLORS[item.status as keyof typeof STATUS_COLORS] || STATUS_COLORS.not_started;
-
-    const isOverdue = item.endDate && new Date(item.endDate) < today && item.status !== 'completed';
-
-    return (
-      <div
-        key={item.id}
-        className={`absolute top-2 h-10 ${statusColors.bg} ${statusColors.border} border-2 rounded px-2 flex items-center justify-between cursor-pointer hover:opacity-90 transition-opacity ${isOverdue ? 'ring-2 ring-red-600' : ''}`}
-        style={{
-          left: `${startX}px`,
-          width: `${width}px`,
-        }}
-        title={`${item.title}\n${formatDateForDisplay(parseDateFromDB(item.startDate))} - ${item.endDate ? formatDateForDisplay(parseDateFromDB(item.endDate)) : 'No end date'}\nStatus: ${item.status}`}
-      >
-        <span className={`text-sm font-medium truncate ${statusColors.text}`}>
-          {item.title}
-        </span>
-      </div>
-    );
-  }
-
-  if (loading) {
+  if (projection.loading) {
     return (
       <div className="flex-1 flex items-center justify-center bg-gray-50">
         <div className="text-center">
@@ -243,58 +356,43 @@ export function InfiniteRoadmapView({ masterProjectId }: InfiniteRoadmapViewProp
     );
   }
 
+  if (projection.error) {
+    return (
+      <div className="flex-1 flex items-center justify-center bg-gray-50">
+        <div className="text-center">
+          <p className="text-red-600">Error loading roadmap: {projection.error.message}</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Phase 9: Show empty state if projection is empty
+  if (isProjectionEmpty(projection)) {
+    return (
+      <RoadmapEmptyState
+        masterProjectId={masterProjectId}
+        projection={projection}
+      />
+    );
+  }
+
   const columnWidth = getColumnWidth(zoomLevel);
   const todayX = getTodayIndicatorPosition(zoomLevel, columnWidth);
   const timelineWidth = Math.max(viewportWidth * 3, columns.length * columnWidth);
 
   return (
     <div className="flex-1 flex flex-col bg-gray-50 overflow-hidden">
-      <div className="bg-white border-b border-gray-200 px-4 py-3 flex items-center justify-between">
-        <div className="flex items-center gap-4">
-          <h2 className="text-lg font-semibold text-gray-900">Project Roadmap</h2>
-          <div className="flex items-center gap-2 px-3 py-1 bg-gray-100 rounded-lg text-sm">
-            <Calendar size={16} className="text-gray-600" />
-            <span className="text-gray-700 font-medium">
-              {zoomLevel === 'day' && 'Daily View'}
-              {zoomLevel === 'week' && 'Weekly View'}
-              {zoomLevel === 'month' && 'Monthly View'}
-            </span>
-          </div>
-        </div>
-
-        <div className="flex items-center gap-2">
-          <button
-            onClick={() => setShowSideProjects(!showSideProjects)}
-            className={`flex items-center gap-2 px-3 py-2 rounded-lg border transition-colors ${
-              showSideProjects
-                ? 'bg-purple-50 border-purple-300 text-purple-700'
-                : 'bg-gray-100 border-gray-300 text-gray-600'
-            }`}
-          >
-            {showSideProjects ? <Eye size={16} /> : <EyeOff size={16} />}
-            <span className="text-sm font-medium">Side Projects</span>
-          </button>
-
-          <div className="h-6 w-px bg-gray-300"></div>
-
-          <button
-            onClick={handleZoomOut}
-            disabled={zoomLevel === 'month'}
-            className="p-2 hover:bg-gray-100 rounded-lg disabled:opacity-40 disabled:cursor-not-allowed"
-            title="Zoom Out"
-          >
-            <ZoomOut size={18} />
-          </button>
-          <button
-            onClick={handleZoomIn}
-            disabled={zoomLevel === 'day'}
-            className="p-2 hover:bg-gray-100 rounded-lg disabled:opacity-40 disabled:cursor-not-allowed"
-            title="Zoom In"
-          >
-            <ZoomIn size={18} />
-          </button>
-        </div>
-      </div>
+      {/* Phase 3: Extracted header component */}
+      <RoadmapHeader
+        zoomLevel={zoomLevel}
+        onZoomIn={handleZoomIn}
+        onZoomOut={handleZoomOut}
+        onFitToItems={handleFitToItems}
+        showSideProjects={showSideProjects}
+        onToggleSideProjects={() => setShowSideProjects(!showSideProjects)}
+        onExpandAll={handleExpandAll}
+        onCollapseAll={handleCollapseAll}
+      />
 
       <div className="flex-1 flex overflow-hidden">
         <div
@@ -302,117 +400,24 @@ export function InfiniteRoadmapView({ masterProjectId }: InfiniteRoadmapViewProp
           ref={timelineRef}
           onScroll={handleScroll}
         >
-          <div className="relative" style={{ height: `${visibleTracks.length * ROW_HEIGHT}px` }}>
-            <div
-              className="absolute left-0 top-0 bottom-0 w-px bg-blue-600 z-20"
-              style={{ left: `${SIDEBAR_WIDTH + todayX}px` }}
-            >
-              <div className="absolute -top-2 left-1/2 transform -translate-x-1/2 px-2 py-0.5 bg-blue-600 text-white text-xs font-medium rounded whitespace-nowrap">
-                Today
-              </div>
-            </div>
-
-            <div className="sticky top-0 left-0 z-30 bg-white border-b border-gray-300 h-12 flex">
-              <div
-                className="sticky left-0 z-40 bg-white border-r border-gray-300 flex items-center px-4 font-semibold text-gray-700"
-                style={{ width: `${SIDEBAR_WIDTH}px` }}
-              >
-                Tracks
-              </div>
-              <div className="relative" style={{ width: `${timelineWidth}px` }}>
-                {columns.map((col, idx) => {
-                  const isTodayColumn = isToday(col.date, today);
-                  return (
-                    <div
-                      key={idx}
-                      className={`absolute top-0 h-full border-r ${
-                        isTodayColumn ? 'border-blue-400 bg-blue-50' : 'border-gray-200'
-                      } flex items-center justify-center`}
-                      style={{
-                        left: `${col.x}px`,
-                        width: `${col.width}px`,
-                      }}
-                    >
-                      <span className={`text-xs ${isTodayColumn ? 'text-blue-700 font-semibold' : 'text-gray-600'}`}>
-                        {col.label}
-                      </span>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-
-            {visibleTracks.map((track, rowIdx) => {
-              const trackItems = itemsByTrack.get(track.id) || [];
-              const hasChildren = track.children && track.children.length > 0;
-              const isCollapsed = collapsedTracks.has(track.id);
-              const isSideProject = track.category === 'side_project';
-
-              return (
-                <div
-                  key={track.id}
-                  className="absolute left-0 right-0 flex hover:bg-gray-50 transition-colors"
-                  style={{
-                    top: `${rowIdx * ROW_HEIGHT}px`,
-                    height: `${ROW_HEIGHT}px`,
-                  }}
-                >
-                  <div
-                    className="sticky left-0 z-10 bg-white border-r border-b border-gray-200 flex items-center gap-2 px-4"
-                    style={{
-                      width: `${SIDEBAR_WIDTH}px`,
-                      paddingLeft: `${16 + track.depth * 20}px`,
-                    }}
-                  >
-                    {hasChildren && (
-                      <button
-                        onClick={() => toggleCollapse(track.id)}
-                        className="p-0.5 hover:bg-gray-200 rounded"
-                      >
-                        {isCollapsed ? <ChevronRight size={16} /> : <ChevronDown size={16} />}
-                      </button>
-                    )}
-
-                    {isSideProject && (
-                      <Sparkles size={14} className="text-purple-500 flex-shrink-0" />
-                    )}
-
-                    <div
-                      className="w-3 h-3 rounded-full flex-shrink-0"
-                      style={{ backgroundColor: track.color || '#3B82F6' }}
-                    ></div>
-
-                    <span className="text-sm font-medium text-gray-900 truncate flex-1">
-                      {track.name}
-                    </span>
-
-                    <button
-                      onClick={() => setAddItemModal({ open: true, trackId: track.id, trackName: track.name })}
-                      className="p-1 hover:bg-blue-100 rounded opacity-0 group-hover:opacity-100 transition-opacity"
-                      title="Add roadmap item"
-                    >
-                      <Plus size={14} className="text-blue-600" />
-                    </button>
-                  </div>
-
-                  <div className="relative flex-1 border-b border-gray-200" style={{ width: `${timelineWidth}px` }}>
-                    {columns.map((col, idx) => (
-                      <div
-                        key={idx}
-                        className="absolute top-0 bottom-0 border-r border-gray-100"
-                        style={{
-                          left: `${col.x}px`,
-                          width: `${col.width}px`,
-                        }}
-                      ></div>
-                    ))}
-
-                    {trackItems.map(item => renderItem(item, track))}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
+          {/* Phase 3: Extracted timeline component */}
+          <RoadmapTimeline
+            visibleTracks={visibleTracks}
+            columns={columns}
+            today={today}
+            todayX={todayX}
+            timelineWidth={timelineWidth}
+            columnWidth={columnWidth}
+            zoomLevel={zoomLevel}
+            sidebarWidth={SIDEBAR_WIDTH}
+            rowHeight={ROW_HEIGHT}
+            onToggleCollapse={handleToggleCollapse}
+            onAddItem={(trackId, trackName) => setAddItemModal({ open: true, trackId, trackName })}
+            onAddSubtrack={onAddSubtrack}
+            onItemClick={onItemClick}
+            dateToPosition={dateToPosition}
+            parseDateFromDB={parseDateFromDB}
+          />
         </div>
       </div>
 

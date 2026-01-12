@@ -218,12 +218,12 @@ BEGIN
     ALTER FUNCTION auto_create_personal_space(uuid) SET search_path = '';
   END IF;
   
-  IF EXISTS (SELECT 1 FROM pg_proc WHERE proname = 'get_track_v2_projects' AND pronargs = 1) THEN
-    ALTER FUNCTION get_track_v2_projects(uuid) SET search_path = '';
+  IF EXISTS (SELECT 1 FROM pg_proc WHERE proname = 'get_track_projects' AND pronargs = 1) THEN
+    ALTER FUNCTION get_track_projects(uuid) SET search_path = '';
   END IF;
   
-  IF EXISTS (SELECT 1 FROM pg_proc WHERE proname = 'get_project_tracks_v2' AND pronargs = 1) THEN
-    ALTER FUNCTION get_project_tracks_v2(uuid) SET search_path = '';
+  IF EXISTS (SELECT 1 FROM pg_proc WHERE proname = 'get_project_tracks' AND pronargs = 1) THEN
+    ALTER FUNCTION get_project_tracks(uuid) SET search_path = '';
   END IF;
   
   IF EXISTS (SELECT 1 FROM pg_proc WHERE proname = 'disable_wizard_ai' AND pronargs = 1) THEN

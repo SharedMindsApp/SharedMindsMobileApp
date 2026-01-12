@@ -3,6 +3,7 @@ import { Info, Plus, X } from 'lucide-react';
 import { useProjectWizard } from '../../../contexts/ProjectWizardContext';
 import { getProjectTypesForDomain, createCustomProjectType } from '../../../lib/guardrails/projectTypes';
 import { getDomains } from '../../../lib/guardrails';
+import { mapDomainToTemplateType } from '../../../lib/guardrails/templates';
 import { supabase } from '../../../lib/supabase';
 import type { ProjectType } from '../../../lib/guardrails/projectTypes';
 import type { DomainType } from '../../../lib/guardrails/templateTypes';
@@ -45,11 +46,13 @@ export function WizardStepProjectTypeSelect() {
       }
 
       try {
-        const types = await getProjectTypesForDomain(domainName as DomainType);
+        // Map domain name (e.g., "Start-Up", "creative") to DomainType (e.g., "startup")
+        const domainType = mapDomainToTemplateType(domainName.toLowerCase());
+        const types = await getProjectTypesForDomain(domainType);
         setProjectTypes(types);
 
         const hasMatchingDomain = types.some(
-          t => t.domains && t.domains.includes(domainName as DomainType)
+          t => t.domains && t.domains.includes(domainType)
         );
         setShowingFallback(!hasMatchingDomain && types.length > 0);
       } catch (error) {
@@ -89,10 +92,12 @@ export function WizardStepProjectTypeSelect() {
 
     setCreating(true);
     try {
+      // Map domain name to DomainType for creating custom project type
+      const domainType = mapDomainToTemplateType(domainName.toLowerCase());
       const newType = await createCustomProjectType(
         customName.trim(),
         customDescription.trim() || null,
-        [domainName as DomainType]
+        [domainType]
       );
 
       setProjectTypes(prev => [...prev, newType]);
@@ -118,27 +123,27 @@ export function WizardStepProjectTypeSelect() {
 
   return (
     <>
-      <div className="max-w-4xl mx-auto px-6 py-8">
-        <div className="text-center mb-8">
-          <h2 className="text-3xl font-bold text-gray-900 mb-3">
+      <div className="max-w-4xl mx-auto px-4 md:px-6 py-6 md:py-8 w-full">
+        <div className="text-center mb-6 md:mb-8">
+          <h2 className="text-2xl md:text-3xl font-bold text-gray-900 mb-2 md:mb-3">
             Choose Your Project Type
           </h2>
-          <p className="text-gray-600 text-lg">
+          <p className="text-gray-600 text-base md:text-lg px-2">
             Select the type of project you're working on to get relevant templates
           </p>
         </div>
 
         {showingFallback && (
-          <div className="mb-6 p-4 bg-blue-50 border border-blue-200 rounded-lg flex items-start gap-3">
-            <Info className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
-            <div className="text-sm text-blue-800">
+          <div className="mb-4 md:mb-6 p-3 md:p-4 bg-blue-50 border border-blue-200 rounded-lg flex items-start gap-2 md:gap-3">
+            <Info className="w-4 h-4 md:w-5 md:h-5 text-blue-600 flex-shrink-0 mt-0.5" />
+            <div className="text-xs md:text-sm text-blue-800">
               <span className="font-medium">Showing all project types</span> — none are explicitly tagged for the{' '}
-              <span className="font-semibold capitalize">{domainName}</span> domain. You can still select any type that fits your project.
+              <span className="font-semibold capitalize">{domainName}</span> domain. <span className="hidden md:inline">You can still select any type that fits your project.</span>
             </div>
           </div>
         )}
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 md:gap-4">
           {projectTypes.map((projectType) => {
             const isSelected = state.projectTypeId === projectType.id;
 
@@ -148,7 +153,7 @@ export function WizardStepProjectTypeSelect() {
                 type="button"
                 onClick={() => handleSelectProjectType(projectType.id)}
                 className={`
-                  relative p-6 rounded-xl border-2 text-left transition-all
+                  relative p-4 md:p-6 rounded-xl border-2 text-left transition-all w-full
                   ${isSelected ? 'border-blue-600 bg-blue-50' : 'bg-white border-gray-200 hover:border-blue-300 hover:shadow-md'}
                 `}
               >
@@ -162,8 +167,8 @@ export function WizardStepProjectTypeSelect() {
                   </div>
                 )}
 
-                <div>
-                  <h3 className="text-xl font-semibold text-gray-900 mb-2">
+                <div className="min-w-0">
+                  <h3 className="text-lg md:text-xl font-semibold text-gray-900 mb-1.5 md:mb-2">
                     {projectType.name}
                   </h3>
                   {projectType.description && (
@@ -179,16 +184,16 @@ export function WizardStepProjectTypeSelect() {
           <button
             type="button"
             onClick={() => setShowCreateModal(true)}
-            className="relative p-6 rounded-xl border-2 border-dashed border-gray-300 text-left transition-all hover:border-blue-400 hover:bg-blue-50 group"
+            className="relative p-4 md:p-6 rounded-xl border-2 border-dashed border-gray-300 text-left transition-all hover:border-blue-400 hover:bg-blue-50 group w-full"
           >
-            <div className="flex flex-col items-center justify-center text-center h-full min-h-[120px]">
-              <div className="w-12 h-12 rounded-full bg-gray-100 group-hover:bg-blue-100 flex items-center justify-center mb-3 transition-colors">
-                <Plus className="w-6 h-6 text-gray-400 group-hover:text-blue-600 transition-colors" />
+            <div className="flex flex-col items-center justify-center text-center h-full min-h-[100px] md:min-h-[120px]">
+              <div className="w-10 h-10 md:w-12 md:h-12 rounded-full bg-gray-100 group-hover:bg-blue-100 flex items-center justify-center mb-2 md:mb-3 transition-colors">
+                <Plus className="w-5 h-5 md:w-6 md:h-6 text-gray-400 group-hover:text-blue-600 transition-colors" />
               </div>
-              <h3 className="text-lg font-semibold text-gray-700 group-hover:text-blue-700 transition-colors">
+              <h3 className="text-base md:text-lg font-semibold text-gray-700 group-hover:text-blue-700 transition-colors">
                 Create Custom Type
               </h3>
-              <p className="text-sm text-gray-500 mt-1">
+              <p className="text-xs md:text-sm text-gray-500 mt-1">
                 Define your own project type
               </p>
             </div>
@@ -210,10 +215,10 @@ export function WizardStepProjectTypeSelect() {
       </div>
 
       {showCreateModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl shadow-2xl max-w-md w-full">
-            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200">
-              <h3 className="text-xl font-bold text-gray-900">Create Custom Project Type</h3>
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4 safe-bottom">
+          <div className="bg-white rounded-xl shadow-2xl max-w-md w-full max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between px-4 md:px-6 py-3 md:py-4 border-b border-gray-200">
+              <h3 className="text-lg md:text-xl font-bold text-gray-900">Create Custom Project Type</h3>
               <button
                 type="button"
                 onClick={() => {
@@ -227,7 +232,7 @@ export function WizardStepProjectTypeSelect() {
               </button>
             </div>
 
-            <div className="px-6 py-4">
+            <div className="px-4 md:px-6 py-3 md:py-4">
               <div className="mb-4">
                 <label htmlFor="custom-name" className="block text-sm font-medium text-gray-700 mb-2">
                   Type Name <span className="text-red-500">*</span>
@@ -238,7 +243,7 @@ export function WizardStepProjectTypeSelect() {
                   value={customName}
                   onChange={(e) => setCustomName(e.target.value)}
                   placeholder="e.g., Mobile App, Research Project"
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm md:text-base"
                 />
               </div>
 
@@ -252,22 +257,22 @@ export function WizardStepProjectTypeSelect() {
                   onChange={(e) => setCustomDescription(e.target.value)}
                   placeholder="Describe what this project type is for..."
                   rows={3}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none text-sm md:text-base"
                 />
               </div>
 
               <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
-                <p className="text-sm text-blue-800">
+                <p className="text-xs md:text-sm text-blue-800">
                   <span className="font-medium">Domain:</span>{' '}
                   <span className="capitalize">{domainName}</span>
                 </p>
-                <p className="text-xs text-blue-600 mt-1">
+                <p className="text-xs text-blue-600 mt-1 hidden md:block">
                   This custom type will be available in the {domainName} domain
                 </p>
               </div>
             </div>
 
-            <div className="flex items-center justify-end gap-3 px-6 py-4 bg-gray-50 rounded-b-xl">
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-end gap-2 sm:gap-3 px-4 md:px-6 py-3 md:py-4 bg-gray-50 rounded-b-xl">
               <button
                 type="button"
                 onClick={() => {
@@ -275,7 +280,7 @@ export function WizardStepProjectTypeSelect() {
                   setCustomName('');
                   setCustomDescription('');
                 }}
-                className="px-4 py-2 text-gray-700 hover:bg-gray-200 rounded-lg transition-colors"
+                className="px-4 py-2.5 text-gray-700 hover:bg-gray-200 rounded-lg transition-colors text-sm font-medium min-h-[44px]"
                 disabled={creating}
               >
                 Cancel
@@ -284,7 +289,7 @@ export function WizardStepProjectTypeSelect() {
                 type="button"
                 onClick={handleCreateCustomType}
                 disabled={!customName.trim() || creating}
-                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                className="px-4 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 text-sm font-medium min-h-[44px]"
               >
                 {creating ? (
                   <>

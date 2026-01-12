@@ -246,7 +246,7 @@ export async function syncContainerTitleUpdate(
 
   if (entityType === 'track') {
     const { error } = await supabase
-      .from('guardrails_tracks_v2')
+      .from('guardrails_tracks')
       .update({
         name: newTitle,
         updated_at: new Date().toISOString(),
@@ -307,7 +307,7 @@ export async function syncContainerBodyUpdate(
 
   if (entityType === 'track') {
     const { error } = await supabase
-      .from('guardrails_tracks_v2')
+      .from('guardrails_tracks')
       .update({
         description: newBody || null,
         updated_at: new Date().toISOString(),
@@ -369,7 +369,7 @@ export async function syncContainerDeletion(
 
   if (entityType === 'track') {
     const { error } = await supabase
-      .from('guardrails_tracks_v2')
+      .from('guardrails_tracks')
       .delete()
       .eq('id', entityId);
 

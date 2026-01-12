@@ -9,6 +9,7 @@ import { getMasterProjects } from '../../lib/guardrails';
 import type { MasterProject } from '../../lib/guardrailsTypes';
 import type { AppTheme } from '../../lib/uiPreferencesTypes';
 import { FloatingAIChatWidget } from '../ai-chat/FloatingAIChatWidget';
+import { FEATURE_AI_CHAT_WIDGET } from '../../lib/featureFlags';
 import { getSavedConversations, type GroupedConversations } from '../../lib/guardrails/ai/savedConversationsService';
 import { showToast } from '../Toast';
 
@@ -118,11 +119,25 @@ export function GuardrailsLayout({ children }: GuardrailsLayoutProps) {
 
   return (
     <div className="flex h-screen-safe bg-slate-50">
+      {/* 
+        Z-INDEX HIERARCHY (App-Wide)
+        ============================
+        Layer 100: Main content (Roadmap, Planner, Calendar)
+        Layer 200: Pill Action Nav (Settings/Actions bottom pill)
+        Layer 300: Overlays / Sheets (Bottom sheets, modals)
+        Layer 400: Side Navigation (Guardrails left panel)
+        Layer 500: System dialogs (Alerts, confirmations)
+      */}
+
       {/* Mobile Menu Button */}
       <button
         onClick={() => setMobileMenuOpen(true)}
-        className="lg:hidden fixed top-4 left-4 z-30 p-3 bg-white rounded-lg shadow-lg border border-gray-200 min-w-[44px] min-h-[44px] flex items-center justify-center active:bg-gray-50"
+        className="lg:hidden fixed top-4 left-4 p-3 bg-white rounded-lg shadow-lg border border-gray-200 min-w-[44px] min-h-[44px] flex items-center justify-center active:bg-gray-50"
         aria-label="Open menu"
+        style={{
+          // Layer 400: Side Navigation controls
+          zIndex: 400,
+        }}
       >
         <Menu size={24} className="text-gray-700" />
       </button>
@@ -130,13 +145,24 @@ export function GuardrailsLayout({ children }: GuardrailsLayoutProps) {
       {/* Backdrop for mobile */}
       {mobileMenuOpen && (
         <div
-          className="lg:hidden fixed inset-0 bg-black/50 z-40"
+          className="lg:hidden fixed inset-0 bg-black/50"
           onClick={() => setMobileMenuOpen(false)}
+          style={{
+            // Layer 400: Side Navigation backdrop (same level as panel)
+            zIndex: 400,
+          }}
         ></div>
       )}
 
-      <aside className={`${collapsed ? 'w-20' : 'w-64'} bg-white border-r border-gray-200 flex flex-col transition-all duration-300
-        ${mobileMenuOpen ? 'fixed inset-y-0 left-0 z-50' : 'hidden'} lg:flex`}>
+      <aside 
+        className={`${collapsed ? 'w-20' : 'w-64'} bg-white border-r border-gray-200 flex flex-col transition-all duration-300
+          ${mobileMenuOpen ? 'fixed inset-y-0 left-0' : 'hidden'} lg:flex`}
+        style={{
+          // Layer 400: Side Navigation panel
+          // This ensures the side navigation always appears above pill action nav (200) and content (100)
+          zIndex: mobileMenuOpen ? 400 : undefined,
+        }}
+      >
         <div className="p-6 border-b border-gray-200 flex items-center justify-between">
           {!collapsed && (
             <div>
@@ -577,7 +603,7 @@ export function GuardrailsLayout({ children }: GuardrailsLayoutProps) {
         {children}
       </main>
 
-      <FloatingAIChatWidget />
+      {FEATURE_AI_CHAT_WIDGET && <FloatingAIChatWidget />}
     </div>
   );
 }

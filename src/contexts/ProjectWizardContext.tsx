@@ -40,7 +40,21 @@ export interface ClarifySignals {
   scopeClarityContext?: string;
 }
 
+export interface WizardTrackSetupState {
+  trackTemplateId: string; // Template ID (used before track is created)
+  trackId?: string; // Actual track ID (set after track creation)
+  trackName: string; // Track name for display
+  trackCategoryId: string; // REQUIRED - Purpose category ID
+  objective: string;
+  definitionOfDone: string;
+  timeMode: 'unscheduled' | 'target' | 'ranged' | 'ongoing';
+  startDate?: string;
+  endDate?: string;
+  targetDate?: string;
+}
+
 export interface WizardState {
+  wizardMode: 'quick' | 'reality_check' | null; // Wizard entry mode choice
   currentStep: number;
   existingProjectId: string | null;
   domainId: string | null;
@@ -55,6 +69,9 @@ export interface WizardState {
   selectedSystemTemplateIds: string[];
   selectedUserTemplateIds: string[];
   generateInitialRoadmap: boolean;
+  quickGoal?: string; // One-sentence goal for Quick Setup
+  firstPriorityTrackId?: string | null; // Priority track ID (template ID for preview)
+  wizardTrackSetup: WizardTrackSetupState[]; // Layer 1 track setup data for Quick Setup
   availableTemplates: AnyTrackTemplate[];
   aiError: string | null;
   aiDisabledForSession: boolean;
@@ -90,6 +107,10 @@ interface ProjectWizardContextType {
   setSelectedSystemTemplateIds: (ids: string[]) => void;
   setSelectedUserTemplateIds: (ids: string[]) => void;
   setGenerateInitialRoadmap: (generate: boolean) => void;
+  setQuickGoal: (goal: string) => void;
+  setFirstPriorityTrackId: (trackId: string | null) => void;
+  setWizardTrackSetup: (setup: WizardTrackSetupState[]) => void;
+  updateWizardTrackSetup: (index: number, updates: Partial<WizardTrackSetupState>) => void;
   setAvailableTemplates: (templates: AnyTrackTemplate[]) => void;
   resetWizard: () => void;
   canProceedToNextStep: () => boolean;
@@ -107,6 +128,7 @@ interface ProjectWizardContextType {
   setIncludeMilestones: (include: boolean) => void;
   setClarifySignals: (signals: ClarifySignals | null) => void;
   setRealityCheckResult: (result: RealityCheckResult | null) => void;
+  setWizardMode: (mode: 'quick' | 'reality_check' | null) => void;
 }
 
 const ProjectWizardContext = createContext<ProjectWizardContextType | undefined>(undefined);
@@ -118,6 +140,7 @@ function generateSessionId(): string {
 const WIZARD_STORAGE_KEY = 'guardrails_wizard_state';
 
 const initialState: WizardState = {
+  wizardMode: null,
   currentStep: 1,
   existingProjectId: null,
   domainId: null,
@@ -131,7 +154,10 @@ const initialState: WizardState = {
   selectedDefaultTemplateIds: [],
   selectedSystemTemplateIds: [],
   selectedUserTemplateIds: [],
-  generateInitialRoadmap: false,
+  generateInitialRoadmap: false, // No longer used in Quick Setup Step 3
+  quickGoal: undefined,
+  firstPriorityTrackId: undefined,
+  wizardTrackSetup: [],
   availableTemplates: [],
   aiError: null,
   aiDisabledForSession: false,
@@ -186,6 +212,7 @@ function saveWizardState(state: WizardState): void {
     
     // Create a sanitized version to save (exclude large/complex objects)
     const stateToSave: Partial<WizardState> = {
+      wizardMode: state.wizardMode,
       currentStep: state.currentStep,
       domainId: state.domainId,
       domainType: state.domainType,
@@ -394,6 +421,42 @@ export function ProjectWizardProvider({ children }: { children: ReactNode }) {
     });
   }, []);
 
+  const setQuickGoal = useCallback((goal: string) => {
+    setState(prev => {
+      const newState = { ...prev, quickGoal: goal.trim() || undefined };
+      saveWizardState(newState);
+      return newState;
+    });
+  }, []);
+
+  const setFirstPriorityTrackId = useCallback((trackId: string | null) => {
+    setState(prev => {
+      const newState = { ...prev, firstPriorityTrackId: trackId || undefined };
+      saveWizardState(newState);
+      return newState;
+    });
+  }, []);
+
+  const setWizardTrackSetup = useCallback((setup: WizardTrackSetupState[]) => {
+    setState(prev => {
+      const newState = { ...prev, wizardTrackSetup: setup };
+      saveWizardState(newState);
+      return newState;
+    });
+  }, []);
+
+  const updateWizardTrackSetup = useCallback((index: number, updates: Partial<WizardTrackSetupState>) => {
+    setState(prev => {
+      const newSetup = [...prev.wizardTrackSetup];
+      if (newSetup[index]) {
+        newSetup[index] = { ...newSetup[index], ...updates };
+      }
+      const newState = { ...prev, wizardTrackSetup: newSetup };
+      saveWizardState(newState);
+      return newState;
+    });
+  }, []);
+
   const setAvailableTemplates = useCallback((templates: AnyTrackTemplate[]) => {
     setState(prev => {
       const currentIds = prev.availableTemplates.map(t => t.id).sort().join(',');
@@ -469,6 +532,14 @@ export function ProjectWizardProvider({ children }: { children: ReactNode }) {
   const setRealityCheckResult = useCallback((result: RealityCheckResult | null) => {
     setState(prev => {
       const newState = { ...prev, realityCheckResult: result };
+      saveWizardState(newState);
+      return newState;
+    });
+  }, []);
+
+  const setWizardMode = useCallback((mode: 'quick' | 'reality_check' | null) => {
+    setState(prev => {
+      const newState = { ...prev, wizardMode: mode };
       saveWizardState(newState);
       return newState;
     });
@@ -575,6 +646,10 @@ export function ProjectWizardProvider({ children }: { children: ReactNode }) {
       setSelectedSystemTemplateIds,
       setSelectedUserTemplateIds,
       setGenerateInitialRoadmap,
+      setQuickGoal,
+      setFirstPriorityTrackId,
+      setWizardTrackSetup,
+      updateWizardTrackSetup,
       setAvailableTemplates,
       resetWizard,
       canProceedToNextStep,
@@ -592,6 +667,7 @@ export function ProjectWizardProvider({ children }: { children: ReactNode }) {
       setIncludeMilestones,
       setClarifySignals,
       setRealityCheckResult,
+      setWizardMode,
     };
     return contextValue;
   }, [
@@ -612,6 +688,10 @@ export function ProjectWizardProvider({ children }: { children: ReactNode }) {
     setSelectedSystemTemplateIds,
     setSelectedUserTemplateIds,
     setGenerateInitialRoadmap,
+    setQuickGoal,
+    setFirstPriorityTrackId,
+    setWizardTrackSetup,
+    updateWizardTrackSetup,
     setAvailableTemplates,
     resetWizard,
     canProceedToNextStep,
@@ -629,6 +709,7 @@ export function ProjectWizardProvider({ children }: { children: ReactNode }) {
     setIncludeMilestones,
     setClarifySignals,
     setRealityCheckResult,
+    setWizardMode,
   ]);
 
   return (

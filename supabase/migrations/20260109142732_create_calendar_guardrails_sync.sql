@@ -10,7 +10,7 @@
       - `id` (uuid, primary key)
       - `user_id` (uuid, foreign key to auth.users)
       - `project_id` (uuid, foreign key to master_projects)
-      - `track_id` (uuid, nullable, foreign key to guardrails_tracks_v2)
+      - `track_id` (uuid, nullable, foreign key to guardrails_tracks)
       - `subtrack_id` (uuid, nullable, foreign key to guardrails_subtracks)
       - `item_id` (uuid, nullable, foreign key to roadmap_items)
       - `sync_level` (text, enum: 'project' | 'track' | 'subtrack' | 'item')
@@ -46,7 +46,7 @@ CREATE TABLE IF NOT EXISTS calendar_guardrails_sync (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
   project_id uuid NOT NULL REFERENCES master_projects(id) ON DELETE CASCADE,
-  track_id uuid REFERENCES guardrails_tracks_v2(id) ON DELETE CASCADE,
+  track_id uuid REFERENCES guardrails_tracks(id) ON DELETE CASCADE,
   subtrack_id uuid REFERENCES guardrails_subtracks(id) ON DELETE CASCADE,
   item_id uuid REFERENCES roadmap_items(id) ON DELETE CASCADE,
   sync_level calendar_guardrails_sync_level NOT NULL,

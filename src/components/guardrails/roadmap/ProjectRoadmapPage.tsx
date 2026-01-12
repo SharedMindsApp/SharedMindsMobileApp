@@ -1,8 +1,10 @@
 import { useParams } from 'react-router-dom';
 import { RoadmapPage } from './RoadmapPage';
+import { useActiveProject } from '../../../contexts/ActiveProjectContext';
 
 export function ProjectRoadmapPage() {
   const { masterProjectId } = useParams<{ masterProjectId: string }>();
+  const { activeProject } = useActiveProject();
 
   if (!masterProjectId) {
     return (
@@ -14,10 +16,13 @@ export function ProjectRoadmapPage() {
     );
   }
 
+  // Use active project name if available, fallback to "Project"
+  const projectName = activeProject?.name || 'Project';
+
   return (
     <RoadmapPage
       masterProjectId={masterProjectId}
-      masterProjectName="Master Project"
+      masterProjectName={projectName}
     />
   );
 }

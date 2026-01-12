@@ -25,6 +25,7 @@ export interface CalendarUIConfig {
   enableGestures?: boolean;
   enableOffline?: boolean;
   filters?: CalendarFilters;
+  readOnly?: boolean; // When true, disables create/edit/delete/drag/resize
 }
 
 export interface CalendarEvent {

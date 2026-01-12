@@ -48,6 +48,7 @@ export function BottomSheet({
   const [scrollState, setScrollState] = useState({ isScrolled: false, isScrollable: false, scrollTop: 0 });
   const sheetRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
+  const dragStateRef = useRef({ isDragging: false, startY: 0, currentY: 0 });
 
   // Detect mobile vs desktop
   useEffect(() => {
@@ -144,43 +145,76 @@ export function BottomSheet({
     };
   }, [isOpen, children]);
 
-  // Touch handlers for swipe-down to dismiss
-  const handleTouchStart = useCallback((e: React.TouchEvent) => {
-    if (!isMobile || preventClose) return;
-    
-    const touch = e.touches[0];
-    setDragStartY(touch.clientY);
-    setDragCurrentY(touch.clientY);
-    setIsDragging(true);
-  }, [isMobile, preventClose]);
+  // Touch handlers for swipe-down to dismiss (using native listeners to allow preventDefault)
+  useEffect(() => {
+    if (!isMobile || !isOpen || preventClose || !sheetRef.current) return;
 
-  const handleTouchMove = useCallback((e: React.TouchEvent) => {
-    if (!isMobile || !isDragging || preventClose) return;
+    const sheetEl = sheetRef.current;
 
-    const touch = e.touches[0];
-    const deltaY = touch.clientY - dragStartY;
+    const handleTouchStart = (e: TouchEvent) => {
+      const touch = e.touches[0];
+      const startY = touch.clientY;
+      dragStateRef.current = { isDragging: true, startY, currentY: startY };
+      setDragStartY(startY);
+      setDragCurrentY(startY);
+      setIsDragging(true);
+    };
 
-    // Only allow downward swipes
-    if (deltaY > 0) {
-      setDragCurrentY(touch.clientY);
-      e.preventDefault(); // Prevent scrolling while dragging
-    }
-  }, [isMobile, isDragging, dragStartY, preventClose]);
+    const handleTouchMove = (e: TouchEvent) => {
+      if (!dragStateRef.current.isDragging) return;
 
-  const handleTouchEnd = useCallback(() => {
-    if (!isMobile || !isDragging || preventClose) return;
+      const touch = e.touches[0];
+      const deltaY = touch.clientY - dragStateRef.current.startY;
 
-    const deltaY = dragCurrentY - dragStartY;
-    const threshold = 100; // Minimum swipe distance to dismiss
+      // Only allow downward swipes and prevent scrolling while dragging
+      // Also check if content is scrollable and if we're at the top
+      const contentEl = contentRef.current;
+      const isContentScrollable = contentEl && contentEl.scrollHeight > contentEl.clientHeight;
+      const isAtTop = !contentEl || contentEl.scrollTop === 0;
 
-    if (deltaY > threshold) {
-      onClose();
-    }
+      // Only prevent default if:
+      // 1. Dragging down (deltaY > 0)
+      // 2. Either content is not scrollable, or we're at the top of the content
+      if (deltaY > 0 && (!isContentScrollable || isAtTop)) {
+        dragStateRef.current.currentY = touch.clientY;
+        setDragCurrentY(touch.clientY);
+        e.preventDefault(); // Prevent scrolling while dragging
+      } else if (deltaY > 0) {
+        // If content is scrollable and not at top, stop dragging
+        dragStateRef.current = { isDragging: false, startY: 0, currentY: 0 };
+        setIsDragging(false);
+        setDragStartY(0);
+        setDragCurrentY(0);
+      }
+    };
 
-    setIsDragging(false);
-    setDragStartY(0);
-    setDragCurrentY(0);
-  }, [isMobile, isDragging, dragStartY, dragCurrentY, preventClose, onClose]);
+    const handleTouchEnd = () => {
+      if (!dragStateRef.current.isDragging) return;
+
+      const deltaY = dragStateRef.current.currentY - dragStateRef.current.startY;
+      const threshold = 100; // Minimum swipe distance to dismiss
+
+      if (deltaY > threshold) {
+        onClose();
+      }
+
+      dragStateRef.current = { isDragging: false, startY: 0, currentY: 0 };
+      setIsDragging(false);
+      setDragStartY(0);
+      setDragCurrentY(0);
+    };
+
+    // Attach native event listeners with passive: false on touchmove to allow preventDefault
+    sheetEl.addEventListener('touchstart', handleTouchStart, { passive: true });
+    sheetEl.addEventListener('touchmove', handleTouchMove, { passive: false });
+    sheetEl.addEventListener('touchend', handleTouchEnd, { passive: true });
+
+    return () => {
+      sheetEl.removeEventListener('touchstart', handleTouchStart);
+      sheetEl.removeEventListener('touchmove', handleTouchMove);
+      sheetEl.removeEventListener('touchend', handleTouchEnd);
+    };
+  }, [isMobile, isOpen, preventClose, onClose]);
 
   // Calculate transform for drag animation
   const dragOffset = isDragging ? Math.max(0, dragCurrentY - dragStartY) : 0;
@@ -260,9 +294,6 @@ export function BottomSheet({
           transform: `translateY(${dragOffset}px)`,
           transition: isDragging ? 'none' : 'transform 0.3s ease-out',
         }}
-        onTouchStart={handleTouchStart}
-        onTouchMove={handleTouchMove}
-        onTouchEnd={handleTouchEnd}
         onClick={(e) => e.stopPropagation()}
       >
         {/* Drag Handle */}

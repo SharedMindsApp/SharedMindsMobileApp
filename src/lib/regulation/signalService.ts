@@ -128,7 +128,7 @@ async function checkRunawayScopeExpansion(userId: string, sessionId?: string): P
     .gte('created_at', lookbackTime);
 
   const { count: trackCount } = await supabase
-    .from('guardrails_tracks_v2')
+    .from('guardrails_tracks')
     .select('*', { count: 'exact', head: true })
     .eq('user_id', userId)
     .gte('created_at', lookbackTime);

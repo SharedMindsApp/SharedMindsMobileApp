@@ -11,8 +11,6 @@ const DOMAIN_TYPES: { value: DomainType; label: string }[] = [
   { value: 'personal', label: 'Personal' },
   { value: 'passion', label: 'Passion' },
   { value: 'startup', label: 'Startup' },
-  { value: 'creative', label: 'Creative' },
-  { value: 'health', label: 'Health' },
 ];
 
 export function AdminProjectTypesPage() {

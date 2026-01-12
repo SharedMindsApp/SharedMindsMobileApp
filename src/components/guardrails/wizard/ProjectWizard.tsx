@@ -7,6 +7,12 @@ import { setActiveProjectId } from '../../../state/activeDataContext';
 import { WizardProgress } from './WizardProgress';
 import { WizardFooter } from './WizardFooter';
 import { WizardContextDisplay } from './WizardContextDisplay';
+import { WizardStepModeChoice } from './WizardStepModeChoice';
+import { WizardStepQuickBasics } from './WizardStepQuickBasics';
+import { WizardStepQuickStructure } from './WizardStepQuickStructure';
+import { WizardStepQuickTrackSetup } from './WizardStepQuickTrackSetup';
+import { WizardStepQuickCreate } from './WizardStepQuickCreate';
+import { WizardValidationScreen } from './WizardValidationScreen';
 import { WizardStepDomainSelect } from './WizardStepDomainSelect';
 import { WizardStepProjectTypeSelect } from './WizardStepProjectTypeSelect';
 import { WizardStepTemplateSelect } from './WizardStepTemplateSelect';
@@ -24,6 +30,15 @@ import { createProjectFromDraft } from '../../../lib/guardrails/wizardDraftCreat
 import { getAppliedTemplateIdsForProject } from '../../../lib/guardrails/wizard';
 import { getProjectLifecyclePhase } from '../../../lib/guardrails/projectLifecycle';
 import type { MasterProject } from '../../../lib/guardrailsTypes';
+import type { Track } from '../../../lib/guardrails/tracksTypes';
+
+// Quick Setup steps
+const QUICK_SETUP_STEPS = [
+  { number: 1, label: 'Basics' },
+  { number: 2, label: 'Structure' },
+  { number: 3, label: 'Roadmap' },
+  { number: 4, label: 'Create' },
+];
 
 // Phase 1 (Intent) steps - Domain, Project Type, Details, Idea, Goals, Clarify, Review
 const PHASE_1_STEPS = [
@@ -51,17 +66,27 @@ const LEGACY_WIZARD_STEPS = [
 function ProjectWizardContent() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const { state, isExistingProject, setCurrentStep, canProceedToNextStep, resetWizard, setExistingProjectId, setDomain, setProjectName, setProjectDescription, setProjectType, setSelectedDefaultTemplateIds, setSelectedSystemTemplateIds, setSelectedUserTemplateIds, getMinStep, changeDomainAndGoBack } = useProjectWizard();
+  const { state, isExistingProject, setCurrentStep, canProceedToNextStep, resetWizard, setExistingProjectId, setDomain, setProjectName, setProjectDescription, setProjectType, setSelectedDefaultTemplateIds, setSelectedSystemTemplateIds, setSelectedUserTemplateIds, setUseDefaultTemplates, setGenerateInitialRoadmap, setWizardMode, getMinStep, changeDomainAndGoBack } = useProjectWizard();
   const { setActiveProject } = useActiveProject();
   const [isCreating, setIsCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [currentProject, setCurrentProject] = useState<MasterProject | null>(null);
+  const [showValidation, setShowValidation] = useState(false);
+  const [validationProjectId, setValidationProjectId] = useState<string | null>(null);
+  const [validationTracks, setValidationTracks] = useState<Track[]>([]);
+  const [validationSubtracks, setValidationSubtracks] = useState<Array<{ id: string; track_id: string; name: string }>>([]);
 
   // Determine which phase we're in and which steps to use
   const lifecyclePhase = currentProject ? getProjectLifecyclePhase(currentProject) : 'intent';
   const isPhase1 = lifecyclePhase === 'intent' || lifecyclePhase === 'intent_checked';
-  const WIZARD_STEPS = isPhase1 ? PHASE_1_STEPS : LEGACY_WIZARD_STEPS;
+  
+  // Determine which workflow and steps to use
+  const isQuickSetup = state.wizardMode === 'quick';
+  const isRealityCheck = state.wizardMode === 'reality_check';
+  const WIZARD_STEPS = isQuickSetup 
+    ? QUICK_SETUP_STEPS 
+    : (isPhase1 ? PHASE_1_STEPS : LEGACY_WIZARD_STEPS);
 
   useEffect(() => {
     async function loadExistingProject() {
@@ -100,9 +125,10 @@ function ProjectWizardContent() {
                 }
               }
               
-              // Set initial step based on phase
-              const isPhase1 = phase === 'intent' || phase === 'intent_checked';
-              setCurrentStep(isPhase1 ? 1 : 2);
+              // CRITICAL: Do NOT auto-set currentStep here
+              // wizardMode will be null, ensuring mode choice screen is shown first
+              // User must explicitly choose Quick Setup vs Reality Check
+              // The mode choice will then set currentStep appropriately
             }
           }
         } catch (err) {
@@ -115,7 +141,7 @@ function ProjectWizardContent() {
     }
 
     loadExistingProject();
-  }, [searchParams, setExistingProjectId, setDomain, setProjectName, setProjectDescription, setProjectType, setSelectedDefaultTemplateIds, setSelectedSystemTemplateIds, setSelectedUserTemplateIds, setCurrentStep]);
+  }, [searchParams, setExistingProjectId, setDomain, setProjectName, setProjectDescription, setProjectType, setSelectedDefaultTemplateIds, setSelectedSystemTemplateIds, setSelectedUserTemplateIds]);
 
   const handleBack = () => {
     const minStep = getMinStep();
@@ -133,11 +159,60 @@ function ProjectWizardContent() {
   };
 
   const handleNext = async () => {
-    if (!canProceedToNextStep()) return;
+    console.log('[WIZARD] handleNext called', { currentStep: state.currentStep, isQuickSetup, maxStep: WIZARD_STEPS.length });
+    // Quick Setup: use simplified validation
+    if (isQuickSetup) {
+      // Step 1: require domain and project name
+      if (state.currentStep === 1) {
+        if (!state.domainId || !state.projectName.trim()) {
+          return; // Don't proceed if validation fails
+        }
+      }
+      // Step 2: require at least one template selected
+      if (state.currentStep === 2) {
+        const hasSelectedTemplates = 
+          state.selectedDefaultTemplateIds.length > 0 || 
+          state.selectedSystemTemplateIds.length > 0 || 
+          state.selectedUserTemplateIds.length > 0;
+        if (!hasSelectedTemplates) {
+          return; // Don't proceed if no templates selected
+        }
+      }
+      // Step 3: require all tracks have valid setup data
+      if (state.currentStep === 3) {
+        if (state.wizardTrackSetup.length === 0) {
+          return; // No tracks to set up
+        }
+        // Validate all tracks
+        for (const track of state.wizardTrackSetup) {
+          if (!track.objective.trim() || !track.definitionOfDone.trim() || !track.timeMode) {
+            return; // At least one track is incomplete
+          }
+          // Date validation based on time mode
+          if (track.timeMode === 'target' && !track.targetDate) {
+            return;
+          }
+          if (track.timeMode === 'ranged') {
+            if (!track.startDate || !track.endDate) {
+              return;
+            }
+            if (new Date(track.endDate) < new Date(track.startDate)) {
+              return; // End date before start date
+            }
+          }
+        }
+      }
+    } else {
+      // Reality Check: use full validation
+      if (!canProceedToNextStep()) return;
+    }
 
     const maxStep = WIZARD_STEPS.length;
     if (state.currentStep < maxStep) {
-      if (isPhase1) {
+      if (isQuickSetup) {
+        // Quick Setup: simple increment
+        setCurrentStep(state.currentStep + 1);
+      } else if (isPhase1) {
         // Phase 1: Go through intent steps (Domain, Project Type, Details, Idea, Goals, Clarify, Review)
         if (state.aiDisabledForSession && state.currentStep === 3) {
           // Skip from Details to Review (when AI disabled, skip Idea, Goals, Clarify)
@@ -170,11 +245,31 @@ function ProjectWizardContent() {
   };
 
   const handleBackToDashboard = () => {
+    // Reset wizard completely, including wizardMode
     resetWizard();
     navigate('/guardrails/dashboard');
   };
+  
+  // CRITICAL: Ensure wizardMode is explicitly null when wizard opens
+  // This prevents stale wizardMode from previous sessions
+  useEffect(() => {
+    // If wizardMode is somehow not null and we have no active workflow, reset it
+    // This handles edge cases where state might be stale
+    if (state.wizardMode !== null && state.currentStep === 0 && !isExistingProject) {
+      // This shouldn't happen, but guard against it
+      console.warn('[WIZARD] wizardMode was set without user action, resetting');
+      setWizardMode(null);
+    }
+  }, []); // Run once on mount
 
   const handleCreateProject = async () => {
+    console.log('[WIZARD] handleCreateProject called', { 
+      domainId: state.domainId, 
+      domainType: state.domainType,
+      wizardMode: state.wizardMode,
+      wizardTrackSetup: state.wizardTrackSetup 
+    });
+    
     if (!state.domainId || !state.domainType) {
       setError('Domain information is missing');
       return;
@@ -184,9 +279,24 @@ function ProjectWizardContent() {
     setError(null);
 
     try {
+      console.log('[WIZARD] Starting project creation...');
+      
+      // Quick Setup: Use selected templates if any, otherwise use defaults
+      const isQuickSetupMode = state.wizardMode === 'quick';
+      
       const validDefaultIds = state.selectedDefaultTemplateIds.filter((id): id is string => !!id);
       const validSystemIds = state.selectedSystemTemplateIds.filter((id): id is string => !!id);
       const validUserIds = state.selectedUserTemplateIds.filter((id): id is string => !!id);
+      
+      console.log('[WIZARD] Template IDs:', { 
+        validDefaultIds, 
+        validSystemIds, 
+        validUserIds, 
+        isQuickSetupMode,
+        selectedDefaultTemplateIds: state.selectedDefaultTemplateIds,
+        selectedSystemTemplateIds: state.selectedSystemTemplateIds,
+        selectedUserTemplateIds: state.selectedUserTemplateIds
+      });
 
       const hasAIDraft = !!state.aiStructureDraft && !state.aiDisabledForSession;
 
@@ -237,6 +347,8 @@ function ProjectWizardContent() {
             selected_system_template_ids: [],
             selected_user_template_ids: [],
             generate_initial_roadmap: false,
+            quick_goal: state.quickGoal,
+            first_priority_track_template_id: state.firstPriorityTrackId || undefined,
           });
 
           const draftResult = await createProjectFromDraft({
@@ -260,26 +372,68 @@ function ProjectWizardContent() {
 
           navigate(`/guardrails/projects/${result.project.id}/welcome`);
         } else {
-          const result = await createProjectWithWizard({
-            domain_id: state.domainId,
-            domain_type: state.domainType,
-            name: state.projectName,
-            description: state.projectDescription || undefined,
-            use_default_templates: validDefaultIds.length > 0,
-            selected_default_template_ids: validDefaultIds,
-            selected_system_template_ids: validSystemIds,
-            selected_user_template_ids: validUserIds,
-            generate_initial_roadmap: state.generateInitialRoadmap,
-          });
+          // Quick Setup: Use selected templates if any, otherwise use defaults
+          // If user selected templates, use those. Otherwise fall back to use_default_templates flag
+          const hasSelectedTemplates = validDefaultIds.length > 0 || validSystemIds.length > 0 || validUserIds.length > 0;
+          const useDefaultTemplates = isQuickSetupMode && !hasSelectedTemplates;
+          
+          // Map wizard track setup to the format expected by createProjectWithWizard
+          const wizardTrackSetup = state.wizardTrackSetup.map(setup => ({
+            track_template_id: setup.trackTemplateId,
+            objective: setup.objective,
+            definition_of_done: setup.definitionOfDone,
+            time_mode: setup.timeMode,
+            start_date: setup.startDate || null,
+            end_date: setup.endDate || null,
+            target_date: setup.targetDate || null,
+          }));
 
-          await markWizardCompleted();
+          let result;
+          try {
+            result = await createProjectWithWizard({
+              domain_id: state.domainId,
+              domain_type: state.domainType,
+              name: state.projectName,
+              description: state.projectDescription || undefined,
+              use_default_templates: useDefaultTemplates,
+              selected_default_template_ids: validDefaultIds,
+              selected_system_template_ids: validSystemIds,
+              selected_user_template_ids: validUserIds,
+              generate_initial_roadmap: state.generateInitialRoadmap,
+              quick_goal: state.quickGoal,
+              first_priority_track_template_id: state.firstPriorityTrackId || undefined,
+              wizard_track_setup: wizardTrackSetup,
+            });
 
-          setActiveProject(result.project);
-          setActiveProjectId(result.project.id, result.project.domain_id);
+            await markWizardCompleted();
 
-          resetWizard();
+            setActiveProject(result.project);
+            setActiveProjectId(result.project.id, result.project.domain_id);
 
-          navigate(`/guardrails/dashboard`);
+            // Show validation screen
+            console.log('[WIZARD] Project created, result:', { 
+              projectId: result.project.id, 
+              tracksCount: result.tracks.length, 
+              subtracksCount: result.subtracks.length,
+              tracks: result.tracks,
+              subtracks: result.subtracks
+            });
+            setValidationProjectId(result.project.id);
+            setValidationTracks(result.tracks || []);
+            setValidationSubtracks((result.subtracks || []).map(st => ({
+              id: st.id,
+              track_id: st.track_id,
+              name: st.name,
+            })));
+            setShowValidation(true);
+            setIsCreating(false);
+          } catch (error) {
+            console.error('[WIZARD] Error creating project:', error);
+            setIsCreating(false);
+            // Show error to user
+            alert(`Failed to create project: ${error instanceof Error ? error.message : 'Unknown error'}`);
+            // Don't show validation screen on error
+          }
         }
       }
     } catch (err: any) {
@@ -289,7 +443,56 @@ function ProjectWizardContent() {
     }
   };
 
+  const handleValidationComplete = () => {
+    setShowValidation(false);
+    resetWizard();
+    // Quick Setup: redirect to roadmap for immediate use
+    const isQuickSetupMode = state.wizardMode === 'quick';
+    if (validationProjectId) {
+      navigate(isQuickSetupMode 
+        ? `/guardrails/projects/${validationProjectId}/roadmap`
+        : `/guardrails/dashboard`
+      );
+    }
+  };
+
   const renderStep = () => {
+    // Show validation screen if validation is active
+    if (showValidation && validationProjectId) {
+      return (
+        <WizardValidationScreen
+          projectId={validationProjectId}
+          expectedTracks={validationTracks}
+          expectedSubtracks={validationSubtracks}
+          onValidationComplete={handleValidationComplete}
+        />
+      );
+    }
+
+    // CRITICAL: Always show mode choice when wizardMode is null
+    // This ensures users explicitly choose Quick Setup vs Reality Check
+    // regardless of whether it's a new or existing project
+    if (!state.wizardMode) {
+      return <WizardStepModeChoice />;
+    }
+
+    // Quick Setup workflow
+    if (isQuickSetup) {
+      switch (state.currentStep) {
+        case 1:
+          return <WizardStepQuickBasics />;
+        case 2:
+          return <WizardStepQuickStructure />;
+        case 3:
+          return <WizardStepQuickTrackSetup />;
+        case 4:
+          return <WizardStepQuickCreate />;
+        default:
+          return null;
+      }
+    }
+
+    // Reality Check workflow (existing logic)
     if (isPhase1) {
       // Phase 1 (Intent): Domain, Project Type, Details, Idea, Clarify, Review
       if (state.aiDisabledForSession) {
@@ -378,36 +581,52 @@ function ProjectWizardContent() {
     );
   }
 
-  return (
-    <div className="min-h-screen bg-gray-50 flex flex-col">
-      <div className="bg-white border-b">
-        <div className="max-w-7xl mx-auto px-6 py-4">
-          <div className="flex items-start justify-between">
-            <div className="flex-1">
-              <h1 className="text-2xl font-bold text-gray-900">
-                {isExistingProject ? 'Complete Project Setup' : 'Create Your First Project'}
-              </h1>
-              <p className="text-gray-600 mt-1">
-                {isExistingProject
-                  ? 'Add tracks and subtracks to your project'
-                  : 'Set up a structured project with tracks and subtracks'}
-              </p>
-              <div className="mt-3">
-                <WizardContextDisplay />
-              </div>
-            </div>
-            <button
-              onClick={handleBackToDashboard}
-              className="flex items-center gap-2 px-4 py-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
-            >
-              <ArrowLeft className="w-5 h-5" />
-              <span className="font-medium">Back to Dashboard</span>
-            </button>
-          </div>
-        </div>
+  // Don't show header/progress/footer for mode choice or validation screen
+  // Mode choice is shown for all projects when wizardMode is null
+  const showModeChoice = !state.wizardMode;
+  const showHeaderAndFooter = !showModeChoice && !showValidation;
 
-        <WizardProgress currentStep={state.currentStep} steps={WIZARD_STEPS} />
-      </div>
+  return (
+    <div className="min-h-screen bg-gray-50 flex flex-col overflow-x-hidden">
+      {showHeaderAndFooter && (
+        <div className="bg-white border-b">
+          <div className="max-w-7xl mx-auto px-4 md:px-6 py-3 md:py-4">
+            <div className="flex items-start justify-between gap-4">
+              <div className="flex-1 min-w-0">
+                <h1 className="text-xl md:text-2xl font-bold text-gray-900">
+                  {isExistingProject 
+                    ? 'Complete Project Setup' 
+                    : isQuickSetup 
+                      ? 'Quick Setup' 
+                      : 'Reality Check'}
+                </h1>
+                <p className="text-sm md:text-base text-gray-600 mt-1 hidden md:block">
+                  {isExistingProject
+                    ? 'Add tracks and subtracks to your project'
+                    : isQuickSetup
+                      ? 'Get your project ready in minutes'
+                      : 'Validate and structure your project'}
+                </p>
+                {!isQuickSetup && (
+                  <div className="mt-2 md:mt-3">
+                    <WizardContextDisplay />
+                  </div>
+                )}
+              </div>
+              <button
+                onClick={handleBackToDashboard}
+                className="flex-shrink-0 flex items-center gap-1.5 md:gap-2 px-3 md:px-4 py-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors text-sm md:text-base"
+              >
+                <ArrowLeft className="w-4 h-4 md:w-5 md:h-5" />
+                <span className="font-medium hidden md:inline">Back to Dashboard</span>
+                <span className="font-medium md:hidden">Back</span>
+              </button>
+            </div>
+          </div>
+
+          <WizardProgress currentStep={state.currentStep} steps={WIZARD_STEPS} />
+        </div>
+      )}
 
       {error && (
         <div className="bg-red-50 border-b border-red-200 px-6 py-4">
@@ -421,24 +640,55 @@ function ProjectWizardContent() {
         </div>
       )}
 
-      <div className="flex-1 overflow-y-auto pb-20">
-        {renderStep()}
+      <div className="flex-1 overflow-y-auto overflow-x-hidden pb-24 md:pb-20">
+        <div className="max-w-4xl mx-auto w-full">
+          {renderStep()}
+        </div>
       </div>
 
-      <div className="fixed bottom-0 left-0 right-0 bg-white shadow-lg z-10">
-        <WizardFooter
-          currentStep={state.currentStep}
-          totalSteps={WIZARD_STEPS.length}
-          canProceed={canProceedToNextStep()}
-          isLastStep={state.currentStep === WIZARD_STEPS.length}
-          isLoading={isCreating}
-          onBack={handleBack}
-          onNext={handleNext}
-          onSkip={!isExistingProject ? handleSkip : undefined}
-          minStep={getMinStep()}
-          isExistingProject={isExistingProject}
-        />
-      </div>
+      {showHeaderAndFooter && (
+        <div className="fixed bottom-0 left-0 right-0 bg-white shadow-lg z-10 safe-bottom">
+          <WizardFooter
+            currentStep={state.currentStep}
+            totalSteps={WIZARD_STEPS.length}
+            canProceed={isQuickSetup ? (() => {
+              if (state.currentStep === 1) {
+                return state.domainId !== null && state.projectName.trim().length > 0;
+              }
+              if (state.currentStep === 2) {
+                return state.selectedDefaultTemplateIds.length > 0 || state.selectedSystemTemplateIds.length > 0 || state.selectedUserTemplateIds.length > 0;
+              }
+              if (state.currentStep === 3) {
+                // Validate all tracks have valid setup data
+                if (state.wizardTrackSetup.length === 0) return false;
+                for (const track of state.wizardTrackSetup) {
+                  if (!track.objective.trim() || !track.definitionOfDone.trim() || !track.timeMode) {
+                    return false;
+                  }
+                  if (track.timeMode === 'target' && !track.targetDate) return false;
+                  if (track.timeMode === 'ranged') {
+                    if (!track.startDate || !track.endDate) return false;
+                    if (new Date(track.endDate) < new Date(track.startDate)) return false;
+                  }
+                }
+                return true;
+              }
+              if (state.currentStep === 4) {
+                // Step 4 is the review/confirmation step - always allow proceeding (creation happens on Next click)
+                return true;
+              }
+              return true;
+            })() : canProceedToNextStep()}
+            isLastStep={state.currentStep === WIZARD_STEPS.length}
+            isLoading={isCreating}
+            onBack={handleBack}
+            onNext={handleNext}
+            onSkip={!isExistingProject && !isQuickSetup ? handleSkip : undefined}
+            minStep={getMinStep()}
+            isExistingProject={isExistingProject}
+          />
+        </div>
+      )}
     </div>
   );
 }

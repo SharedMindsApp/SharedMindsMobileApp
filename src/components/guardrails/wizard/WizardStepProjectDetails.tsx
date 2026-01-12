@@ -49,26 +49,27 @@ export function WizardStepProjectDetails() {
   };
 
   return (
-    <div className="max-w-2xl mx-auto px-6 py-8">
-      <div className="text-center mb-8">
-        <h2 className="text-3xl font-bold text-gray-900 mb-3">
+    <div className="max-w-2xl mx-auto px-4 md:px-6 py-6 md:py-8 w-full">
+      <div className="text-center mb-6 md:mb-8">
+        <h2 className="text-2xl md:text-3xl font-bold text-gray-900 mb-2 md:mb-3">
           Name Your Project
         </h2>
-        <p className="text-gray-600 text-lg">
+        <p className="text-gray-600 text-base md:text-lg px-2">
           Give your project a clear, descriptive name
         </p>
 
         {displayDomainConfig && DomainIcon && (
-          <div className="mt-4 flex items-center justify-center gap-3">
-            <div className="inline-flex items-center gap-2 px-4 py-2 bg-gray-100 rounded-full">
-              <DomainIcon className={`w-4 h-4 text-${displayDomainConfig.color}-600`} />
-              <span className="text-sm font-medium text-gray-700">
-                Project Domain: <span className="font-bold">{displayDomainConfig.name}</span>
+          <div className="mt-4 flex flex-col sm:flex-row items-center justify-center gap-2 sm:gap-3 px-4">
+            <div className="inline-flex items-center gap-2 px-3 md:px-4 py-1.5 md:py-2 bg-gray-100 rounded-full w-full sm:w-auto justify-center">
+              <DomainIcon className={`w-4 h-4 text-${displayDomainConfig.color}-600 flex-shrink-0`} />
+              <span className="text-xs md:text-sm font-medium text-gray-700">
+                <span className="hidden sm:inline">Project Domain: </span>
+                <span className="font-bold">{displayDomainConfig.name}</span>
               </span>
             </div>
             <button
               onClick={handleChangeDomain}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-blue-600 hover:text-blue-700 hover:bg-blue-50 rounded-lg transition-colors"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-blue-600 hover:text-blue-700 hover:bg-blue-50 rounded-lg transition-colors w-full sm:w-auto justify-center"
             >
               <RefreshCw className="w-4 h-4" />
               Change
@@ -77,7 +78,7 @@ export function WizardStepProjectDetails() {
         )}
       </div>
 
-      <div className="space-y-6">
+      <div className="space-y-4 md:space-y-6">
         <div>
           <label htmlFor="project-name" className="block text-sm font-semibold text-gray-900 mb-2">
             Project Name <span className="text-red-500">*</span>

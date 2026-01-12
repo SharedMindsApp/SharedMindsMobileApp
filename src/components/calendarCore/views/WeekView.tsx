@@ -11,6 +11,7 @@ import {
 } from '../../../lib/calendarUtils';
 import { moveEvent, resizeEvent } from '../../../lib/calendar';
 import { useEventTypeColors } from '../../../hooks/useEventTypeColors';
+import { useSwipeGesture } from '../../../hooks/useSwipeGesture';
 import type { CalendarEventType } from '../../../lib/personalSpaces/calendarService';
 
 // Helper function for hex color contrast
@@ -28,7 +29,10 @@ interface WeekViewProps {
   events: CalendarEventWithMembers[];
   onEventClick: (event: CalendarEventWithMembers) => void;
   onRefresh: () => void;
-  onTimeSlotClick: (date: Date, time: string) => void;
+  onTimeSlotClick?: (date: Date, time: string) => void;
+  onPrevious?: () => void;
+  onNext?: () => void;
+  readOnly?: boolean;
 }
 
 export function WeekView({
@@ -36,7 +40,10 @@ export function WeekView({
   events,
   onEventClick,
   onRefresh,
-  onTimeSlotClick
+  onTimeSlotClick,
+  onPrevious,
+  onNext,
+  readOnly = false,
 }: WeekViewProps) {
   const { colors: eventTypeColors } = useEventTypeColors();
 
@@ -67,6 +74,33 @@ export function WeekView({
     return () => window.removeEventListener('resize', checkMobile);
   }, []);
 
+  // Cancel drag operations if read-only state changes during drag
+  useEffect(() => {
+    if (readOnly && (draggingEvent || resizingEvent)) {
+      // Cancel any in-progress drag/resize operations
+      setDraggingEvent(null);
+      setResizingEvent(null);
+    }
+  }, [readOnly, draggingEvent, resizingEvent]);
+
+  // Horizontal swipe gesture for navigation (mobile only)
+  const { ref: swipeRef } = useSwipeGesture({
+    onSwipeLeft: () => {
+      if (isMobile && onNext) {
+        onNext();
+      }
+    },
+    onSwipeRight: () => {
+      if (isMobile && onPrevious) {
+        onPrevious();
+      }
+    },
+    threshold: 50,
+    enabled: isMobile,
+    preventDefault: false,
+    axisLock: true,
+  });
+
   // Scroll to current time on mount (mobile)
   useEffect(() => {
     if (isMobile && scrollContainerRef.current) {
@@ -78,12 +112,21 @@ export function WeekView({
   }, [isMobile]);
 
   const handleEventDragStart = (e: React.DragEvent, event: CalendarEventWithMembers) => {
+    if (readOnly) {
+      e.preventDefault();
+      return;
+    }
     e.dataTransfer.effectAllowed = 'move';
     e.dataTransfer.setData('eventId', event.id);
     setDraggingEvent(event.id);
   };
 
   const handleDayDrop = async (e: React.DragEvent, date: Date, hour: number) => {
+    if (readOnly) {
+      e.preventDefault();
+      return;
+    }
+    
     e.preventDefault();
     const eventId = e.dataTransfer.getData('eventId');
 
@@ -112,11 +155,16 @@ export function WeekView({
   };
 
   const handleDragOver = (e: React.DragEvent) => {
+    if (readOnly) {
+      e.preventDefault();
+      return;
+    }
     e.preventDefault();
     e.dataTransfer.dropEffect = 'move';
   };
 
-  const handleTimeSlotClick = (date: Date, hour: number) => {
+  const handleTimeSlotClickInternal = (date: Date, hour: number) => {
+    if (!onTimeSlotClick || readOnly) return;
     const timeString = `${hour.toString().padStart(2, '0')}:00`;
     onTimeSlotClick(date, timeString);
   };
@@ -124,7 +172,10 @@ export function WeekView({
   // Mobile-optimized week view
   if (isMobile) {
     return (
-      <div className="flex-1 flex flex-col bg-white h-full overflow-hidden">
+      <div 
+        className="flex-1 flex flex-col bg-white h-full overflow-hidden"
+        ref={swipeRef}
+      >
         {/* Week Header - Compact for mobile */}
         <div className="flex border-b border-gray-200 bg-white sticky top-0 z-10 safe-top">
           <div className="w-12 flex-shrink-0 border-r border-gray-200"></div>
@@ -207,7 +258,7 @@ export function WeekView({
                         className={`h-16 border-b border-gray-100 ${
                           isCurrentHour ? 'bg-blue-50/30' : ''
                         }`}
-                        onClick={() => handleTimeSlotClick(date, hour)}
+                        onClick={() => handleTimeSlotClickInternal(date, hour)}
                       ></div>
                     );
                   })}
@@ -256,14 +307,34 @@ export function WeekView({
                           minHeight: '24px',
                         }}
                       >
-                        <div className="p-1.5 h-full flex flex-col justify-center">
-                          <div className="text-[11px] font-semibold leading-tight truncate">
+                        <div className="px-2 py-1.5 h-full flex flex-col justify-start">
+                          <div className="text-xs font-semibold leading-tight break-words line-clamp-2">
                             {event.title}
                           </div>
-                          {!event.all_day && height > 32 && (
-                            <div className="text-[9px] opacity-90 mt-0.5 leading-tight">
+                          {!event.all_day && (
+                            <div className="text-[10px] opacity-95 mt-0.5 leading-tight whitespace-nowrap">
                               {formatTime(start)}
-                              {end && ` - ${formatTime(end)}`}
+                              {end && start.getTime() !== end.getTime() && (
+                                <>
+                                  {' - '}
+                                  {formatTime(end)}
+                                  {(() => {
+                                    const durationMs = end.getTime() - start.getTime();
+                                    const durationHours = Math.round((durationMs / (1000 * 60 * 60)) * 10) / 10;
+                                    if (durationHours >= 1) {
+                                      const hours = Math.floor(durationHours);
+                                      const minutes = Math.round((durationHours - hours) * 60);
+                                      if (minutes > 0) {
+                                        return ` (${hours}h ${minutes}m)`;
+                                      }
+                                      return ` (${hours}h)`;
+                                    } else {
+                                      const minutes = Math.round(durationMs / (1000 * 60));
+                                      return ` (${minutes}m)`;
+                                    }
+                                  })()}
+                                </>
+                              )}
                             </div>
                           )}
                         </div>
@@ -337,7 +408,10 @@ export function WeekView({
 
   // Desktop Week View (original design)
   return (
-    <div className="flex-1 flex flex-col bg-white rounded-xl shadow-lg overflow-hidden">
+    <div 
+      className="flex-1 flex flex-col bg-white rounded-xl shadow-lg overflow-hidden"
+      ref={swipeRef}
+    >
       <div className="flex border-b border-gray-200 bg-gray-50">
         <div className="w-16 flex-shrink-0"></div>
 
@@ -395,7 +469,7 @@ export function WeekView({
                     className="h-16 border-b border-gray-200 hover:bg-blue-50/30 cursor-pointer transition-colors"
                     onDragOver={handleDragOver}
                     onDrop={(e) => handleDayDrop(e, date, hour)}
-                    onClick={() => handleTimeSlotClick(date, hour)}
+                    onClick={() => handleTimeSlotClickInternal(date, hour)}
                   ></div>
                 ))}
 
@@ -408,8 +482,8 @@ export function WeekView({
                   return (
                     <div
                       key={event.id}
-                      draggable
-                      onDragStart={(e) => handleEventDragStart(e, event)}
+                      draggable={!readOnly}
+                      onDragStart={readOnly ? undefined : (e) => handleEventDragStart(e, event)}
                       onClick={() => onEventClick(event)}
                       className={`absolute left-1 right-1 rounded-lg shadow-sm cursor-pointer hover:shadow-md transition-shadow overflow-hidden ${draggingEvent === event.id ? 'opacity-50' : ''}`}
                       style={{

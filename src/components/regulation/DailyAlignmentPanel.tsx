@@ -194,7 +194,7 @@ export function DailyAlignmentPanel({ userId, standalone = false }: DailyAlignme
 
       // Map to RoadmapTaskEvent structure
       const mappedItems: RoadmapTaskEvent[] = todayItems.map((item: any) => {
-        const track = item.guardrails_tracks_v2;
+        const track = item.guardrails_tracks;
         const project = track?.master_projects;
 
         return {

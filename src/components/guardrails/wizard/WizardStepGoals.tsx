@@ -142,21 +142,21 @@ export function WizardStepGoals() {
   };
 
   return (
-    <div className="max-w-3xl mx-auto px-6 py-8">
-      <div className="text-center mb-8">
-        <h2 className="text-3xl font-bold text-gray-900 mb-3">
+    <div className="max-w-3xl mx-auto px-4 md:px-6 py-6 md:py-8 w-full">
+      <div className="text-center mb-6 md:mb-8">
+        <h2 className="text-2xl md:text-3xl font-bold text-gray-900 mb-2 md:mb-3">
           Choose What This Project Is For
         </h2>
-        <p className="text-gray-600 text-lg mb-4">
+        <p className="text-gray-600 text-base md:text-lg mb-3 md:mb-4 px-2">
           These aren't tasks or targets.
           <br />
           They're the reasons you're creating this project.
-          <br />
-          <span className="text-sm text-gray-500">You can change them later.</span>
+          <br className="hidden md:block" />
+          <span className="text-xs md:text-sm text-gray-500">You can change them later.</span>
         </p>
       </div>
 
-      <div className="space-y-6">
+      <div className="space-y-4 md:space-y-6">
         {/* Goal Selection Chips */}
         <div>
           <label className="block text-sm font-semibold text-gray-900 mb-3">
@@ -174,7 +174,7 @@ export function WizardStepGoals() {
                   onClick={() => handleToggleGoal(goal)}
                   disabled={isDisabled}
                   className={`
-                    px-4 py-2 rounded-full text-sm font-medium transition-all
+                    px-3 md:px-4 py-1.5 md:py-2 rounded-full text-xs md:text-sm font-medium transition-all min-h-[36px] md:min-h-[40px]
                     ${isSelected
                       ? 'bg-blue-600 text-white shadow-md hover:bg-blue-700'
                       : isDisabled

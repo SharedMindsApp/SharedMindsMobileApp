@@ -17,6 +17,7 @@ import {
   getUserTrackTemplateById,
   isUserTrackTemplate,
 } from './userTemplates';
+import { getTracksByProject } from './trackService';
 
 const DOMAIN_TYPE_MAPPING: Record<string, DomainType> = {
   'work': 'work',
@@ -79,7 +80,32 @@ const ALLOWED_TEMPLATES_BY_DOMAIN: Record<DomainType, string[]> = {
 };
 
 export function mapDomainToTemplateType(domainName: string): DomainType {
-  return DOMAIN_TYPE_MAPPING[domainName] || 'personal';
+  // Normalize domain name: lowercase and replace hyphens/spaces with nothing
+  const normalized = domainName.toLowerCase().replace(/[-_ ]/g, '');
+  
+  // Try exact match first (case-sensitive)
+  if (DOMAIN_TYPE_MAPPING[domainName]) {
+    return DOMAIN_TYPE_MAPPING[domainName];
+  }
+  
+  // Try lowercase match
+  const lowercased = domainName.toLowerCase();
+  if (DOMAIN_TYPE_MAPPING[lowercased]) {
+    return DOMAIN_TYPE_MAPPING[lowercased];
+  }
+  
+  // Try normalized match (handles "start-up" -> "startup", etc.)
+  if (DOMAIN_TYPE_MAPPING[normalized]) {
+    return DOMAIN_TYPE_MAPPING[normalized];
+  }
+  
+  // Special handling for "start-up" variations (normalized removes hyphens)
+  if (normalized === 'startup') {
+    return 'startup';
+  }
+  
+  // Default fallback
+  return 'personal';
 }
 
 export async function getAllowedTemplates(
@@ -464,16 +490,20 @@ export async function createTrackFromTemplate(
       await validateTemplateForDomain(input.domain_type, input.track_template_id);
     }
 
+    // Calculate next ordering_index
+    const existingTracks = await getTracksByProject(input.master_project_id);
+    const nextOrderingIndex = existingTracks.length > 0
+      ? Math.max(...existingTracks.map(t => t.orderingIndex)) + 1
+      : 0;
+
     const { data: trackData, error: trackError } = await supabase
-      .from('guardrails_tracks_v2')
+      .from('guardrails_tracks')
       .insert({
         master_project_id: input.master_project_id,
-        parent_track_id: null,
+        template_id: input.track_template_id,
         name: input.custom_name || userTemplate.name,
         color: input.custom_color || null,
-        ordering_index: 0,
-        template_id: input.track_template_id,
-        metadata: {},
+        ordering_index: nextOrderingIndex,
       })
       .select()
       .single();
@@ -507,22 +537,32 @@ export async function createTrackFromTemplate(
       if (userSubtracksError) {
         console.error('Error fetching user subtrack templates:', userSubtracksError);
       } else if (userSubtracks && userSubtracks.length > 0) {
-        for (const subtrackTemplate of userSubtracks) {
+        // Get existing subtracks for this parent track to calculate next ordering_index
+        const { getTrackChildren } = await import('./trackService');
+        const existingSubtracks = await getTrackChildren(trackData.id);
+        const maxOrderingIndex = existingSubtracks.length > 0
+          ? Math.max(...existingSubtracks.map(st => st.orderingIndex))
+          : -1;
+
+        for (let i = 0; i < userSubtracks.length; i++) {
+          const subtrackTemplate = userSubtracks[i];
+          const subtrackOrderingIndex = maxOrderingIndex + 1 + i;
+
           const { data: subtrackData, error: subtrackError } = await supabase
-            .from('guardrails_tracks_v2')
+            .from('guardrails_tracks')
             .insert({
               master_project_id: input.master_project_id,
               parent_track_id: trackData.id,
               name: subtrackTemplate.name,
               description: subtrackTemplate.description || null,
-              ordering_index: subtrackTemplate.ordering_index,
-              metadata: {},
+              ordering_index: subtrackOrderingIndex,
             })
             .select()
             .single();
 
           if (subtrackError) {
             console.error('Error creating subtrack from user template:', subtrackError);
+            throw new Error(`Failed to create subtrack "${subtrackTemplate.name}": ${subtrackError.message}`);
           } else if (subtrackData) {
             subtracks.push({
               id: subtrackData.id,
@@ -551,16 +591,20 @@ export async function createTrackFromTemplate(
     await validateTemplateForDomain(input.domain_type, input.track_template_id);
   }
 
+  // Calculate next ordering_index
+  const existingTracks = await getTracksByProject(input.master_project_id);
+  const nextOrderingIndex = existingTracks.length > 0
+    ? Math.max(...existingTracks.map(t => t.orderingIndex)) + 1
+    : 0;
+
   const { data: trackData, error: trackError } = await supabase
-    .from('guardrails_tracks_v2')
+    .from('guardrails_tracks')
     .insert({
       master_project_id: input.master_project_id,
-      parent_track_id: null,
+      template_id: input.track_template_id,
       name: input.custom_name || template.name,
       color: input.custom_color || null,
-      ordering_index: 0,
-      template_id: input.track_template_id,
-      metadata: {},
+      ordering_index: nextOrderingIndex,
     })
     .select()
     .single();
@@ -585,22 +629,32 @@ export async function createTrackFromTemplate(
   const subtracks: SubTrack[] = [];
 
   if (input.include_subtracks !== false && template.subtracks.length > 0) {
-    for (const subtrackTemplate of template.subtracks) {
+    // Get existing subtracks for this parent track to calculate next ordering_index
+    const { getTrackChildren } = await import('./trackService');
+    const existingSubtracks = await getTrackChildren(trackData.id);
+    const maxOrderingIndex = existingSubtracks.length > 0
+      ? Math.max(...existingSubtracks.map(st => st.orderingIndex))
+      : -1;
+
+    for (let i = 0; i < template.subtracks.length; i++) {
+      const subtrackTemplate = template.subtracks[i];
+      const subtrackOrderingIndex = maxOrderingIndex + 1 + i;
+
       const { data: subtrackData, error: subtrackError } = await supabase
-        .from('guardrails_tracks_v2')
+        .from('guardrails_tracks')
         .insert({
           master_project_id: input.master_project_id,
           parent_track_id: trackData.id,
           name: subtrackTemplate.name,
           description: subtrackTemplate.description || null,
-          ordering_index: subtrackTemplate.ordering_index,
-          metadata: {},
+          ordering_index: subtrackOrderingIndex,
         })
         .select()
         .single();
 
       if (subtrackError) {
         console.error('Error creating subtrack from template:', subtrackError);
+        throw new Error(`Failed to create subtrack "${subtrackTemplate.name}": ${subtrackError.message}`);
       } else if (subtrackData) {
         subtracks.push({
           id: subtrackData.id,
@@ -633,7 +687,7 @@ export async function createSubTrackFromTemplate(
   }
 
   const { data: parentTrack, error: parentError } = await supabase
-    .from('guardrails_tracks_v2')
+    .from('guardrails_tracks')
     .select('master_project_id')
     .eq('id', input.track_id)
     .single();
@@ -643,7 +697,7 @@ export async function createSubTrackFromTemplate(
   }
 
   const { data: subtrackData, error: subtrackError } = await supabase
-    .from('guardrails_tracks_v2')
+    .from('guardrails_tracks')
     .insert({
       master_project_id: parentTrack.master_project_id,
       parent_track_id: input.track_id,

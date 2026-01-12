@@ -9,9 +9,10 @@
  * - Week: Week view
  * - Month: Month view
  * - Events: Agenda/Events list view
- * - Tasks: Placeholder (stub for future tasks integration)
+ * - Tasks: Navigate to Tasks page (/planner/tasks)
  */
 
+import { useNavigate, useLocation } from 'react-router-dom';
 import type { CalendarView } from './types';
 
 interface CalendarModeBarProps {
@@ -20,22 +21,29 @@ interface CalendarModeBarProps {
 }
 
 export function CalendarModeBar({ currentView, onModeChange }: CalendarModeBarProps) {
+  const navigate = useNavigate();
+  const location = useLocation();
+  
   const tabs = [
     { label: 'Day', view: 'day' as CalendarView },
     { label: 'Week', view: 'week' as CalendarView },
     { label: 'Month', view: 'month' as CalendarView },
     { label: 'Year', view: 'year' as CalendarView },
     { label: 'Events', view: 'agenda' as CalendarView },
-    { label: 'Tasks', view: 'tasks' as 'tasks' }, // Stub - not a real view yet
+    { label: 'Tasks', view: 'tasks' as 'tasks' },
   ];
 
   const handleTabClick = (view: CalendarView | 'tasks') => {
-    // Tasks is a stub - do nothing for now
+    // Tasks navigates to the Tasks page, not a calendar view
     if (view === 'tasks') {
+      navigate('/planner/tasks');
       return;
     }
     onModeChange(view);
   };
+
+  // Check if we're on the tasks page
+  const isTasksActive = location.pathname === '/planner/tasks';
 
   return (
     <div 
@@ -45,13 +53,12 @@ export function CalendarModeBar({ currentView, onModeChange }: CalendarModeBarPr
       <div className="flex items-center justify-around px-2 py-2">
         {tabs.map((tab) => {
           const isTasks = tab.view === 'tasks';
-          const isActive = !isTasks && currentView === tab.view;
+          const isActive = isTasks ? isTasksActive : currentView === tab.view;
 
           return (
             <button
               key={tab.label}
               onClick={() => handleTabClick(tab.view)}
-              disabled={isTasks}
               className={`
                 flex-1 px-3 py-2 min-h-[44px] rounded-lg
                 text-sm font-medium transition-all
@@ -59,8 +66,6 @@ export function CalendarModeBar({ currentView, onModeChange }: CalendarModeBarPr
                 ${
                   isActive
                     ? 'bg-blue-600 text-white shadow-sm'
-                    : isTasks
-                    ? 'text-gray-400 cursor-not-allowed'
                     : 'text-gray-700 hover:text-gray-900 hover:bg-gray-50 active:bg-gray-100'
                 }
               `}

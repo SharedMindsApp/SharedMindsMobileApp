@@ -217,7 +217,7 @@ async function getTracksContext(
   budget?: ContextBudget
 ): Promise<TrackContext[]> {
   const { data, error } = await supabase
-    .from('guardrails_tracks_v2')
+    .from('guardrails_tracks')
     .select('id, name, description, color, is_shared, parent_track_id, order_index')
     .in('id', trackIds)
     .order('order_index', { ascending: true });
@@ -499,7 +499,7 @@ export async function buildContextForProject(
   userId: string
 ): Promise<AssembledContext> {
   const { data: tracks } = await supabase
-    .from('guardrails_tracks_v2')
+    .from('guardrails_tracks')
     .select('id')
     .eq('master_project_id', projectId);
 
@@ -524,7 +524,7 @@ export async function buildContextForTrack(
   userId: string
 ): Promise<AssembledContext> {
   const { data: track } = await supabase
-    .from('guardrails_tracks_v2')
+    .from('guardrails_tracks')
     .select('master_project_id')
     .eq('id', trackId)
     .maybeSingle();

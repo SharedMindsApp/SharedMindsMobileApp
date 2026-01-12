@@ -39,7 +39,7 @@ export function TaskWidget({ widget, sizeMode, highContrast }: TaskWidgetProps) 
             id,
             status,
             track_id,
-            guardrails_tracks_v2!inner(
+            guardrails_tracks!inner(
               id,
               name,
               master_project_id,
@@ -59,7 +59,7 @@ export function TaskWidget({ widget, sizeMode, highContrast }: TaskWidgetProps) 
           return;
         }
 
-        const track = roadmapItem.guardrails_tracks_v2 as any;
+        const track = roadmapItem.guardrails_tracks as any;
         const project = track?.master_projects as any;
 
         setGuardrailsContext({

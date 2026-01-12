@@ -10,19 +10,23 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { Settings, X, Menu, Plus, Calendar, Target, ChevronLeft, ChevronRight, BarChart3, Bell, Activity, TrendingUp, CheckCircle2, Clock, Layers } from 'lucide-react';
+import { Settings, X, Menu, Plus, Calendar, Target, ChevronLeft, ChevronRight, BarChart3, Bell, Activity, TrendingUp, CheckCircle2, Clock, Layers, Search, Zap } from 'lucide-react';
 import { CalendarSettingsSheet } from '../calendar/CalendarSettingsSheet';
 import { useUIPreferences } from '../../contexts/UIPreferencesContext';
 import { PlannerSettings } from './PlannerSettings';
 import { QuickActionsMenu } from './QuickActionsMenu';
-import { CollapsibleMobileNav } from '../shared/CollapsibleMobileNav';
+import { PillActionNav } from '../shared/PillActionNav';
 import { PlannerQuickViewDrawer } from './PlannerQuickViewDrawer';
+import { PlannerSearchOverlay } from './PlannerSearchOverlay';
+import { CalendarSelector } from './CalendarSelector';
 import {
   DEFAULT_PLANNER_SETTINGS,
   PLANNER_STYLE_PRESETS,
   type PlannerSettings as PlannerSettingsType,
 } from '../../lib/plannerTypes';
 import { saveLastPlannerView } from '../../lib/contextMemory';
+import { useActiveCalendarContext } from '../../contexts/ActiveCalendarContext';
+import { showToast } from '../Toast';
 
 type PlannerShellProps = {
   children: React.ReactNode;
@@ -42,10 +46,19 @@ export function PlannerShell({ children }: PlannerShellProps) {
   const [quickActionsOpen, setQuickActionsOpen] = useState(false);
   const [quickViewDrawerOpen, setQuickViewDrawerOpen] = useState(false);
   const [calendarSettingsOpen, setCalendarSettingsOpen] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
   const quickActionsButtonRef = useRef<HTMLButtonElement>(null);
 
-  // Detect if we're on the calendar view (mobile only)
+  // Detect if we're on the calendar view
   const isCalendarView = location.pathname === '/planner/calendar' || location.pathname.startsWith('/planner/calendar');
+
+  // Active calendar context
+  const { activeContext, setActiveContext } = useActiveCalendarContext();
+
+  // Handle revoked access
+  const handleRevokedAccess = () => {
+    showToast('warning', 'Access to that calendar is no longer available');
+  };
 
   // Open Quick View drawer
   const openQuickViewDrawer = () => {
@@ -87,6 +100,7 @@ export function PlannerShell({ children }: PlannerShellProps) {
       '/planner/calendar?view=day': stylePreset.colors.leftTabs.daily,
       '/planner/calendar?view=week': stylePreset.colors.leftTabs.weekly,
       '/planner/calendar?view=month': stylePreset.colors.leftTabs.monthly,
+      '/planner/tasks': stylePreset.colors.leftTabs.tasks,
       '/settings': stylePreset.colors.leftTabs.settings,
       '/planner/personal': stylePreset.colors.rightTabs.personal,
       '/planner/work': stylePreset.colors.rightTabs.work,
@@ -146,6 +160,9 @@ export function PlannerShell({ children }: PlannerShellProps) {
     .filter((tab): tab is NonNullable<typeof tab> => tab !== undefined);
 
   const isActive = (path: string) => {
+    if (path === '/planner/tasks' || path.startsWith('/planner/tasks')) {
+      return location.pathname === '/planner/tasks';
+    }
     if (path === '/planner') {
       return location.pathname === '/planner' || location.pathname === '/planner/index';
     }
@@ -197,7 +214,6 @@ export function PlannerShell({ children }: PlannerShellProps) {
   return (
     <>
       <PlannerSettings isOpen={settingsOpen} onClose={() => setSettingsOpen(false)} />
-      
       {/* Full-Width Canvas Container */}
       <div className={`min-h-screen-safe bg-gradient-to-br ${stylePreset.colors.bookBg} w-full`}>
         {/* Flex Layout: Left Sidebar + Main Content + Right Sidebar + Sidecar */}
@@ -332,6 +348,23 @@ export function PlannerShell({ children }: PlannerShellProps) {
                 {/* Action Buttons */}
                 {/* Phase 2C: Reduce gap on mobile to prevent header crowding */}
                 <div className="flex items-center gap-1 sm:gap-2 ml-2 sm:ml-4 flex-shrink-0">
+                  {/* Calendar Selector - Only show on calendar view */}
+                  {isCalendarView && (
+                    <CalendarSelector
+                      activeContext={activeContext}
+                      onContextChange={setActiveContext}
+                      onRevokedAccess={handleRevokedAccess}
+                    />
+                  )}
+                  {/* Search Button */}
+                  <button
+                    onClick={() => setSearchOpen(true)}
+                    className="p-2 sm:p-3 text-blue-600 hover:text-blue-700 hover:bg-blue-100/50 active:bg-blue-100/70 rounded-lg transition-colors backdrop-blur-sm min-w-[44px] min-h-[44px] flex items-center justify-center"
+                    aria-label="Search Planner"
+                    title="Search Planner"
+                  >
+                    <Search className="w-4 h-4 sm:w-5 sm:h-5" />
+                  </button>
                   {/* Quick View Button - Mobile only, when on calendar view */}
                   {isMobile && isCalendarView && (
                     <button
@@ -724,28 +757,28 @@ export function PlannerShell({ children }: PlannerShellProps) {
           )}
         </div>
 
-        {/* Mobile Bottom Navigation - Collapsible */}
-        <CollapsibleMobileNav
-          leftButton={{
-            label: 'Calendar',
-            icon: Menu,
-            onClick: () => {
+        {/* Mobile Bottom Navigation - Pill-style action nav */}
+        <PillActionNav
+          leftAction={{
+            label: 'Settings',
+            icon: <Settings size={20} />,
+            onPress: () => {
               setMobileMenuSide(mobileMenuSide === 'left' ? null : 'left');
               setMobileMenuOpen(mobileMenuSide !== 'left');
+              setSettingsOpen(mobileMenuSide !== 'left');
             },
-            isActive: mobileMenuSide === 'left',
-            ariaLabel: 'Calendar',
           }}
-          rightButton={{
-            label: 'Areas',
-            icon: Menu,
-            onClick: () => {
+          rightAction={{
+            label: 'Actions',
+            icon: <Zap size={20} />,
+            onPress: () => {
               setMobileMenuSide(mobileMenuSide === 'right' ? null : 'right');
               setMobileMenuOpen(mobileMenuSide !== 'right');
+              setQuickActionsOpen(mobileMenuSide !== 'right');
             },
-            isActive: mobileMenuSide === 'right',
-            ariaLabel: 'Life Areas',
           }}
+          leftActive={mobileMenuSide === 'left'}
+          rightActive={mobileMenuSide === 'right'}
         />
 
         {/* Mobile Side Drawers */}
@@ -880,6 +913,12 @@ export function PlannerShell({ children }: PlannerShellProps) {
           isOpen={quickViewDrawerOpen}
           onClose={() => setQuickViewDrawerOpen(false)}
           activeTab={sidecarTab}
+        />
+
+        {/* Planner Search Overlay */}
+        <PlannerSearchOverlay
+          isOpen={searchOpen}
+          onClose={() => setSearchOpen(false)}
         />
       </div>
     </>

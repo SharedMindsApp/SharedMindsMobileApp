@@ -166,7 +166,7 @@ export async function flattenTracksForModules(
  */
 export async function createTrack(input: CreateTrackInput): Promise<TrackV2> {
   const { data, error } = await supabase
-    .from('guardrails_tracks_v2')
+    .from('guardrails_tracks')
     .insert({
       master_project_id: input.masterProjectId,
       parent_track_id: input.parentTrackId || null,
@@ -205,7 +205,7 @@ export async function updateTrack(
   if (updates.metadata !== undefined) updateData.metadata = updates.metadata;
 
   const { data, error } = await supabase
-    .from('guardrails_tracks_v2')
+    .from('guardrails_tracks')
     .update(updateData)
     .eq('id', trackId)
     .select()
@@ -231,47 +231,18 @@ export async function moveTrack(input: MoveTrackInput): Promise<TrackV2> {
 }
 
 /**
- * Delete a track
- * By default, cascades and deletes all children
- * Can optionally reassign children to a new parent (or to the deleted track's parent)
+ * @deprecated Use softDeleteTrack from trackSoftDeleteService instead
+ * This function now performs a soft delete for backward compatibility
+ * Note: reassignChildren option is ignored - soft delete preserves hierarchy
  */
 export async function deleteTrack(
   trackId: string,
   options: DeleteTrackOptions = {}
 ): Promise<void> {
-  if (options.reassignChildren) {
-    const { data: track } = await supabase
-      .from('guardrails_tracks_v2')
-      .select('parent_track_id')
-      .eq('id', trackId)
-      .single();
-
-    if (track) {
-      const newParentId = options.newParentId !== undefined
-        ? options.newParentId
-        : track.parent_track_id;
-
-      const { error: updateError } = await supabase
-        .from('guardrails_tracks_v2')
-        .update({ parent_track_id: newParentId })
-        .eq('parent_track_id', trackId);
-
-      if (updateError) {
-        console.error('Error reassigning children:', updateError);
-        throw new Error(`Failed to reassign children: ${updateError.message}`);
-      }
-    }
-  }
-
-  const { error } = await supabase
-    .from('guardrails_tracks_v2')
-    .delete()
-    .eq('id', trackId);
-
-  if (error) {
-    console.error('Error deleting track:', error);
-    throw new Error(`Failed to delete track: ${error.message}`);
-  }
+  const { softDeleteTrack } = await import('./trackSoftDeleteService');
+  await softDeleteTrack(trackId);
+  // Note: Children remain linked but will also be hidden since parent is deleted
+  // If reassignment is needed, it should be done before soft delete
 }
 
 /**
@@ -279,7 +250,7 @@ export async function deleteTrack(
  */
 export async function getTrackById(trackId: string): Promise<TrackV2 | null> {
   const { data, error } = await supabase
-    .from('guardrails_tracks_v2')
+    .from('guardrails_tracks')
     .select('*')
     .eq('id', trackId)
     .single();
@@ -300,7 +271,7 @@ export async function getTrackById(trackId: string): Promise<TrackV2 | null> {
  */
 export async function getTrackChildren(trackId: string): Promise<TrackV2[]> {
   const { data, error } = await supabase.rpc('get_track_children', {
-    track_v2_id: trackId,
+    track_id: trackId,
   });
 
   if (error) {
@@ -320,7 +291,7 @@ export async function getTrackChildren(trackId: string): Promise<TrackV2[]> {
  */
 export async function getTrackAncestryPath(trackId: string): Promise<string> {
   const { data, error } = await supabase.rpc('get_track_ancestry_path', {
-    track_v2_id: trackId,
+    track_id: trackId,
   });
 
   if (error) {
@@ -336,7 +307,7 @@ export async function getTrackAncestryPath(trackId: string): Promise<string> {
  */
 export async function getTopLevelTracks(masterProjectId: string): Promise<TrackV2[]> {
   const { data, error } = await supabase
-    .from('guardrails_tracks_v2')
+    .from('guardrails_tracks')
     .select('*')
     .eq('master_project_id', masterProjectId)
     .is('parent_track_id', null)
@@ -355,7 +326,7 @@ export async function getTopLevelTracks(masterProjectId: string): Promise<TrackV
  */
 export async function trackHasChildren(trackId: string): Promise<boolean> {
   const { count, error } = await supabase
-    .from('guardrails_tracks_v2')
+    .from('guardrails_tracks')
     .select('id', { count: 'exact', head: true })
     .eq('parent_track_id', trackId);
 
@@ -377,7 +348,7 @@ export async function getTrackDepth(trackId: string): Promise<number> {
 
   while (currentId && depth < maxDepth) {
     const { data } = await supabase
-      .from('guardrails_tracks_v2')
+      .from('guardrails_tracks')
       .select('parent_track_id')
       .eq('id', currentId)
       .single();
@@ -398,9 +369,10 @@ export async function getTrackDepth(trackId: string): Promise<number> {
  */
 export async function getAllTracks(masterProjectId: string): Promise<TrackV2[]> {
   const { data, error } = await supabase
-    .from('guardrails_tracks_v2')
+    .from('guardrails_tracks')
     .select('*')
     .eq('master_project_id', masterProjectId)
+    .is('deleted_at', null)
     .order('ordering_index', { ascending: true });
 
   if (error) {
@@ -425,7 +397,7 @@ export async function reorderTracks(
 
   for (const update of updates) {
     await supabase
-      .from('guardrails_tracks_v2')
+      .from('guardrails_tracks')
       .update({ ordering_index: update.ordering_index })
       .eq('id', update.id);
   }
@@ -438,7 +410,7 @@ export async function batchCreateTracks(
   tracks: CreateTrackInput[]
 ): Promise<TrackV2[]> {
   const { data, error } = await supabase
-    .from('guardrails_tracks_v2')
+    .from('guardrails_tracks')
     .insert(
       tracks.map((track) => ({
         master_project_id: track.masterProjectId,

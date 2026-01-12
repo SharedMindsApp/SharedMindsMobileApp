@@ -14,6 +14,18 @@ export interface CreateProjectWizardInput {
   selected_system_template_ids?: string[];
   selected_user_template_ids?: string[];
   generate_initial_roadmap?: boolean;
+  quick_goal?: string; // One-sentence goal for Quick Setup
+  first_priority_track_template_id?: string | null; // Priority track template ID
+  wizard_track_setup?: Array<{
+    track_template_id: string;
+    track_category_id: string;
+    objective: string;
+    definition_of_done: string;
+    time_mode: 'unscheduled' | 'target' | 'ranged' | 'ongoing';
+    start_date?: string | null;
+    end_date?: string | null;
+    target_date?: string | null;
+  }>;
   ai_description_suggestion?: string;
   ai_project_intake?: AIProjectIntake;
   ai_clarification_answers?: AIClarificationAnswers;
@@ -26,6 +38,7 @@ export interface RoadmapItemPreview {
   subtrack_id?: string;
   title: string;
   status: 'not_started';
+  metadata?: Record<string, any>; // For priority flag, etc.
 }
 
 export interface ProjectWizardResult {

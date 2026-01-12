@@ -119,17 +119,17 @@ export function WizardStepDomainSelect() {
   }
 
   return (
-    <div className="max-w-4xl mx-auto px-6 py-8">
-      <div className="text-center mb-8">
-        <h2 className="text-3xl font-bold text-gray-900 mb-3">
+    <div className="max-w-4xl mx-auto px-4 md:px-6 py-6 md:py-8 w-full">
+      <div className="text-center mb-6 md:mb-8">
+        <h2 className="text-2xl md:text-3xl font-bold text-gray-900 mb-2 md:mb-3">
           Choose Your Domain
         </h2>
-        <p className="text-gray-600 text-lg">
+        <p className="text-gray-600 text-base md:text-lg px-2">
           Select the area of life where your project belongs
         </p>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3 md:gap-4">
         {Object.entries(DOMAIN_CONFIG).map(([key, config]) => {
           const domain = domains.find(d => DOMAIN_NAME_TO_TYPE[d.name as DomainName] === key);
           if (!domain) return null;
@@ -146,7 +146,7 @@ export function WizardStepDomainSelect() {
               onClick={() => handleSelectDomain(domain, isOccupied)}
               disabled={isOccupied}
               className={`
-                relative p-6 rounded-xl border-2 text-left transition-all
+                relative p-4 md:p-6 rounded-xl border-2 text-left transition-all w-full
                 ${isOccupied ? 'bg-gray-100 border-gray-300 cursor-not-allowed opacity-60' :
                   isSelected ? colors.selected : `${colors.bg} border-transparent`}
                 ${!isSelected && !isOccupied && 'hover:shadow-md'}
@@ -170,22 +170,23 @@ export function WizardStepDomainSelect() {
                 </div>
               )}
 
-              <div className="flex items-start gap-4">
-                <div className={`p-3 rounded-lg ${isOccupied ? 'bg-gray-200' : colors.badge}`}>
-                  <Icon className={`w-6 h-6 ${isOccupied ? 'text-gray-400' : colors.icon}`} />
+              <div className="flex items-start gap-3 md:gap-4">
+                <div className={`p-2 md:p-3 rounded-lg flex-shrink-0 ${isOccupied ? 'bg-gray-200' : colors.badge}`}>
+                  <Icon className={`w-5 h-5 md:w-6 md:h-6 ${isOccupied ? 'text-gray-400' : colors.icon}`} />
                 </div>
 
-                <div className="flex-1">
-                  <h3 className={`text-xl font-semibold mb-2 ${isOccupied ? 'text-gray-500' : 'text-gray-900'}`}>
+                <div className="flex-1 min-w-0">
+                  <h3 className={`text-lg md:text-xl font-semibold mb-1.5 md:mb-2 ${isOccupied ? 'text-gray-500' : 'text-gray-900'}`}>
                     {config.label}
                   </h3>
-                  <p className={`text-sm mb-3 ${isOccupied ? 'text-gray-400' : 'text-gray-600'}`}>
+                  <p className={`text-sm mb-2 md:mb-3 ${isOccupied ? 'text-gray-400' : 'text-gray-600'}`}>
                     {config.description}
                   </p>
-                  <div className={`inline-flex items-center px-2.5 py-1 rounded-md text-xs font-medium ${
+                  <div className={`inline-flex items-center px-2 md:px-2.5 py-0.5 md:py-1 rounded-md text-xs font-medium ${
                     isOccupied ? 'bg-gray-200 text-gray-500' : colors.badge
                   }`}>
-                    Examples: {config.examples}
+                    <span className="hidden md:inline">Examples: </span>
+                    <span>{config.examples}</span>
                   </div>
                 </div>
               </div>
@@ -195,10 +196,10 @@ export function WizardStepDomainSelect() {
       </div>
 
       {state.domainId && (
-        <div className="mt-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
-          <p className="text-sm text-blue-800">
+        <div className="mt-4 md:mt-6 p-3 md:p-4 bg-blue-50 border border-blue-200 rounded-lg">
+          <p className="text-xs md:text-sm text-blue-800">
             <span className="font-semibold">Note:</span> Each domain can have one active project at a time.
-            Completed or abandoned projects can be archived to make room for new ones.
+            <span className="hidden md:inline"> Completed or abandoned projects can be archived to make room for new ones.</span>
           </p>
         </div>
       )}

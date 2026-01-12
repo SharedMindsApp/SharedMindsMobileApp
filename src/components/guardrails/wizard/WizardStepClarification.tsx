@@ -164,15 +164,15 @@ export function WizardStepClarification() {
   const canProceed = answeredCount > 0;
 
   return (
-    <div className="max-w-3xl mx-auto px-6 py-8">
-      <div className="mb-8">
-        <h2 className="text-2xl font-semibold text-gray-900 mb-2">
+    <div className="max-w-3xl mx-auto px-4 md:px-6 py-6 md:py-8 w-full">
+      <div className="mb-6 md:mb-8">
+        <h2 className="text-xl md:text-2xl font-semibold text-gray-900 mb-2">
           Clarify Your Project
         </h2>
-        <p className="text-gray-600">
+        <p className="text-sm md:text-base text-gray-600 px-2">
           Help us understand the shape of your project by answering a few questions.
         </p>
-        <div className="mt-4 flex items-center gap-2 text-sm text-gray-500">
+        <div className="mt-3 md:mt-4 flex items-center gap-2 text-xs md:text-sm text-gray-500">
           <span>
             Question {currentQuestionIndex + 1} of {CLARIFY_QUESTIONS.length}
           </span>
@@ -185,9 +185,9 @@ export function WizardStepClarification() {
         </div>
       </div>
 
-      <div className="bg-white border border-gray-200 rounded-xl p-6 mb-6">
-        <div className="mb-6">
-          <h3 className="text-lg font-medium text-gray-900 mb-4">
+      <div className="bg-white border border-gray-200 rounded-xl p-4 md:p-6 mb-4 md:mb-6">
+        <div className="mb-4 md:mb-6">
+          <h3 className="text-base md:text-lg font-medium text-gray-900 mb-3 md:mb-4">
             {currentQuestion.prompt}
           </h3>
 
@@ -195,7 +195,7 @@ export function WizardStepClarification() {
             {currentQuestion.options.map((option) => (
               <label
                 key={option}
-                className={`flex items-start gap-3 p-3 rounded-lg border cursor-pointer transition-colors ${
+                className={`flex items-start gap-2 md:gap-3 p-2.5 md:p-3 rounded-lg border cursor-pointer transition-colors min-h-[44px] ${
                   currentAnswer === option
                     ? 'border-blue-500 bg-blue-50'
                     : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
@@ -207,15 +207,15 @@ export function WizardStepClarification() {
                   value={option}
                   checked={currentAnswer === option}
                   onChange={(e) => handleAnswerChange(e.target.value)}
-                  className="mt-1 w-4 h-4 text-blue-600 focus:ring-blue-500"
+                  className="mt-1 w-4 h-4 text-blue-600 focus:ring-blue-500 flex-shrink-0"
                 />
-                <span className="text-gray-900 flex-1">{option}</span>
+                <span className="text-sm md:text-base text-gray-900 flex-1 min-w-0">{option}</span>
               </label>
             ))}
           </div>
         </div>
 
-        <div className="mt-6 pt-6 border-t border-gray-200">
+        <div className="mt-4 md:mt-6 pt-4 md:pt-6 border-t border-gray-200">
           <label className="block text-sm font-medium text-gray-700 mb-2">
             Additional context (optional)
           </label>
@@ -223,26 +223,26 @@ export function WizardStepClarification() {
             value={currentContext}
             onChange={(e) => handleContextChange(e.target.value)}
             placeholder="Add any additional details that might be helpful..."
-            className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none text-gray-900"
+            className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none text-gray-900 text-sm md:text-base"
             rows={3}
           />
         </div>
       </div>
 
-      <div className="flex items-center justify-between gap-4">
+      <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 md:gap-4">
         <button
           onClick={handlePrevious}
           disabled={currentQuestionIndex === 0}
-          className="px-4 py-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 disabled:text-gray-400 disabled:hover:bg-transparent disabled:cursor-not-allowed rounded-lg transition-colors"
+          className="px-4 py-2.5 text-gray-600 hover:text-gray-900 hover:bg-gray-100 disabled:text-gray-400 disabled:hover:bg-transparent disabled:cursor-not-allowed rounded-lg transition-colors text-sm font-medium min-h-[44px] w-full sm:w-auto"
         >
           Previous
         </button>
 
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2 md:gap-3 w-full sm:w-auto">
           {currentQuestionIndex < CLARIFY_QUESTIONS.length - 1 ? (
             <button
               onClick={handleNext}
-              className="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg transition-colors"
+              className="flex-1 sm:flex-none px-6 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg transition-colors text-sm min-h-[44px]"
             >
               Next Question
             </button>
@@ -250,14 +250,14 @@ export function WizardStepClarification() {
             <>
               <button
                 onClick={handleSkip}
-                className="px-4 py-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
+                className="flex-1 sm:flex-none px-4 py-2.5 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors text-sm font-medium min-h-[44px]"
               >
                 Skip
               </button>
               <button
                 onClick={handleContinue}
                 disabled={!canProceed}
-                className="px-6 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed text-white font-medium rounded-lg transition-colors"
+                className="flex-1 sm:flex-none px-6 py-2.5 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed text-white font-medium rounded-lg transition-colors text-sm min-h-[44px]"
               >
                 Continue
               </button>

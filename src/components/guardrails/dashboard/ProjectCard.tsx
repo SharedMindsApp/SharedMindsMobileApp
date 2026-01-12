@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { CheckCircle2, Clock, Archive, Trash2, MoreVertical, Network, ListChecks, MapPin, X, AlertTriangle, Wand2 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import type { MasterProject, Domain } from '../../../lib/guardrailsTypes';
-import { setActiveProjectId } from '../../../state/activeDataContext';
+import { useActiveProject } from '../../../contexts/ActiveProjectContext';
 import { abandonMasterProject } from '../../../lib/guardrails';
 import { getProjectTypeById } from '../../../lib/guardrails/projectTypes';
 import { getProjectTypeIcon } from '../../../lib/guardrails/projectTypeIcons';
@@ -37,10 +37,12 @@ export function ProjectCard({
   onRefresh,
 }: ProjectCardProps) {
   const navigate = useNavigate();
+  const { setActiveProject, clearActiveProject } = useActiveProject();
   const [showMenu, setShowMenu] = useState(false);
   const [showAbandonModal, setShowAbandonModal] = useState(false);
   const [abandonReason, setAbandonReason] = useState('');
   const [abandoning, setAbandoning] = useState(false);
+  const [settingActive, setSettingActive] = useState(false);
   const [projectTypeName, setProjectTypeName] = useState<string | null>(null);
 
   const isActive = activeProjectId === project.id;
@@ -85,9 +87,44 @@ export function ProjectCard({
   const config = statusConfig[project.status];
   const StatusIcon = config.icon;
 
-  function handleSetActive() {
-    setActiveProjectId(project.id, project.domain_id);
-    setShowMenu(false);
+  async function handleSetActive() {
+    if (settingActive || isActive) {
+      return;
+    }
+    
+    try {
+      setSettingActive(true);
+      setShowMenu(false);
+      await setActiveProject(project);
+      onRefresh();
+    } catch (error) {
+      console.error('[ProjectCard] Failed to set active project:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Failed to set active project. Please try again.';
+      const { showToast } = await import('../../Toast');
+      showToast('error', errorMessage);
+    } finally {
+      setSettingActive(false);
+    }
+  }
+
+  async function handleClearActive() {
+    if (settingActive) {
+      return;
+    }
+    
+    try {
+      setSettingActive(true);
+      setShowMenu(false);
+      await clearActiveProject();
+      onRefresh();
+    } catch (error) {
+      console.error('[ProjectCard] Failed to clear active project:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Failed to clear active project. Please try again.';
+      const { showToast } = await import('../../Toast');
+      showToast('error', errorMessage);
+    } finally {
+      setSettingActive(false);
+    }
   }
 
   function handleLaunchWizard() {
@@ -105,7 +142,12 @@ export function ProjectCard({
       await abandonMasterProject(project.id, abandonReason.trim());
 
       if (isActive) {
-        setActiveProjectId(null, null);
+        try {
+          await clearActiveProject();
+        } catch (error) {
+          console.error('[ProjectCard] Failed to clear active project after abandon:', error);
+          // Don't block abandonment if clearing active fails
+        }
       }
 
       setShowAbandonModal(false);
@@ -138,17 +180,29 @@ export function ProjectCard({
                 </span>
                 {project.status === 'active' && (
                   <button
-                    onClick={isActive ? undefined : handleSetActive}
-                    disabled={isActive}
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      if (isActive) {
+                        handleClearActive();
+                      } else {
+                        handleSetActive();
+                      }
+                    }}
+                    disabled={settingActive || (isActive && settingActive)}
                     className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium transition-all ${
                       isActive
                         ? `${domainConfig.colors.primary} text-white cursor-default`
                         : `${domainConfig.colors.light} ${domainConfig.colors.text} hover:${domainConfig.colors.bg} border ${domainConfig.colors.border}`
-                    }`}
-                    title={isActive ? 'Currently selected as active project' : 'Click to select as active project'}
+                    } ${settingActive ? 'opacity-50 cursor-wait' : ''}`}
+                    title={
+                      settingActive
+                        ? (isActive ? 'Clearing...' : 'Setting...')
+                        : (isActive ? 'Click to deselect this project' : 'Click to select as active project')
+                    }
                   >
                     <CheckCircle2 size={14} />
-                    {isActive ? 'Selected' : 'Select'}
+                    {settingActive ? (isActive ? 'Clearing...' : 'Setting...') : (isActive ? 'Selected' : 'Select')}
                   </button>
                 )}
                 {projectTypeName && ProjectTypeIcon && (

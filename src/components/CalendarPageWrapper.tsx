@@ -20,7 +20,7 @@ import { CalendarSettingsSheet } from './calendar/CalendarSettingsSheet';
 import { CalendarShell } from './calendarCore';
 import { EventModal } from './calendar/EventModal';
 import { getHouseholdMembers } from '../lib/household';
-import { CollapsibleMobileNav } from './shared/CollapsibleMobileNav';
+import { PillActionNav } from './shared/PillActionNav';
 import { SpacesWidgetsMenuSheet } from './spaces/SpacesWidgetsMenuSheet';
 import type { CalendarEventWithMembers, EventColor } from '../lib/calendarTypes';
 import type { CalendarFilters } from './calendarCore/types';
@@ -362,38 +362,35 @@ export function CalendarPageWrapper() {
         />
       )}
 
-      {/* Mobile Bottom Navigation - Collapsible */}
-      <CollapsibleMobileNav
-        leftButton={{
-          label: 'Calendar',
-          icon: Menu,
-          onClick: () => {
-            setMobileMenuSide(mobileMenuSide === 'left' ? null : 'left');
-            setMobileMenuOpen(mobileMenuSide !== 'left');
+      {/* Mobile Bottom Navigation - Pill-style action nav */}
+      <PillActionNav
+        leftAction={{
+          label: 'Settings',
+          icon: <Settings size={20} />,
+          onPress: () => {
+            setCalendarSettingsOpen(true);
+            setMobileMenuSide('left');
             // Close widgets menu if open
             if (widgetsMenuOpen) {
               setWidgetsMenuOpen(false);
             }
           },
-          isActive: mobileMenuSide === 'left',
-          ariaLabel: 'Calendar',
         }}
-        rightButton={{
-          label: 'Widgets',
-          icon: Menu,
-          onClick: () => {
+        rightAction={{
+          label: 'Areas',
+          icon: <Menu size={20} />,
+          onPress: () => {
             setMobileMenuSide(mobileMenuSide === 'right' ? null : 'right');
-            setMobileMenuOpen(mobileMenuSide !== 'right');
+            setWidgetsMenuOpen(mobileMenuSide !== 'right');
             // Close calendar menu if open
             if (mobileMenuSide === 'left') {
               setMobileMenuOpen(false);
               setMobileMenuSide(null);
             }
-            setWidgetsMenuOpen(!widgetsMenuOpen);
           },
-          isActive: widgetsMenuOpen && mobileMenuSide === 'right',
-          ariaLabel: 'Widgets',
         }}
+        leftActive={calendarSettingsOpen}
+        rightActive={widgetsMenuOpen && mobileMenuSide === 'right'}
       />
 
       {/* Mobile Calendar Menu Drawer - Left Side (matches Planner) */}

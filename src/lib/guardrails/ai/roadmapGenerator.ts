@@ -173,9 +173,10 @@ export async function generateRoadmapFromProjectId(
   if (tracks) {
     for (const track of tracks) {
       const { data: subtracks } = await supabase
-        .from('guardrails_subtracks')
+        .from('guardrails_tracks')
         .select('id, name')
-        .eq('track_id', track.id)
+        .eq('parent_track_id', track.id)
+        .is('deleted_at', null)
         .order('ordering_index');
 
       tracksData.push({

@@ -39,7 +39,7 @@ export function ProjectHub() {
     setLoading(true);
 
     const { data: masterProjects } = await supabase
-      .from('guardrails_master_projects')
+      .from('master_projects')
       .select('*')
       .eq('user_id', user.id)
       .is('archived_at', null)
@@ -50,7 +50,7 @@ export function ProjectHub() {
       const projectId = masterProjects[0].id;
 
       const { data: mainData } = await supabase
-        .from('guardrails_tracks_v2')
+        .from('guardrails_tracks')
         .select('*')
         .eq('master_project_id', projectId)
         .eq('category', 'main')
@@ -62,7 +62,7 @@ export function ProjectHub() {
       }
 
       const { data: sideData } = await supabase
-        .from('guardrails_tracks_v2')
+        .from('guardrails_tracks')
         .select('*')
         .eq('master_project_id', projectId)
         .eq('category', 'side_project')
@@ -73,7 +73,7 @@ export function ProjectHub() {
       }
 
       const { data: offshootData } = await supabase
-        .from('guardrails_tracks_v2')
+        .from('guardrails_tracks')
         .select('*')
         .eq('master_project_id', projectId)
         .eq('category', 'offshoot_idea')

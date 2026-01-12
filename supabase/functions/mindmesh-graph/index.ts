@@ -433,7 +433,7 @@ Deno.serve(async (req: Request) => {
 
     // Fetch all tracks (both top-level and subtracks) for this project
     const { data: allTracks, error: tracksError } = await supabase
-      .from('guardrails_tracks_v2')
+      .from('guardrails_tracks')
       .select('id, name, description, parent_track_id, ordering_index')
       .eq('master_project_id', projectId)
       .order('ordering_index', { ascending: true });

@@ -101,7 +101,7 @@ async function canUserSeeTrackCollaboration(
   projectId?: string
 ): Promise<PermissionCheckResult> {
   const { data: trackData, error } = await supabase
-    .from('guardrails_tracks_v2')
+    .from('guardrails_tracks')
     .select('master_project_id, is_shared')
     .eq('id', trackId)
     .maybeSingle();
@@ -331,7 +331,7 @@ export async function getCrossProjectAwarenessScope(
   }
 
   const { data: trackData, error } = await supabase
-    .from('guardrails_tracks_v2')
+    .from('guardrails_tracks')
     .select('is_shared, master_project_id')
     .eq('id', entityId)
     .maybeSingle();

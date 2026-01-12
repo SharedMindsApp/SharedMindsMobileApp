@@ -10,13 +10,12 @@ export const AUTHORITY_INVARIANTS = {
 
 export const AUTHORITATIVE_TABLES = [
   'master_projects',
-  'guardrails_tracks_v2',
+  'guardrails_tracks',
   'roadmap_items',
   'roadmap_item_assignments',
   'project_people',
   'global_people',
   'project_users',
-  'guardrails_subtracks',
 ] as const;
 
 export const DRAFT_TABLES = [

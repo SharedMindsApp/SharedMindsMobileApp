@@ -5,9 +5,11 @@
  * 
  * This resolver is pure, deterministic, and used everywhere calendar reads/writes occur.
  * 
+ * Uses the new calendar_shares table (Phase 8 Prompt 1) which provides full-calendar sharing.
+ * 
  * Rules:
- * - Project-scoped overrides global
- * - Most restrictive wins
+ * - Owner always has full access
+ * - Active share grants access based on permission level
  * - Default = no access
  * 
  * Architecture:
@@ -17,23 +19,24 @@
  * - Sync logic remains unchanged
  */
 
-import { getPersonalCalendarShareByKey } from './personalCalendarSharing';
-import type { PersonalCalendarAccessLevel } from './personalCalendarSharing';
+import { supabase } from '../supabase';
 
 export interface PersonalCalendarAccessResult {
   canRead: boolean;
   canWrite: boolean;
-  source: 'owner' | 'global_share' | 'project_share' | 'none';
-  accessLevel?: PersonalCalendarAccessLevel;
+  source: 'owner' | 'global_share' | 'none';
+  accessLevel?: 'read' | 'write';
   shareId?: string;
 }
 
 /**
  * Resolve personal calendar access for a viewer
  * 
+ * Phase 8 Prompt 1: Uses calendar_shares table (full-calendar sharing only)
+ * 
  * @param ownerUserId - User who owns the personal calendar
  * @param viewerUserId - User requesting access
- * @param projectId - Optional project ID (for project-scoped events)
+ * @param projectId - Optional project ID (kept for compatibility, but not used with new model)
  * @returns Access result with canRead, canWrite, and source
  */
 export async function resolvePersonalCalendarAccess(
@@ -50,45 +53,36 @@ export async function resolvePersonalCalendarAccess(
     };
   }
 
-  // Check project-scoped share first (more specific)
-  if (projectId) {
-    const projectShare = await getPersonalCalendarShareByKey(
-      ownerUserId,
-      viewerUserId,
-      'project',
-      projectId
-    );
+  // Check for active calendar share using new calendar_shares table
+  const { data: share, error } = await supabase
+    .from('calendar_shares')
+    .select('id, permission')
+    .eq('owner_user_id', ownerUserId)
+    .eq('viewer_user_id', viewerUserId)
+    .eq('status', 'active')
+    .maybeSingle();
 
-    if (projectShare) {
-      return {
-        canRead: true,
-        canWrite: projectShare.access_level === 'write',
-        source: 'project_share',
-        accessLevel: projectShare.access_level,
-        shareId: projectShare.id,
-      };
-    }
-  }
-
-  // Check global share (less specific, but applies if no project share)
-  const globalShare = await getPersonalCalendarShareByKey(
-    ownerUserId,
-    viewerUserId,
-    'global',
-    null
-  );
-
-  if (globalShare) {
+  if (error) {
+    console.error('[personalCalendarAccessResolver] Error checking calendar share:', error);
+    // On error, deny access (fail closed)
     return {
-      canRead: true,
-      canWrite: globalShare.access_level === 'write',
-      source: 'global_share',
-      accessLevel: globalShare.access_level,
-      shareId: globalShare.id,
+      canRead: false,
+      canWrite: false,
+      source: 'none',
     };
   }
 
-  // No access
+  if (share) {
+    return {
+      canRead: true,
+      canWrite: share.permission === 'write',
+      source: 'global_share',
+      accessLevel: share.permission,
+      shareId: share.id,
+    };
+  }
+
+  // No active share found - no access
   return {
     canRead: false,
     canWrite: false,

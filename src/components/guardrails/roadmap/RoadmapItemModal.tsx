@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { X } from 'lucide-react';
 import type { RoadmapItemType } from '../../../lib/guardrails/coreTypes';
 
@@ -14,6 +14,8 @@ interface RoadmapItemModalProps {
     endDate?: string;
     status?: string;
   }) => Promise<void>;
+  // Phase 5: Optional preselect type when opened from Quick Actions
+  preselectType?: RoadmapItemType;
 }
 
 const TYPE_OPTIONS: Array<{ value: RoadmapItemType; label: string; requiresDates: boolean }> = [
@@ -37,8 +39,15 @@ const STATUS_OPTIONS = [
   { value: 'completed', label: 'Completed' },
 ];
 
-export function RoadmapItemModal({ open, trackId, trackName, onClose, onSubmit }: RoadmapItemModalProps) {
-  const [type, setType] = useState<RoadmapItemType>('event');
+export function RoadmapItemModal({ open, trackId, trackName, onClose, onSubmit, preselectType }: RoadmapItemModalProps) {
+  const [type, setType] = useState<RoadmapItemType>(preselectType || 'event');
+  
+  // Phase 5: Reset type when preselectType changes (when modal opens with new type)
+  useEffect(() => {
+    if (preselectType) {
+      setType(preselectType);
+    }
+  }, [preselectType]);
   const [title, setTitle] = useState('');
   const [startDate, setStartDate] = useState(() => {
     const today = new Date();
@@ -110,23 +119,26 @@ export function RoadmapItemModal({ open, trackId, trackName, onClose, onSubmit }
             </p>
           </div>
 
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Item Type *
-            </label>
-            <select
-              value={type}
-              onChange={(e) => setType(e.target.value as RoadmapItemType)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-              disabled={loading}
-            >
-              {TYPE_OPTIONS.map(opt => (
-                <option key={opt.value} value={opt.value}>
-                  {opt.label} {opt.requiresDates ? '(requires dates)' : ''}
-                </option>
-              ))}
-            </select>
-          </div>
+          {/* Phase 5: Hide type selector if type is preselected from Quick Actions */}
+          {!preselectType && (
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Item Type *
+              </label>
+              <select
+                value={type}
+                onChange={(e) => setType(e.target.value as RoadmapItemType)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                disabled={loading}
+              >
+                {TYPE_OPTIONS.map(opt => (
+                  <option key={opt.value} value={opt.value}>
+                    {opt.label} {opt.requiresDates ? '(requires dates)' : ''}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
 
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -143,34 +155,37 @@ export function RoadmapItemModal({ open, trackId, trackName, onClose, onSubmit }
             />
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Start Date *
-              </label>
-              <input
-                type="date"
-                value={startDate}
-                onChange={(e) => setStartDate(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                required
-                disabled={loading}
-              />
-            </div>
+          {/* Phase 5: Show date fields only when required or if dates are already set */}
+          {(requiresDates || startDate || endDate) && (
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Start Date {requiresDates ? '*' : ''}
+                </label>
+                <input
+                  type="date"
+                  value={startDate}
+                  onChange={(e) => setStartDate(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  required={requiresDates}
+                  disabled={loading}
+                />
+              </div>
 
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                End Date
-              </label>
-              <input
-                type="date"
-                value={endDate}
-                onChange={(e) => setEndDate(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                disabled={loading}
-              />
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  End Date
+                </label>
+                <input
+                  type="date"
+                  value={endDate}
+                  onChange={(e) => setEndDate(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  disabled={loading}
+                />
+              </div>
             </div>
-          </div>
+          )}
 
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">

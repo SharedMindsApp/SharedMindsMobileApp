@@ -78,7 +78,7 @@ CREATE POLICY "Users can view extensions for their roadmap items"
   USING (
     EXISTS (
       SELECT 1 FROM roadmap_items ri
-      JOIN guardrails_tracks_v2 gt ON gt.id = ri.track_id
+      JOIN guardrails_tracks gt ON gt.id = ri.track_id
       JOIN master_projects mp ON mp.id = gt.master_project_id
       WHERE ri.id = roadmap_item_deadline_extensions.roadmap_item_id
       AND mp.user_id = auth.uid()
@@ -92,7 +92,7 @@ CREATE POLICY "Users can create extensions for their roadmap items"
   WITH CHECK (
     EXISTS (
       SELECT 1 FROM roadmap_items ri
-      JOIN guardrails_tracks_v2 gt ON gt.id = ri.track_id
+      JOIN guardrails_tracks gt ON gt.id = ri.track_id
       JOIN master_projects mp ON mp.id = gt.master_project_id
       WHERE ri.id = roadmap_item_deadline_extensions.roadmap_item_id
       AND mp.user_id = auth.uid()

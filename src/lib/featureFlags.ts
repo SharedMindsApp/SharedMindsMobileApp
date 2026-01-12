@@ -20,6 +20,13 @@ export const FEATURE_HABITS_GOALS = true;
 export const FEATURE_CALENDAR_EXTRAS = true;
 
 /**
+ * Enable AI Chat Widget
+ * When true: AI chat widget is visible and functional
+ * When false: AI chat widget is hidden but code remains intact for reactivation
+ */
+export const FEATURE_AI_CHAT_WIDGET = false;
+
+/**
  * Enable realtime subscriptions for habits and goals
  * When true: Uses Supabase realtime for multi-device sync
  * When false: Falls back to activityEvents bus

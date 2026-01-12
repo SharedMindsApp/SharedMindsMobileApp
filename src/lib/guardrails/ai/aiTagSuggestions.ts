@@ -131,7 +131,7 @@ async function getTrackSuggestions(
   limit: number
 ): Promise<TagSuggestion[]> {
   const { data, error } = await supabase
-    .from('guardrails_tracks_v2')
+    .from('guardrails_tracks')
     .select('id, name, color, is_shared, parent_track_id')
     .eq('master_project_id', projectId)
     .limit(limit * 2);
@@ -266,7 +266,7 @@ async function getSharedTrackSuggestions(
   limit: number
 ): Promise<TagSuggestion[]> {
   const { data, error } = await supabase
-    .from('guardrails_tracks_v2')
+    .from('guardrails_tracks')
     .select('id, name, color, master_project_id')
     .eq('is_shared', true)
     .limit(limit * 2);

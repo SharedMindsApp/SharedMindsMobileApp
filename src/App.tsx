@@ -93,6 +93,8 @@ import { ProjectRoadmapPage } from './components/guardrails/roadmap/ProjectRoadm
 import { ProjectNodesPage } from './components/guardrails/nodes/ProjectNodesPage';
 import { ProjectTaskFlowPage } from './components/guardrails/taskflow/ProjectTaskFlowPage';
 import { ProjectRealityCheckPage } from './components/guardrails/reality/ProjectRealityCheckPage';
+import { TrackWorkspace } from './components/guardrails/workspace/TrackWorkspace';
+import { SubtrackWorkspace } from './components/guardrails/workspace/SubtrackWorkspace';
 import { ArchiveManagementPage } from './components/guardrails/settings/ArchiveManagementPage';
 import { SideProjectsPage } from './components/SideProjectsPage';
 import { OffshootIdeasListPage } from './components/OffshootIdeasListPage';
@@ -127,9 +129,12 @@ import { TestingModePage } from './components/regulation/TestingModePage';
 import { BehavioralInsightsDashboard } from './components/behavioral-insights/BehavioralInsightsDashboard';
 import { PlannerIndex } from './components/planner/PlannerIndex';
 import { PlannerCalendar } from './components/planner/PlannerCalendar';
+import { ActiveCalendarContextProvider } from './contexts/ActiveCalendarContext';
+import { ActiveTaskContextProvider } from './contexts/ActiveTaskContext';
 import { PlannerReview } from './components/planner/PlannerReview';
 import { PlannerAreas } from './components/planner/PlannerAreas';
 import { PlannerPersonal } from './components/planner/PlannerPersonal';
+import { PlannerTasks } from './components/planner/PlannerTasks';
 import { PlannerWork } from './components/planner/PlannerWork';
 import { DailyWorkFlow } from './components/planner/work/DailyWorkFlow';
 import { WeeklyFocus } from './components/planner/work/WeeklyFocus';
@@ -673,6 +678,27 @@ function AppContent() {
               </AuthGuard>
             }
           />
+          {/* Phase 3.0: Track & Subtrack Workspaces */}
+          <Route
+            path="/guardrails/projects/:masterProjectId/workspace/track/:trackId/subtrack/:subtrackId"
+            element={
+              <AuthGuard>
+                <GuardrailsLayout>
+                  <SubtrackWorkspace />
+                </GuardrailsLayout>
+              </AuthGuard>
+            }
+          />
+          <Route
+            path="/guardrails/projects/:masterProjectId/workspace/track/:trackId"
+            element={
+              <AuthGuard>
+                <GuardrailsLayout>
+                  <TrackWorkspace />
+                </GuardrailsLayout>
+              </AuthGuard>
+            }
+          />
           <Route
             path="/guardrails/projects/:masterProjectId/side-projects"
             element={
@@ -1171,15 +1197,35 @@ function AppContent() {
             path="/planner/calendar"
             element={
               <AuthGuard>
-                <Layout>
-                  <ErrorBoundary
-                    context="Planner Calendar"
-                    fallbackRoute="/planner"
-                    errorMessage="An error occurred while loading the planner calendar."
-                  >
-                    <PlannerCalendar />
-                  </ErrorBoundary>
-                </Layout>
+                <ActiveCalendarContextProvider>
+                  <Layout>
+                    <ErrorBoundary
+                      context="Planner Calendar"
+                      fallbackRoute="/planner"
+                      errorMessage="An error occurred while loading the planner calendar."
+                    >
+                      <PlannerCalendar />
+                    </ErrorBoundary>
+                  </Layout>
+                </ActiveCalendarContextProvider>
+              </AuthGuard>
+            }
+          />
+          <Route
+            path="/planner/tasks"
+            element={
+              <AuthGuard>
+                <ActiveTaskContextProvider>
+                  <Layout>
+                    <ErrorBoundary
+                      context="Planner Tasks"
+                      fallbackRoute="/planner"
+                      errorMessage="An error occurred while loading tasks."
+                    >
+                      <PlannerTasks />
+                    </ErrorBoundary>
+                  </Layout>
+                </ActiveTaskContextProvider>
               </AuthGuard>
             }
           />

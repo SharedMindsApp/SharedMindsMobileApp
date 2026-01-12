@@ -151,7 +151,7 @@ async function findMatchingTracks(
   userId: string
 ): Promise<Array<{ entityId: string; displayName: string; metadata?: Record<string, any> }>> {
   const { data, error } = await supabase
-    .from('guardrails_tracks_v2')
+    .from('guardrails_tracks')
     .select('id, name, is_shared, parent_track_id')
     .eq('master_project_id', projectId);
 
@@ -260,7 +260,7 @@ async function findMatchingSharedTracks(
   userId: string
 ): Promise<Array<{ entityId: string; displayName: string; metadata?: Record<string, any> }>> {
   const { data, error } = await supabase
-    .from('guardrails_tracks_v2')
+    .from('guardrails_tracks')
     .select('id, name, master_project_id')
     .eq('is_shared', true);
 

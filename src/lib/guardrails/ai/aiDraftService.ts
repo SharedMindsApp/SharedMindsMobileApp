@@ -351,7 +351,7 @@ export async function getDraftProvenanceDetails(
       data = itemData;
     } else if (entityType === 'track') {
       const { data: trackData } = await supabase
-        .from('guardrails_tracks_v2')
+        .from('guardrails_tracks')
         .select('id, name, description')
         .eq('id', entityId)
         .maybeSingle();

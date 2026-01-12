@@ -29,7 +29,7 @@ export async function canUserAccessTrack(
   trackId: string
 ): Promise<boolean> {
   const { data: track } = await supabase
-    .from('guardrails_tracks_v2')
+    .from('guardrails_tracks')
     .select('master_project_id')
     .eq('id', trackId)
     .maybeSingle();
@@ -138,7 +138,7 @@ export const AI_PERMISSION_RULES = {
 export const AI_DATA_ACCESS_BOUNDARIES = {
   CAN_READ: [
     'master_projects (if user has access)',
-    'guardrails_tracks_v2 (if user has access)',
+    'guardrails_tracks (if user has access)',
     'roadmap_items (if user has access)',
     'collaboration_activity (permission-safe)',
     'mind_mesh_nodes (if user has access)',
@@ -154,7 +154,7 @@ export const AI_DATA_ACCESS_BOUNDARIES = {
   ],
   CANNOT_WRITE: [
     'master_projects',
-    'guardrails_tracks_v2',
+    'guardrails_tracks',
     'roadmap_items',
     'taskflow_tasks',
     'mind_mesh_nodes',

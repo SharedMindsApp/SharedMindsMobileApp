@@ -110,12 +110,12 @@ $$ LANGUAGE plpgsql;
 -- ============================================================================
 
 -- Drop existing triggers if they exist
-DROP TRIGGER IF EXISTS trigger_sync_track_update_to_mindmesh ON guardrails_tracks_v2;
-DROP TRIGGER IF EXISTS trigger_sync_track_delete_to_mindmesh ON guardrails_tracks_v2;
+DROP TRIGGER IF EXISTS trigger_sync_track_update_to_mindmesh ON guardrails_tracks;
+DROP TRIGGER IF EXISTS trigger_sync_track_delete_to_mindmesh ON guardrails_tracks;
 
 -- Create update trigger
 CREATE TRIGGER trigger_sync_track_update_to_mindmesh
-  AFTER UPDATE ON guardrails_tracks_v2
+  AFTER UPDATE ON guardrails_tracks
   FOR EACH ROW
   WHEN (
     OLD.name IS DISTINCT FROM NEW.name OR
@@ -126,7 +126,7 @@ CREATE TRIGGER trigger_sync_track_update_to_mindmesh
 
 -- Create deletion trigger
 CREATE TRIGGER trigger_sync_track_delete_to_mindmesh
-  BEFORE DELETE ON guardrails_tracks_v2
+  BEFORE DELETE ON guardrails_tracks
   FOR EACH ROW
   EXECUTE FUNCTION sync_track_delete_to_mindmesh();
 

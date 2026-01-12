@@ -123,6 +123,7 @@ export interface CreatePersonalEventInput {
   sourceType?: 'personal' | 'guardrails' | 'context';
   sourceEntityId?: string | null;
   sourceProjectId?: string | null;
+  member_ids?: string[]; // Profile IDs of members/attendees to invite
 }
 
 export interface UpdatePersonalEventInput {
@@ -132,6 +133,7 @@ export interface UpdatePersonalEventInput {
   endAt?: string;
   allDay?: boolean;
   event_type?: CalendarEventType;
+  member_ids?: string[]; // Profile IDs of members/attendees to invite
 }
 
 /**
@@ -149,15 +151,59 @@ export async function getPersonalCalendarEvents(
   const effectiveViewerId = viewerUserId || ownerUserId;
   const isOwner = ownerUserId === effectiveViewerId;
 
-  // Phase 8: Check access if viewing someone else's calendar
+  // Phase 8: Use secure RPC function when viewing someone else's calendar
+  // This ensures busy events never expose sensitive data (title, description, type)
   if (!isOwner) {
     const access = await resolvePersonalCalendarAccess(ownerUserId, effectiveViewerId, null);
     if (!access.canRead) {
       // No access - return empty
       return [];
     }
+
+    // Use secure RPC function for shared calendars (respects share_visibility)
+    const { data: rpcData, error: rpcError } = await supabase.rpc('get_visible_calendar_events', {
+      viewer_user_id: effectiveViewerId
+    });
+
+    if (rpcError) {
+      console.error('[calendarService] Error fetching visible calendar events via RPC:', rpcError);
+      throw rpcError;
+    }
+
+    // Filter to only events belonging to the owner we're viewing
+    const ownerEvents = (rpcData || []).filter((event: any) => 
+      event.user_id === ownerUserId && event.household_id === null
+    );
+
+    // Map RPC results to PersonalCalendarEvent format
+    // RPC already handles busy event masking:
+    // - Returns "Busy" as title for busy events
+    // - Returns NULL for description, event_type, etc. for busy events
+    const existingEvents = ownerEvents.map((eventData: any) => {
+      const mappedEvent = mapDbToPersonalEvent({
+        ...eventData,
+        // Ensure consistent format (RPC may return NULL for some fields on busy events)
+        description: eventData.description || null,
+        event_type: eventData.event_type || 'event',
+      }, effectiveViewerId);
+
+      // Add sharing metadata
+      mappedEvent.sharingMetadata = {
+        ownerUserId,
+        accessSource: 'global_share',
+        accessLevel: access.accessLevel || 'read',
+        canEdit: access.canWrite,
+        canDelete: access.canWrite,
+      };
+
+      return mappedEvent;
+    });
+
+    // Non-owners don't see context projections (owner-only feature)
+    return existingEvents;
   }
 
+  // Owner sees full data - use direct query (no privacy filtering needed)
   // Fetch existing calendar_events (existing behavior)
   // Filter out hidden/removed projections (only show active projections)
   const { data, error } = await supabase
@@ -170,15 +216,6 @@ export async function getPersonalCalendarEvents(
   if (error) {
     console.error('[calendarService] Error fetching personal events:', error);
     throw error;
-  }
-
-  // Phase 8: Check access if viewing someone else's calendar
-  if (!isOwner) {
-    const access = await resolvePersonalCalendarAccess(ownerUserId, effectiveViewerId, null);
-    if (!access.canRead) {
-      // No access - return empty
-      return [];
-    }
   }
 
   const existingEvents = data.map((eventData) => mapDbToPersonalEvent(eventData, effectiveViewerId));
@@ -364,7 +401,17 @@ export async function getPersonalCalendarEvent(
 
   const { data, error } = await supabase
     .from('calendar_events')
-    .select('*')
+    .select(`
+      *,
+      member_profiles:calendar_event_members(
+        member_profile_id,
+        profiles:member_profile_id(
+          id,
+          full_name,
+          email
+        )
+      )
+    `)
     .eq('id', eventId)
     .eq('user_id', ownerUserId) // Always check ownership
     .maybeSingle();
@@ -379,6 +426,13 @@ export async function getPersonalCalendarEvent(
   }
 
   const event = mapDbToPersonalEvent(data, effectiveViewerId);
+  
+  // Attach member profiles to event if they exist
+  if (data.member_profiles && Array.isArray(data.member_profiles)) {
+    (event as any).member_profiles = data.member_profiles
+      .map((mp: any) => mp.profiles)
+      .filter((p: any) => p) || [];
+  }
 
   // Phase 8: Check access and add sharing metadata if not owner
   if (!isOwner) {
@@ -417,6 +471,25 @@ export async function getPersonalCalendarEvent(
  * @param input - Event data
  * @param actorUserId - User ID creating the event (for permission checks, defaults to ownerUserId)
  */
+/**
+ * Helper: Get profile ID from auth user ID
+ * created_by column references profiles(id), not auth.users(id)
+ */
+async function getProfileIdFromUserId(userId: string): Promise<string | null> {
+  const { data, error } = await supabase
+    .from('profiles')
+    .select('id')
+    .eq('user_id', userId)
+    .maybeSingle();
+
+  if (error) {
+    console.error('[calendarService] Error fetching profile:', error);
+    return null;
+  }
+
+  return data?.id || null;
+}
+
 export async function createPersonalCalendarEvent(
   ownerUserId: string,
   input: CreatePersonalEventInput,
@@ -433,39 +506,70 @@ export async function createPersonalCalendarEvent(
     }
   }
 
+  // Convert auth.users ID to profiles.id for created_by field
+  // created_by column references profiles(id), not auth.users(id)
+  const createdByProfileId = await getProfileIdFromUserId(effectiveActorId);
+  if (!createdByProfileId) {
+    throw new Error('Profile not found for user. Please ensure your profile is set up.');
+  }
+
+  const { member_ids, ...eventFields } = input;
+
   const { data, error } = await supabase
     .from('calendar_events')
     .insert({
-      user_id: ownerUserId, // Always owned by the calendar owner
-      title: input.title,
-      description: input.description || null,
-      start_at: input.startAt,
-      end_at: input.endAt || null,
-      all_day: input.allDay || false,
-      event_type: input.event_type || 'event', // Default to 'event' if not provided
-      source_type: input.sourceType || 'personal',
-      source_entity_id: input.sourceEntityId || null,
-      source_project_id: input.sourceProjectId || null,
-      // Phase 8: Track who created the event (for auditing)
-      created_by: effectiveActorId, // This should already exist in schema, but we're explicit
+      user_id: ownerUserId, // Always owned by the calendar owner (auth.users ID)
+      title: eventFields.title,
+      description: eventFields.description || null,
+      start_at: eventFields.startAt,
+      end_at: eventFields.endAt || null,
+      all_day: eventFields.allDay || false,
+      event_type: eventFields.event_type || 'event', // Default to 'event' if not provided
+      // source_type: NULL for personal events (manually created)
+      // Only 'roadmap_event'|'task'|'mindmesh_event' are valid for synced events (from Guardrails)
+      // Database constraint: CHECK (source_type IN ('roadmap_event', 'task', 'mindmesh_event') OR source_type IS NULL)
+      // Frontend types 'personal', 'guardrails', 'context' are not valid DB values - use NULL for personal events
+      source_type: eventFields.sourceType && 
+        ['roadmap_event', 'task', 'mindmesh_event'].includes(eventFields.sourceType)
+        ? eventFields.sourceType
+        : null,
+      source_entity_id: eventFields.sourceEntityId || null,
+      source_project_id: eventFields.sourceProjectId || null,
+      // created_by must reference profiles(id), not auth.users(id)
+      created_by: createdByProfileId,
     })
     .select()
     .single();
 
   if (error) {
     console.error('[calendarService] Error creating personal event:', error);
+    console.error('[calendarService] Event data that failed:', {
+      user_id: ownerUserId,
+      title: eventFields.title,
+      start_at: eventFields.startAt,
+      end_at: eventFields.endAt,
+      created_by: createdByProfileId,
+      created_by_profile_exists: createdByProfileId !== null,
+    });
     throw error;
   }
 
-  // Phase 8: Log if created by non-owner
-  if (!isOwner) {
-    console.log(`[calendarService] Event created by ${effectiveActorId} on ${ownerUserId}'s calendar (shared write access)`, {
+  // Add members/attendees if provided (member_ids are profile IDs)
+  if (member_ids && member_ids.length > 0) {
+    const memberInserts = member_ids.map(profileId => ({
       event_id: data.id,
-      owner_user_id: ownerUserId,
-      actor_user_id: effectiveActorId,
-      action: 'create',
-      timestamp: new Date().toISOString(),
-    });
+      member_profile_id: profileId,
+    }));
+
+    const { error: membersError } = await supabase
+      .from('calendar_event_members')
+      .insert(memberInserts);
+
+    if (membersError) {
+      console.error('[calendarService] Error adding members to event:', membersError);
+      // Don't throw - event was created, members can be added later
+      console.warn('[calendarService] Event created but members could not be added');
+    }
   }
 
   return mapDbToPersonalEvent(data, effectiveActorId);
@@ -508,16 +612,45 @@ export async function updatePersonalCalendarEvent(
     }
   }
 
+  // Phase 5: Check if event date/time is changing (for task carry-over detection)
+  let dateChanged = false;
+  if (input.startAt !== undefined || input.endAt !== undefined) {
+    const { data: currentEvent, error: fetchError } = await supabase
+      .from('calendar_events')
+      .select('start_at, end_at')
+      .eq('id', eventId)
+      .eq('user_id', ownerUserId)
+      .single();
+
+    if (!fetchError && currentEvent) {
+      const oldStartAt = currentEvent.start_at;
+      const oldEndAt = currentEvent.end_at;
+      const newStartAt = input.startAt !== undefined ? input.startAt : oldStartAt;
+      const newEndAt = input.endAt !== undefined ? input.endAt : oldEndAt;
+
+      // Check if date has changed (comparing dates only, not times)
+      if (oldStartAt && newStartAt) {
+        const oldDate = new Date(oldStartAt).toISOString().split('T')[0];
+        const newDate = new Date(newStartAt).toISOString().split('T')[0];
+        dateChanged = oldDate !== newDate;
+      } else {
+        dateChanged = oldStartAt !== newStartAt || oldEndAt !== newEndAt;
+      }
+    }
+  }
+
+  const { member_ids, ...eventUpdates } = input;
+
   const updates: Record<string, any> = {
     updated_at: new Date().toISOString(),
   };
 
-  if (input.title !== undefined) updates.title = input.title;
-  if (input.description !== undefined) updates.description = input.description;
-  if (input.startAt !== undefined) updates.start_at = input.startAt;
-  if (input.endAt !== undefined) updates.end_at = input.endAt;
-  if (input.allDay !== undefined) updates.all_day = input.allDay;
-  if (input.event_type !== undefined) updates.event_type = input.event_type;
+  if (eventUpdates.title !== undefined) updates.title = eventUpdates.title;
+  if (eventUpdates.description !== undefined) updates.description = eventUpdates.description;
+  if (eventUpdates.startAt !== undefined) updates.start_at = eventUpdates.startAt;
+  if (eventUpdates.endAt !== undefined) updates.end_at = eventUpdates.endAt;
+  if (eventUpdates.allDay !== undefined) updates.all_day = eventUpdates.allDay;
+  if (eventUpdates.event_type !== undefined) updates.event_type = eventUpdates.event_type;
 
   const { data, error } = await supabase
     .from('calendar_events')
@@ -532,16 +665,36 @@ export async function updatePersonalCalendarEvent(
     throw error;
   }
 
-  // Phase 8: Log if updated by non-owner
-  if (!isOwner) {
-    console.log(`[calendarService] Event ${eventId} updated by ${effectiveActorId} on ${ownerUserId}'s calendar (shared write access)`, {
-      event_id: eventId,
-      owner_user_id: ownerUserId,
-      actor_user_id: effectiveActorId,
-      action: 'update',
-      updates: Object.keys(updates),
-      timestamp: new Date().toISOString(),
-    });
+  // Update members/attendees if provided (member_ids are profile IDs)
+  if (member_ids !== undefined) {
+    // Delete existing members
+    const { error: deleteError } = await supabase
+      .from('calendar_event_members')
+      .delete()
+      .eq('event_id', eventId);
+
+    if (deleteError) {
+      console.error('[calendarService] Error removing members from event:', deleteError);
+      // Continue anyway - members can be updated later
+    }
+
+    // Add new members if any
+    if (member_ids.length > 0) {
+      const memberInserts = member_ids.map(profileId => ({
+        event_id: eventId,
+        member_profile_id: profileId,
+      }));
+
+      const { error: membersError } = await supabase
+        .from('calendar_event_members')
+        .insert(memberInserts);
+
+      if (membersError) {
+        console.error('[calendarService] Error adding members to event:', membersError);
+        // Don't throw - event was updated, members can be added later
+        console.warn('[calendarService] Event updated but members could not be updated');
+      }
+    }
   }
 
   return mapDbToPersonalEvent(data, effectiveActorId);
@@ -580,14 +733,8 @@ export async function deletePersonalCalendarEvent(
     if (!access.canWrite) {
       throw new Error('You do not have write access to this event');
     }
-    console.log(`[calendarService] Event ${eventId} deleted by ${effectiveActorId} on ${ownerUserId}'s calendar (shared write access)`, {
-      event_id: eventId,
-      owner_user_id: ownerUserId,
-      actor_user_id: effectiveActorId,
-      action: 'delete',
-      timestamp: new Date().toISOString(),
-    });
   }
+
   // Check if this is an activity projection
   const { data: event } = await supabase
     .from('calendar_events')
@@ -668,26 +815,87 @@ export async function getPersonalEventsForDateRangeWithExtras(
   const effectiveViewerId = viewerUserId || userId;
   const isOwner = userId === effectiveViewerId;
 
-  // Phase 8: Check access if viewing someone else's calendar
+  // Phase 8: Use secure RPC function when viewing someone else's calendar
+  // This ensures busy events never expose sensitive data (title, description, type)
   if (!isOwner) {
-    // For now, we'll filter events based on sharing permissions
-    // This is a simplified approach - in production, you might want to
-    // fetch all events and filter in memory for better performance
     const access = await resolvePersonalCalendarAccess(userId, effectiveViewerId, null);
     if (!access.canRead) {
       // No access - return empty
       return { events: [] };
     }
+
+    // Use secure RPC function for shared calendars (respects share_visibility)
+    const { data: rpcData, error: rpcError } = await supabase.rpc('get_visible_calendar_events', {
+      viewer_user_id: effectiveViewerId
+    });
+
+    if (rpcError) {
+      console.error('[calendarService] Error fetching visible calendar events via RPC:', rpcError);
+      throw rpcError;
+    }
+
+    // Filter to only events belonging to the owner we're viewing
+    // Also filter by date range
+    const startDateObj = new Date(startDate);
+    const endDateObj = new Date(endDate);
+    
+    const ownerEvents = (rpcData || []).filter((event: any) => {
+      if (event.user_id !== userId || event.household_id !== null) {
+        return false; // Not the owner's personal events
+      }
+      
+      // Filter by date range
+      const eventStart = new Date(event.start_at);
+      return eventStart >= startDateObj && eventStart <= endDateObj;
+    });
+
+    // Map RPC results to PersonalCalendarEvent format
+    // RPC already handles busy event masking:
+    // - Returns "Busy" as title for busy events
+    // - Returns NULL for description, event_type, etc. for busy events
+    const eventsWithSharing: PersonalCalendarEvent[] = ownerEvents.map((eventData: any) => {
+      const mappedEvent = mapDbToPersonalEvent({
+        ...eventData,
+        // Ensure consistent format (RPC may return NULL for some fields on busy events)
+        description: eventData.description || null,
+        event_type: eventData.event_type || 'event',
+      }, effectiveViewerId);
+
+      // Add sharing metadata
+      mappedEvent.sharingMetadata = {
+        ownerUserId: userId,
+        accessSource: 'global_share',
+        accessLevel: access.accessLevel || 'read',
+        canEdit: access.canWrite,
+        canDelete: access.canWrite,
+      };
+
+      return mappedEvent;
+    });
+
+    // Non-owners don't see context projections or calendar extras
+    return { events: eventsWithSharing };
   }
 
+  // Owner sees full data - use direct query (no privacy filtering needed)
   // Fetch existing calendar_events (existing behavior)
   // Filter out hidden/removed projections (only show active projections)
+  // Include events that start within the range OR overlap with the range
+  // Query: events where (start_at <= endDate) AND (end_at IS NULL OR end_at >= startDate)
+  // For efficiency, we fetch events that start <= endDate and filter client-side for overlap
+  // This ensures we catch events that span across the date range boundaries
+  // Also add a lower bound filter to optimize query performance
+  const startDateObj = new Date(startDate);
+  // Extend startDate back by 1 day to catch events that start before but overlap
+  const extendedStartDate = new Date(startDateObj);
+  extendedStartDate.setDate(extendedStartDate.getDate() - 1);
+  
   const { data, error } = await supabase
     .from('calendar_events')
     .select('*')
     .eq('user_id', userId)
-    .gte('start_at', startDate)
-    .lte('start_at', endDate)
+    .gte('start_at', extendedStartDate.toISOString()) // Start from day before to catch overlapping events
+    .lte('start_at', endDate) // Events that start before or at endDate
     .or('projection_state.is.null,projection_state.eq.active')
     .order('start_at', { ascending: true });
 
@@ -696,39 +904,22 @@ export async function getPersonalEventsForDateRangeWithExtras(
     throw error;
   }
 
-  // Phase 8: Add sharing metadata and filter based on permissions
-  const eventsWithSharing: PersonalCalendarEvent[] = [];
+  // Filter events by date range (include events that overlap with range)
+  // An event overlaps if: (start_at <= endDate) AND (end_at >= startDate OR end_at IS NULL)
+  const endDateObj = new Date(endDate);
   
-  for (const eventData of data) {
-    const event = mapDbToPersonalEvent(eventData, effectiveViewerId);
+  const filteredData = (data || []).filter((eventData) => {
+    const eventStart = new Date(eventData.start_at);
+    const eventEnd = eventData.end_at ? new Date(eventData.end_at) : eventStart;
     
-    // If viewing someone else's calendar, add sharing metadata
-    if (!isOwner) {
-      const eventAccess = await resolvePersonalCalendarAccess(
-        userId,
-        effectiveViewerId,
-        eventData.source_project_id || null
-      );
-      
-      if (!eventAccess.canRead) {
-        // Skip events without read access
-        continue;
-      }
-      
-      // Add sharing metadata (only if access is granted)
-      if (eventAccess.source !== 'none') {
-        event.sharingMetadata = {
-          ownerUserId: userId,
-          accessSource: eventAccess.source as 'owner' | 'global_share' | 'project_share',
-          accessLevel: eventAccess.accessLevel || 'read',
-          canEdit: eventAccess.canWrite,
-          canDelete: eventAccess.canWrite, // Write access includes delete
-        };
-      }
-    }
-    
-    eventsWithSharing.push(event);
-  }
+    // Event overlaps if it starts before/at endDate and ends after/at startDate
+    return eventStart <= endDateObj && eventEnd >= startDateObj;
+  });
+
+  // Map to PersonalCalendarEvent format (owner sees full data)
+  const eventsWithSharing: PersonalCalendarEvent[] = filteredData.map((eventData) => {
+    return mapDbToPersonalEvent(eventData, effectiveViewerId);
+  });
 
   // If context calendar feature is disabled, return existing events only
   if (!CONTEXT_CALENDAR_ENABLED) {
@@ -966,7 +1157,9 @@ function mapDbToPersonalEvent(data: any, userId?: string): PersonalCalendarEvent
     startAt: data.start_at,
     endAt: data.end_at,
     allDay: data.all_day,
-    sourceType: data.source_type || 'personal',
+    // Map NULL source_type (personal events) to 'personal' for frontend
+    // Database stores NULL for personal events, but frontend type system expects 'personal' | 'guardrails' | 'context'
+    sourceType: (data.source_type as 'guardrails' | 'context' | null) || 'personal',
     sourceEntityId: data.source_entity_id,
     sourceProjectId: data.source_project_id,
     createdAt: data.created_at,

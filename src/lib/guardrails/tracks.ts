@@ -3,17 +3,28 @@ import type { Track, CreateTrackInput, UpdateTrackInput } from './tracksTypes';
 
 export async function getTracksForProject(masterProjectId: string): Promise<Track[]> {
   const { data, error } = await supabase
-    .from('guardrails_tracks_v2')
+    .from('guardrails_tracks')
     .select('*')
     .eq('master_project_id', masterProjectId)
-    .is('parent_track_id', null)
+    .is('deleted_at', null)
     .order('ordering_index', { ascending: true });
 
   if (error) {
     throw new Error(`Failed to fetch tracks: ${error.message}`);
   }
 
-  return (data || []).map(dbTrack => ({
+  // Filter to only main tracks (parent_track_id is null)
+  // Handle gracefully if column doesn't exist (filter returns all, which is acceptable)
+  const mainTracks = (data || []).filter((dbTrack: any) => {
+    // If parent_track_id column exists, filter by it
+    if ('parent_track_id' in dbTrack) {
+      return dbTrack.parent_track_id === null;
+    }
+    // If column doesn't exist, assume all tracks are main tracks (backward compatibility)
+    return true;
+  });
+
+  return mainTracks.map((dbTrack: any) => ({
     id: dbTrack.id,
     masterProjectId: dbTrack.master_project_id,
     name: dbTrack.name,
@@ -30,7 +41,7 @@ export async function getTracksForProject(masterProjectId: string): Promise<Trac
 
 export async function getTrackById(trackId: string): Promise<Track | null> {
   const { data, error } = await supabase
-    .from('guardrails_tracks_v2')
+    .from('guardrails_tracks')
     .select('*')
     .eq('id', trackId)
     .is('parent_track_id', null)
@@ -77,7 +88,7 @@ export async function createTrack(params: CreateTrackInput): Promise<Track> {
   }
 
   const { data, error } = await supabase
-    .from('guardrails_tracks_v2')
+    .from('guardrails_tracks')
     .insert({
       master_project_id: masterProjectId,
       parent_track_id: null,
@@ -123,7 +134,7 @@ export async function updateTrack(
   if (updates.end_date !== undefined) updateData.end_date = updates.end_date;
 
   const { data, error } = await supabase
-    .from('guardrails_tracks_v2')
+    .from('guardrails_tracks')
     .update(updateData)
     .eq('id', trackId)
     .is('parent_track_id', null)
@@ -149,16 +160,13 @@ export async function updateTrack(
   };
 }
 
+/**
+ * @deprecated Use softDeleteTrack from trackSoftDeleteService instead
+ * This function now performs a soft delete for backward compatibility
+ */
 export async function deleteTrack(trackId: string): Promise<void> {
-  const { error } = await supabase
-    .from('guardrails_tracks_v2')
-    .delete()
-    .eq('id', trackId)
-    .is('parent_track_id', null);
-
-  if (error) {
-    throw new Error(`Failed to delete track: ${error.message}`);
-  }
+  const { softDeleteTrack } = await import('./trackSoftDeleteService');
+  await softDeleteTrack(trackId);
 }
 
 export async function reorderTracks(
@@ -172,7 +180,7 @@ export async function reorderTracks(
 
   const updatePromises = updates.map(update =>
     supabase
-      .from('guardrails_tracks_v2')
+      .from('guardrails_tracks')
       .update({ ordering_index: update.ordering_index })
       .eq('id', update.id)
       .eq('master_project_id', masterProjectId)

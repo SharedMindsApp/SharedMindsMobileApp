@@ -12,7 +12,7 @@
   1. **is_admin()** - Checks if current user is admin (SECURITY DEFINER)
   2. **is_project_member(uuid, uuid)** - Checks project membership (SECURITY DEFINER)
   3. **is_project_owner_check(uuid, uuid)** - Checks project ownership (SECURITY DEFINER)
-  4. **user_owns_track_v2_project(uuid)** - Checks track ownership via project (SECURITY DEFINER)
+  4. **user_owns_track_project(uuid)** - Checks track ownership via project (SECURITY DEFINER)
   5. **user_household_ids(uuid)** - Returns user's household IDs (SECURITY DEFINER, STABLE, SQL)
   6. **has_consent(uuid, consent_key_enum)** - Checks user consent (SECURITY DEFINER, STABLE)
   
@@ -67,8 +67,8 @@ SET search_path = public;
 ALTER FUNCTION public.is_project_owner_check(p_user_id uuid, p_project_id uuid)
 SET search_path = public;
 
--- 4. user_owns_track_v2_project - SECURITY DEFINER, VOLATILE
-ALTER FUNCTION public.user_owns_track_v2_project(track_v2_id uuid)
+-- 4. user_owns_track_project - SECURITY DEFINER, VOLATILE
+ALTER FUNCTION public.user_owns_track_project(track_id uuid)
 SET search_path = public;
 
 -- 5. user_household_ids - SECURITY DEFINER, STABLE, SQL

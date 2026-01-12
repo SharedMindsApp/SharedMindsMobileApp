@@ -35,7 +35,10 @@ export function useCalendarGestures(
     // Only handle horizontal swipes (ignore if vertical movement is greater)
     if (Math.abs(deltaX) > Math.abs(deltaY) && Math.abs(deltaX) > 10) {
       setSwipeOffset(deltaX);
-      e.preventDefault();
+      // Note: preventDefault() cannot be called in passive event listeners
+      // If we need to prevent default, we should attach the listener directly to the DOM
+      // For now, we'll let the browser handle scrolling naturally
+      // e.preventDefault(); // Removed - causes error in passive listeners
     }
   }, [swipeStart]);
 

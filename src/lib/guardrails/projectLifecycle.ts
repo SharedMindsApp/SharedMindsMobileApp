@@ -21,13 +21,13 @@ export type LifecyclePhase =
  * - Execution Checked: All phases complete
  */
 export function getProjectLifecyclePhase(project: MasterProject): LifecyclePhase {
-  // For now, we'll use wizard_completed as a proxy for feasibility completion
+  // For now, we'll use has_completed_wizard as a proxy for feasibility completion
   // This is a simplified computation - in a full implementation, we'd check:
   // - Intent: domain + project_type + details + idea + clarification
   // - Feasibility: templates/tracks + skills + resources + people
   // - Execution: track decomposition + tasks + time estimates
   
-  if (!project.wizard_completed) {
+  if (!project.has_completed_wizard) {
     // If wizard is not completed, check if basic setup (intent) is done
     if (project.project_type_id && project.name && project.description) {
       return 'intent'; // Intent phase in progress
@@ -37,7 +37,7 @@ export function getProjectLifecyclePhase(project: MasterProject): LifecyclePhase
 
   // Once wizard is completed, we consider feasibility done
   // In a full implementation, we'd check for skills/resources/people
-  // For now, wizard_completed means feasibility is done
+  // For now, has_completed_wizard means feasibility is done
   return 'feasibility_checked';
 }
 

@@ -4,7 +4,7 @@ import { BottomSheet } from '../../shared/BottomSheet';
 
 interface CreateTrackModalProps {
   onClose: () => void;
-  onCreate: (name: string, description?: string, color?: string) => Promise<void>;
+  onCreate: (name: string, description?: string, color?: string, parentTrackId?: string | null) => Promise<void>;
   parentTrackId: string | null;
 }
 
@@ -42,10 +42,11 @@ export function CreateTrackModal({ onClose, onCreate, parentTrackId }: CreateTra
 
     setIsCreating(true);
     try {
-      await onCreate(name.trim(), description.trim() || undefined, selectedColor || undefined);
-      onClose();
-    } catch (error) {
+      await onCreate(name.trim(), description.trim() || undefined, selectedColor || undefined, parentTrackId);
+      // onClose is handled by parent after successful creation
+    } catch (error: any) {
       console.error('Failed to create track:', error);
+      alert(error.message || 'Failed to create track');
     } finally {
       setIsCreating(false);
     }

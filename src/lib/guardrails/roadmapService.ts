@@ -46,6 +46,20 @@ import {
   deleteCalendarEventForSource,
   type RoadmapItemForSync,
 } from './guardrailsCalendarSync';
+import {
+  createGuardrailsTask,
+  getGuardrailsTask,
+  updateGuardrailsTask,
+  type CreateGuardrailsTaskInput,
+  type UpdateGuardrailsTaskInput,
+} from './guardrailsTaskService';
+import {
+  createGuardrailsEvent,
+  getGuardrailsEvent,
+  updateGuardrailsEvent,
+  type CreateGuardrailsEventInput,
+  type UpdateGuardrailsEventInput,
+} from './guardrailsEventService';
 
 // Phase 6/7: New resolver-based execution (imported dynamically to avoid circular deps)
 import { executeCalendarSyncForRoadmapItem } from './calendarSync/calendarSyncExecution';
@@ -111,12 +125,14 @@ function transformKeysFromDb(row: any): RoadmapItem {
     masterProjectId: row.master_project_id,
     trackId: row.track_id,
     subtrackId: row.subtrack_id,
-    type: row.type || 'task',
-    title: row.title,
-    description: row.description,
-    startDate: row.start_date,
-    endDate: row.end_date,
-    status: row.status,
+    type: (row.type || 'task') as RoadmapItemType,
+    title: row.title || '',
+    description: row.description || null,
+    startDate: row.start_date || null,
+    endDate: row.end_date || null,
+    status: (row.status || 'pending') as RoadmapItemStatus,
+    parentItemId: row.parent_item_id || null,
+    itemDepth: row.item_depth || 0,
     metadata: row.metadata || {},
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -135,6 +151,14 @@ function transformKeysToSnake(obj: Record<string, any>): Record<string, any> {
   return result;
 }
 
+/**
+ * Phase 1: Create Roadmap Item with Domain Entity
+ * 
+ * This function now follows the Phase 1 pattern:
+ * 1. Create domain entity first (if type is 'task' or 'event')
+ * 2. Create roadmap projection referencing domain entity
+ * 3. Keep existing sync logic
+ */
 export async function createRoadmapItem(input: CreateRoadmapItemInput): Promise<RoadmapItem> {
   const validation = validateFullRoadmapItem(input);
   if (!validation.valid) {
@@ -170,11 +194,56 @@ export async function createRoadmapItem(input: CreateRoadmapItemInput): Promise<
 
   const defaultStatus = input.status || getDefaultStatusForType(input.type);
 
+  // ============================================================================
+  // Phase 1: Create Domain Entity First (if task or event)
+  // ============================================================================
+  let domainEntityId: string | null = null;
+  let domainEntityType: string | null = null;
+
+  if (input.type === 'task') {
+    // Create domain task entity
+    const taskInput: CreateGuardrailsTaskInput = {
+      masterProjectId: input.masterProjectId,
+      title: input.title,
+      description: input.description,
+      status: defaultStatus as any,
+      dueAt: input.endDate ? new Date(input.endDate).toISOString() : undefined,
+      metadata: input.metadata,
+    };
+    const domainTask = await createGuardrailsTask(taskInput);
+    domainEntityId = domainTask.id;
+    domainEntityType = 'task';
+  } else if (input.type === 'event') {
+    // Create domain event entity
+    const eventInput: CreateGuardrailsEventInput = {
+      masterProjectId: input.masterProjectId,
+      title: input.title,
+      description: input.description,
+      startAt: input.startDate ? new Date(input.startDate).toISOString() : undefined,
+      endAt: input.endDate ? new Date(input.endDate).toISOString() : undefined,
+      metadata: input.metadata,
+    };
+    const domainEvent = await createGuardrailsEvent(eventInput);
+    domainEntityId = domainEvent.id;
+    domainEntityType = 'event';
+  }
+
+  // ============================================================================
+  // Phase 1: Create Roadmap Projection Referencing Domain Entity
+  // ============================================================================
   const dbInput = transformKeysToSnake({
     ...input,
     type: input.type,
     status: defaultStatus,
     metadata: input.metadata || {},
+    // Phase 1: Add domain entity reference
+    domain_entity_type: domainEntityType,
+    domain_entity_id: domainEntityId,
+    // Phase 1: Keep legacy fields for compatibility (mirrored by triggers)
+    title: input.title,
+    description: input.description,
+    start_date: input.startDate,
+    end_date: input.endDate,
   });
 
   const { data, error } = await supabase
@@ -219,10 +288,86 @@ async function createRoadmapItemConnection(
   }
 }
 
+/**
+ * Phase 1: Update Roadmap Item
+ * 
+ * This function distinguishes between:
+ * - Semantic edits (title, description, status, dates) → update domain entity
+ * - Structural edits (track, subtrack, ordering, hierarchy) → update roadmap only
+ */
 export async function updateRoadmapItem(
   id: string,
   input: UpdateRoadmapItemInput
 ): Promise<RoadmapItem> {
+  // Get existing roadmap item to check domain entity reference
+  const { data: existingItem, error: fetchError } = await supabase
+    .from(TABLE_NAME)
+    .select('domain_entity_type, domain_entity_id, type')
+    .eq('id', id)
+    .single();
+
+  if (fetchError) {
+    throw new Error(`Failed to fetch roadmap item: ${fetchError.message}`);
+  }
+
+  // ============================================================================
+  // Phase 1: Update Domain Entity for Semantic Edits
+  // ============================================================================
+  if (existingItem.domain_entity_type === 'task' && existingItem.domain_entity_id) {
+    // Check if this is a semantic edit (title, description, status, dates)
+    const hasSemanticEdits = 
+      input.title !== undefined ||
+      input.description !== undefined ||
+      input.status !== undefined ||
+      input.endDate !== undefined ||
+      input.metadata !== undefined;
+
+    if (hasSemanticEdits) {
+      const taskUpdate: UpdateGuardrailsTaskInput = {};
+      
+      if (input.title !== undefined) taskUpdate.title = input.title;
+      if (input.description !== undefined) taskUpdate.description = input.description;
+      if (input.status !== undefined) taskUpdate.status = input.status as any;
+      if (input.endDate !== undefined) {
+        taskUpdate.dueAt = input.endDate ? new Date(input.endDate).toISOString() : null;
+      }
+      if (input.metadata !== undefined) taskUpdate.metadata = input.metadata;
+
+      // Update domain entity (triggers will mirror to roadmap)
+      await updateGuardrailsTask(existingItem.domain_entity_id, taskUpdate);
+    }
+  } else if (existingItem.domain_entity_type === 'event' && existingItem.domain_entity_id) {
+    // Check if this is a semantic edit
+    const hasSemanticEdits = 
+      input.title !== undefined ||
+      input.description !== undefined ||
+      input.startDate !== undefined ||
+      input.endDate !== undefined ||
+      input.metadata !== undefined;
+
+    if (hasSemanticEdits) {
+      const eventUpdate: UpdateGuardrailsEventInput = {};
+      
+      if (input.title !== undefined) eventUpdate.title = input.title;
+      if (input.description !== undefined) eventUpdate.description = input.description;
+      if (input.startDate !== undefined) {
+        eventUpdate.startAt = input.startDate ? new Date(input.startDate).toISOString() : null;
+      }
+      if (input.endDate !== undefined) {
+        eventUpdate.endAt = input.endDate ? new Date(input.endDate).toISOString() : null;
+      }
+      if (input.metadata !== undefined) eventUpdate.metadata = input.metadata;
+
+      // Update domain entity (triggers will mirror to roadmap)
+      await updateGuardrailsEvent(existingItem.domain_entity_id, eventUpdate);
+    }
+  }
+
+  // ============================================================================
+  // Phase 1: Update Roadmap Projection for Structural Edits
+  // ============================================================================
+  // Update roadmap fields (track, subtrack, ordering, hierarchy, visibility)
+  // These are projection-only concerns
   const validation = validateFullRoadmapItem(input);
   if (!validation.valid) {
     throw new Error(
@@ -230,40 +375,66 @@ export async function updateRoadmapItem(
     );
   }
 
-  if (input.trackId) {
-    const track = await getTrack(input.trackId);
+  // Structural edits only (track, subtrack, ordering, hierarchy)
+  // Semantic fields are handled by domain entity updates above
+  const structuralUpdates: any = {};
 
+  if (input.trackId !== undefined) {
+    const track = await getTrack(input.trackId);
     if (!track) {
       throw new Error('Track not found');
     }
-
     if (!track.includeInRoadmap) {
       throw new Error(
         `Cannot assign roadmap item to track '${track.name}' - track is not included in roadmap`
       );
     }
+    structuralUpdates.track_id = input.trackId;
   }
 
-  const dbInput = transformKeysToSnake(input);
+  if (input.subtrackId !== undefined) {
+    structuralUpdates.subtrack_id = input.subtrackId;
+  }
 
-  const { data, error } = await supabase
+  if (input.parentItemId !== undefined) {
+    structuralUpdates.parent_item_id = input.parentItemId;
+  }
+
+  // Only update roadmap if there are structural changes
+  if (Object.keys(structuralUpdates).length > 0) {
+    const dbInput = transformKeysToSnake(structuralUpdates);
+
+    const { data, error } = await supabase
+      .from(TABLE_NAME)
+      .update(dbInput)
+      .eq('id', id)
+      .select()
+      .single();
+
+    if (error) throw error;
+
+    if (input.trackId) {
+      await updateRoadmapItemConnection(id, input.trackId, data.master_project_id);
+    }
+  }
+
+  // Fetch updated roadmap item (domain changes are mirrored by triggers)
+  const { data: updatedRoadmapItem, error: fetchError2 } = await supabase
     .from(TABLE_NAME)
-    .update(dbInput)
+    .select('*')
     .eq('id', id)
-    .select()
     .single();
 
-  if (error) throw error;
-
-  if (input.trackId) {
-    await updateRoadmapItemConnection(id, input.trackId, data.master_project_id);
+  if (fetchError2) {
+    throw new Error(`Failed to fetch updated roadmap item: ${fetchError2.message}`);
   }
 
-  if (input.status) {
+  const updatedItem = transformKeysFromDb(updatedRoadmapItem);
+
+  // Update mind mesh metadata if status changed (handled by domain update above)
+  if (input.status && existingItem.domain_entity_type) {
     await updateMindMeshMetadata(id, input.status);
   }
-
-  const updatedItem = transformKeysFromDb(data);
 
   await syncRoadmapItemToTaskFlow(updatedItem);
 
@@ -313,70 +484,279 @@ export async function deleteRoadmapItem(id: string): Promise<void> {
   }
 }
 
+/**
+ * Phase 1: Get Roadmap Item with Domain Entity
+ * 
+ * Reads roadmap projection and merges domain entity data if available.
+ * Falls back to legacy roadmap fields if domain entity doesn't exist.
+ */
 export async function getRoadmapItem(id: string): Promise<RoadmapItem | null> {
-  const { data, error } = await supabase
+  // Get roadmap item structure
+  const { data: roadmapData, error: roadmapError } = await supabase
     .from(TABLE_NAME)
     .select('*')
     .eq('id', id)
     .maybeSingle();
 
-  if (error) throw error;
-  if (!data) return null;
+  if (roadmapError) throw roadmapError;
+  if (!roadmapData) return null;
 
-  return transformKeysFromDb(data);
-}
+  // If domain entity exists, fetch domain entity for semantic fields
+  if (roadmapData.domain_entity_type && roadmapData.domain_entity_id) {
+    let domainData: any = null;
 
-export async function getRoadmapItemsByProject(masterProjectId: string): Promise<RoadmapItem[]> {
-  const { data, error } = await supabase
-    .from(TABLE_NAME)
-    .select('*')
-    .eq('master_project_id', masterProjectId)
-    .order('start_date', { ascending: true });
+    if (roadmapData.domain_entity_type === 'task') {
+      const task = await getGuardrailsTask(roadmapData.domain_entity_id);
+      if (task) {
+        domainData = {
+          title: task.title,
+          description: task.description,
+          status: task.status,
+          end_date: task.dueAt ? new Date(task.dueAt).toISOString().split('T')[0] : null,
+          metadata: task.metadata,
+        };
+      }
+    } else if (roadmapData.domain_entity_type === 'event') {
+      const event = await getGuardrailsEvent(roadmapData.domain_entity_id);
+      if (event) {
+        domainData = {
+          title: event.title,
+          description: event.description,
+          start_date: event.startAt ? new Date(event.startAt).toISOString().split('T')[0] : null,
+          end_date: event.endAt ? new Date(event.endAt).toISOString().split('T')[0] : null,
+          metadata: event.metadata,
+        };
+      }
+    }
 
-  if (error) throw error;
-  return (data || []).map(transformKeysFromDb);
-}
+    // Merge domain data with roadmap structure (domain takes precedence)
+    if (domainData) {
+      const merged = {
+        ...roadmapData,
+        ...domainData,
+        // Keep roadmap structure fields
+        track_id: roadmapData.track_id,
+        subtrack_id: roadmapData.subtrack_id,
+        parent_item_id: roadmapData.parent_item_id,
+        order_index: roadmapData.order_index,
+      };
+      return transformKeysFromDb(merged);
+    }
+  }
 
-export async function getRoadmapItemsByTrack(trackId: string): Promise<RoadmapItem[]> {
-  const { data, error } = await supabase
-    .from(TABLE_NAME)
-    .select('*')
-    .eq('track_id', trackId)
-    .order('start_date', { ascending: true });
-
-  if (error) throw error;
-  return (data || []).map(transformKeysFromDb);
+  // Fallback to legacy roadmap fields (for items without domain entities)
+  return transformKeysFromDb(roadmapData);
 }
 
 /**
- * Get roadmap items for a specific subtrack
+ * Phase 1: Get Roadmap Items by Project using RPC function
+ * 
+ * Uses the get_roadmap_projection RPC to efficiently read roadmap structure
+ * with domain entity data merged.
+ */
+export async function getRoadmapItemsByProject(masterProjectId: string): Promise<RoadmapItem[]> {
+  try {
+    // Try using RPC function first (Phase 1 approach)
+    const { data: rpcData, error: rpcError } = await supabase.rpc('get_roadmap_projection', {
+      p_master_project_id: masterProjectId,
+      p_track_id: null,
+    });
+
+    if (!rpcError && rpcData) {
+      // Transform RPC result to RoadmapItem format
+      return rpcData.map((row: any) => ({
+        id: row.roadmap_item_id,
+        masterProjectId: masterProjectId,
+        trackId: row.track_id,
+        subtrackId: row.subtrack_id,
+        type: (row.domain_entity_type || 'task') as RoadmapItemType, // Fallback if no domain entity
+        title: row.title || '',
+        description: row.description || null,
+        startDate: row.start_date || null,
+        endDate: row.end_date || null,
+        status: (row.status || 'pending') as RoadmapItemStatus,
+        metadata: row.metadata || {},
+        createdAt: row.created_at,
+        updatedAt: row.updated_at,
+        // Additional fields that may be needed (not in transformKeysFromDb but might be expected)
+        parentItemId: row.parent_item_id || null,
+        itemDepth: row.item_depth || 0,
+      }));
+    }
+
+    // Fallback to direct query if RPC fails (backward compatibility)
+    console.warn('[RoadmapService] RPC function failed, falling back to direct query:', rpcError);
+    const { data, error } = await supabase
+      .from(TABLE_NAME)
+      .select('*')
+      .eq('master_project_id', masterProjectId)
+      .is('archived_at', null)
+      .order('order_index', { ascending: true });
+
+    if (error) throw error;
+    return (data || []).map(transformKeysFromDb);
+  } catch (error) {
+    console.error('[RoadmapService] Error in getRoadmapItemsByProject:', error);
+    throw error;
+  }
+}
+
+/**
+ * Phase 1: Get Roadmap Items by Track using RPC function
+ */
+export async function getRoadmapItemsByTrack(trackId: string): Promise<RoadmapItem[]> {
+  try {
+    // Get master_project_id from track first (exclude deleted tracks)
+    const { data: trackData, error: trackError } = await supabase
+      .from('guardrails_tracks')
+      .select('master_project_id')
+      .eq('id', trackId)
+      .is('deleted_at', null)
+      .single();
+
+    if (trackError || !trackData) {
+      throw new Error(`Track not found: ${trackId}`);
+    }
+
+    // Use RPC function with track filter
+    const { data: rpcData, error: rpcError } = await supabase.rpc('get_roadmap_projection', {
+      p_master_project_id: trackData.master_project_id,
+      p_track_id: trackId,
+    });
+
+    if (!rpcError && rpcData) {
+      return rpcData.map((row: any) => ({
+        id: row.roadmap_item_id,
+        masterProjectId: trackData.master_project_id,
+        trackId: row.track_id,
+        subtrackId: row.subtrack_id,
+        type: (row.domain_entity_type || 'task') as RoadmapItemType,
+        title: row.title || '',
+        description: row.description || null,
+        startDate: row.start_date || null,
+        endDate: row.end_date || null,
+        status: (row.status || 'pending') as RoadmapItemStatus,
+        parentItemId: row.parent_item_id || null,
+        itemDepth: row.item_depth || 0,
+        metadata: row.metadata || {},
+        createdAt: row.created_at,
+        updatedAt: row.updated_at,
+      }));
+    }
+
+    // Fallback to direct query
+    const { data, error } = await supabase
+      .from(TABLE_NAME)
+      .select('*')
+      .eq('track_id', trackId)
+      .is('archived_at', null)
+      .order('order_index', { ascending: true });
+
+    if (error) throw error;
+    return (data || []).map(transformKeysFromDb);
+  } catch (error) {
+    console.error('[RoadmapService] Error in getRoadmapItemsByTrack:', error);
+    throw error;
+  }
+}
+
+/**
+ * Phase 1: Get Roadmap Items by Subtrack
+ * 
+ * Filters by subtrack_id. Note: RPC function doesn't support subtrack filter yet,
+ * so we use direct query with domain entity merge for now.
  */
 export async function getRoadmapItemsBySubtrack(subtrackId: string): Promise<RoadmapItem[]> {
+  // Get roadmap items with subtrack filter
   const { data, error } = await supabase
     .from(TABLE_NAME)
     .select('*')
     .eq('subtrack_id', subtrackId)
-    .order('start_date', { ascending: true });
+    .is('archived_at', null)
+    .order('order_index', { ascending: true });
 
   if (error) throw error;
-  return (data || []).map(transformKeysFromDb);
+
+  // Fetch domain entities for items that have them
+  const itemsWithDomain = await Promise.all(
+    (data || []).map(async (item) => {
+      if (item.domain_entity_type && item.domain_entity_id) {
+        let domainData: any = null;
+
+        if (item.domain_entity_type === 'task') {
+          const task = await getGuardrailsTask(item.domain_entity_id);
+          if (task) {
+            domainData = {
+              title: task.title,
+              description: task.description,
+              status: task.status,
+              end_date: task.dueAt ? new Date(task.dueAt).toISOString().split('T')[0] : null,
+              metadata: task.metadata,
+            };
+          }
+        } else if (item.domain_entity_type === 'event') {
+          const event = await getGuardrailsEvent(item.domain_entity_id);
+          if (event) {
+            domainData = {
+              title: event.title,
+              description: event.description,
+              start_date: event.startAt ? new Date(event.startAt).toISOString().split('T')[0] : null,
+              end_date: event.endAt ? new Date(event.endAt).toISOString().split('T')[0] : null,
+              metadata: event.metadata,
+            };
+          }
+        }
+
+        if (domainData) {
+          return transformKeysFromDb({ ...item, ...domainData });
+        }
+      }
+
+      // Fallback to legacy fields
+      return transformKeysFromDb(item);
+    })
+  );
+
+  return itemsWithDomain;
 }
 
+/**
+ * Phase 1: Get Roadmap Items in Date Range
+ * 
+ * Filters items by date range. For Phase 1, we use direct query with domain entity merge
+ * since date filtering requires checking both roadmap and domain entity dates.
+ */
 export async function getRoadmapItemsInDateRange(
   masterProjectId: string,
   startDate: string,
   endDate: string
 ): Promise<RoadmapItem[]> {
-  const { data, error } = await supabase
-    .from(TABLE_NAME)
-    .select('*')
-    .eq('master_project_id', masterProjectId)
-    .gte('end_date', startDate)
-    .lte('start_date', endDate)
-    .order('start_date', { ascending: true });
-
-  if (error) throw error;
-  return (data || []).map(transformKeysFromDb);
+  // Get all items for project using RPC (efficient)
+  const allItems = await getRoadmapItemsByProject(masterProjectId);
+  
+  // Filter by date range (checking both start_date and end_date)
+  return allItems.filter(item => {
+    const itemStart = item.startDate ? new Date(item.startDate) : null;
+    const itemEnd = item.endDate ? new Date(item.endDate) : null;
+    const rangeStart = new Date(startDate);
+    const rangeEnd = new Date(endDate);
+    
+    // Item overlaps range if:
+    // - Item starts before range ends AND
+    // - Item ends after range starts (or has no end date)
+    if (itemStart && itemStart <= rangeEnd) {
+      if (!itemEnd || itemEnd >= rangeStart) {
+        return true;
+      }
+    }
+    
+    // Item is contained in range if it has no start date but has an end date
+    if (!itemStart && itemEnd && itemEnd >= rangeStart && itemEnd <= rangeEnd) {
+      return true;
+    }
+    
+    return false;
+  });
 }
 
 export async function getTimelineEligibleItems(masterProjectId: string): Promise<RoadmapItem[]> {
@@ -690,11 +1070,11 @@ export async function getRoadmapItemsByStatus(
     .from(TABLE_NAME)
     .select(`
       *,
-      guardrails_tracks_v2!inner (
+      guardrails_tracks!inner (
         master_project_id
       )
     `)
-    .eq('guardrails_tracks_v2.master_project_id', masterProjectId)
+    .eq('guardrails_tracks.master_project_id', masterProjectId)
     .eq('status', status)
     .order('start_date', { ascending: true });
 

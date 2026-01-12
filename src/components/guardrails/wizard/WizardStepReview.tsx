@@ -152,7 +152,7 @@ export function WizardStepReview() {
 
   if (!snapshot) {
     return (
-      <div className="max-w-3xl mx-auto px-6 py-8">
+      <div className="max-w-3xl mx-auto px-4 md:px-6 py-6 md:py-8 w-full">
         <div className="text-center">
           <p className="text-gray-600">Loading review...</p>
         </div>
@@ -172,36 +172,36 @@ export function WizardStepReview() {
   };
 
   return (
-    <div className="max-w-3xl mx-auto px-6 py-8">
-      <div className="mb-8">
-        <h2 className="text-2xl font-semibold text-gray-900 mb-2">
+    <div className="max-w-3xl mx-auto px-4 md:px-6 py-6 md:py-8 w-full">
+      <div className="mb-6 md:mb-8">
+        <h2 className="text-xl md:text-2xl font-semibold text-gray-900 mb-2">
           Review Your Project Intent
         </h2>
-        <p className="text-gray-600">
+        <p className="text-sm md:text-base text-gray-600 px-2">
           This is a summary of what you've shared. Everything below will be used for an initial reality check.
         </p>
       </div>
 
-      <div className="space-y-4">
+      <div className="space-y-3 md:space-y-4">
         {/* 1. Project Overview */}
         <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
-          <div className="px-6 py-4 flex items-center justify-between">
+          <div className="px-4 md:px-6 py-3 md:py-4 flex items-center justify-between gap-2">
             <button
               onClick={() => toggleSection('overview')}
-              className="flex items-center gap-3 flex-1 text-left hover:opacity-80 transition-opacity"
+              className="flex items-center gap-2 md:gap-3 flex-1 text-left hover:opacity-80 transition-opacity min-w-0"
             >
-              <div className="w-8 h-8 rounded-lg bg-blue-100 flex items-center justify-center">
-                <DomainIcon className="w-5 h-5 text-blue-600" />
+              <div className="w-7 h-7 md:w-8 md:h-8 rounded-lg bg-blue-100 flex items-center justify-center flex-shrink-0">
+                <DomainIcon className="w-4 h-4 md:w-5 md:h-5 text-blue-600" />
               </div>
-              <h3 className="text-lg font-medium text-gray-900">Project Overview</h3>
+              <h3 className="text-base md:text-lg font-medium text-gray-900 truncate">Project Overview</h3>
             </button>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1.5 md:gap-2 flex-shrink-0">
               <button
                 onClick={() => handleEdit(1)}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm text-blue-600 hover:text-blue-700 hover:bg-blue-50 rounded-lg transition-colors"
+                className="inline-flex items-center gap-1 md:gap-1.5 px-2.5 md:px-3 py-1.5 text-xs md:text-sm text-blue-600 hover:text-blue-700 hover:bg-blue-50 rounded-lg transition-colors min-h-[36px] md:min-h-[40px]"
               >
-                <Edit2 className="w-4 h-4" />
-                Edit
+                <Edit2 className="w-3.5 h-3.5 md:w-4 md:h-4" />
+                <span className="hidden sm:inline">Edit</span>
               </button>
               <button
                 onClick={() => toggleSection('overview')}
@@ -217,7 +217,7 @@ export function WizardStepReview() {
           </div>
 
           {expandedSections.has('overview') && (
-            <div className="px-6 pb-6 border-t border-gray-200">
+            <div className="px-4 md:px-6 pb-4 md:pb-6 border-t border-gray-200">
               <div className="pt-4 space-y-4">
                 <div>
                   <div className="text-sm font-medium text-gray-500 mb-1">Domain</div>
@@ -240,39 +240,39 @@ export function WizardStepReview() {
 
         {/* 2. Project Idea */}
         <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
-          <div className="px-6 py-4 flex items-center justify-between">
+          <div className="px-4 md:px-6 py-3 md:py-4 flex items-center justify-between gap-2">
             <button
               onClick={() => toggleSection('idea')}
-              className="flex items-center gap-3 flex-1 text-left hover:opacity-80 transition-opacity"
+              className="flex items-center gap-2 md:gap-3 flex-1 text-left hover:opacity-80 transition-opacity min-w-0"
             >
-              <div className="w-8 h-8 rounded-lg bg-purple-100 flex items-center justify-center">
-                <Lightbulb className="w-5 h-5 text-purple-600" />
+              <div className="w-7 h-7 md:w-8 md:h-8 rounded-lg bg-purple-100 flex items-center justify-center flex-shrink-0">
+                <Lightbulb className="w-4 h-4 md:w-5 md:h-5 text-purple-600" />
               </div>
-              <h3 className="text-lg font-medium text-gray-900">Project Idea</h3>
+              <h3 className="text-base md:text-lg font-medium text-gray-900 truncate">Project Idea</h3>
             </button>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1.5 md:gap-2 flex-shrink-0">
               <button
                 onClick={() => handleEdit(4)}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm text-blue-600 hover:text-blue-700 hover:bg-blue-50 rounded-lg transition-colors"
+                className="inline-flex items-center gap-1 md:gap-1.5 px-2.5 md:px-3 py-1.5 text-xs md:text-sm text-blue-600 hover:text-blue-700 hover:bg-blue-50 rounded-lg transition-colors min-h-[36px] md:min-h-[40px]"
               >
-                <Edit2 className="w-4 h-4" />
-                Edit
+                <Edit2 className="w-3.5 h-3.5 md:w-4 md:h-4" />
+                <span className="hidden sm:inline">Edit</span>
               </button>
               <button
                 onClick={() => toggleSection('idea')}
-                className="p-1 hover:bg-gray-100 rounded transition-colors"
+                className="p-1 hover:bg-gray-100 rounded transition-colors min-h-[36px] md:min-h-[40px] flex items-center justify-center"
               >
                 {expandedSections.has('idea') ? (
-                  <ChevronUp className="w-5 h-5 text-gray-400" />
+                  <ChevronUp className="w-4 h-4 md:w-5 md:h-5 text-gray-400" />
                 ) : (
-                  <ChevronDown className="w-5 h-5 text-gray-400" />
+                  <ChevronDown className="w-4 h-4 md:w-5 md:h-5 text-gray-400" />
                 )}
               </button>
             </div>
           </div>
 
           {expandedSections.has('idea') && (
-            <div className="px-6 pb-6 border-t border-gray-200">
+            <div className="px-4 md:px-6 pb-4 md:pb-6 border-t border-gray-200">
               <div className="pt-4 space-y-4">
                 <div>
                   <div className="text-sm font-medium text-gray-500 mb-2">Describe your project idea</div>
@@ -300,39 +300,39 @@ export function WizardStepReview() {
         {/* 3. Goals & Motivation */}
         {snapshot.goals.length > 0 && (
           <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
-            <div className="px-6 py-4 flex items-center justify-between">
+            <div className="px-4 md:px-6 py-3 md:py-4 flex items-center justify-between gap-2">
               <button
                 onClick={() => toggleSection('goals')}
-                className="flex items-center gap-3 flex-1 text-left hover:opacity-80 transition-opacity"
+                className="flex items-center gap-2 md:gap-3 flex-1 text-left hover:opacity-80 transition-opacity min-w-0"
               >
-                <div className="w-8 h-8 rounded-lg bg-green-100 flex items-center justify-center">
-                  <Rocket className="w-5 h-5 text-green-600" />
+                <div className="w-7 h-7 md:w-8 md:h-8 rounded-lg bg-green-100 flex items-center justify-center flex-shrink-0">
+                  <Rocket className="w-4 h-4 md:w-5 md:h-5 text-green-600" />
                 </div>
-                <h3 className="text-lg font-medium text-gray-900">Goals & Motivation</h3>
+                <h3 className="text-base md:text-lg font-medium text-gray-900 truncate">Goals & Motivation</h3>
               </button>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1.5 md:gap-2 flex-shrink-0">
                 <button
                   onClick={() => handleEdit(5)}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm text-blue-600 hover:text-blue-700 hover:bg-blue-50 rounded-lg transition-colors"
+                  className="inline-flex items-center gap-1 md:gap-1.5 px-2.5 md:px-3 py-1.5 text-xs md:text-sm text-blue-600 hover:text-blue-700 hover:bg-blue-50 rounded-lg transition-colors min-h-[36px] md:min-h-[40px]"
                 >
-                  <Edit2 className="w-4 h-4" />
-                  Edit
+                  <Edit2 className="w-3.5 h-3.5 md:w-4 md:h-4" />
+                  <span className="hidden sm:inline">Edit</span>
                 </button>
                 <button
                   onClick={() => toggleSection('goals')}
-                  className="p-1 hover:bg-gray-100 rounded transition-colors"
+                  className="p-1 hover:bg-gray-100 rounded transition-colors min-h-[36px] md:min-h-[40px] flex items-center justify-center"
                 >
                   {expandedSections.has('goals') ? (
-                    <ChevronUp className="w-5 h-5 text-gray-400" />
+                    <ChevronUp className="w-4 h-4 md:w-5 md:h-5 text-gray-400" />
                   ) : (
-                    <ChevronDown className="w-5 h-5 text-gray-400" />
+                    <ChevronDown className="w-4 h-4 md:w-5 md:h-5 text-gray-400" />
                   )}
                 </button>
               </div>
             </div>
 
             {expandedSections.has('goals') && (
-              <div className="px-6 pb-6 border-t border-gray-200">
+              <div className="px-4 md:px-6 pb-4 md:pb-6 border-t border-gray-200">
                 <div className="pt-4">
                   <ul className="space-y-2">
                     {snapshot.goals.map((goal, index) => (
@@ -351,39 +351,39 @@ export function WizardStepReview() {
         {/* 4. Clarify Signals */}
         {snapshot.clarifySignals && (
           <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
-            <div className="px-6 py-4 flex items-center justify-between">
+            <div className="px-4 md:px-6 py-3 md:py-4 flex items-center justify-between gap-2">
               <button
                 onClick={() => toggleSection('clarify')}
-                className="flex items-center gap-3 flex-1 text-left hover:opacity-80 transition-opacity"
+                className="flex items-center gap-2 md:gap-3 flex-1 text-left hover:opacity-80 transition-opacity min-w-0"
               >
-                <div className="w-8 h-8 rounded-lg bg-orange-100 flex items-center justify-center">
-                  <Briefcase className="w-5 h-5 text-orange-600" />
+                <div className="w-7 h-7 md:w-8 md:h-8 rounded-lg bg-orange-100 flex items-center justify-center flex-shrink-0">
+                  <Briefcase className="w-4 h-4 md:w-5 md:h-5 text-orange-600" />
                 </div>
-                <h3 className="text-lg font-medium text-gray-900">Clarify Signals</h3>
+                <h3 className="text-base md:text-lg font-medium text-gray-900 truncate">Clarify Signals</h3>
               </button>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1.5 md:gap-2 flex-shrink-0">
                 <button
                   onClick={() => handleEdit(6)}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm text-blue-600 hover:text-blue-700 hover:bg-blue-50 rounded-lg transition-colors"
+                  className="inline-flex items-center gap-1 md:gap-1.5 px-2.5 md:px-3 py-1.5 text-xs md:text-sm text-blue-600 hover:text-blue-700 hover:bg-blue-50 rounded-lg transition-colors min-h-[36px] md:min-h-[40px]"
                 >
-                  <Edit2 className="w-4 h-4" />
-                  Edit
+                  <Edit2 className="w-3.5 h-3.5 md:w-4 md:h-4" />
+                  <span className="hidden sm:inline">Edit</span>
                 </button>
                 <button
                   onClick={() => toggleSection('clarify')}
-                  className="p-1 hover:bg-gray-100 rounded transition-colors"
+                  className="p-1 hover:bg-gray-100 rounded transition-colors min-h-[36px] md:min-h-[40px] flex items-center justify-center"
                 >
                   {expandedSections.has('clarify') ? (
-                    <ChevronUp className="w-5 h-5 text-gray-400" />
+                    <ChevronUp className="w-4 h-4 md:w-5 md:h-5 text-gray-400" />
                   ) : (
-                    <ChevronDown className="w-5 h-5 text-gray-400" />
+                    <ChevronDown className="w-4 h-4 md:w-5 md:h-5 text-gray-400" />
                   )}
                 </button>
               </div>
             </div>
 
             {expandedSections.has('clarify') && (
-              <div className="px-6 pb-6 border-t border-gray-200">
+              <div className="px-4 md:px-6 pb-4 md:pb-6 border-t border-gray-200">
                 <div className="pt-4">
                   <div className="space-y-3">
                     {Object.entries(clarifyLabels).map(([key, label]) => {

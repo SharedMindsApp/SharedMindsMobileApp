@@ -185,21 +185,127 @@ export async function deleteEvent(eventId: string): Promise<void> {
   if (error) throw error;
 }
 
+/**
+ * Move an event to a new date/time (drag & drop)
+ * 
+ * Phase 5: For personal events, uses updatePersonalCalendarEvent to ensure
+ * task carry-over works correctly (event-linked tasks automatically move).
+ */
 export async function moveEvent(
   eventId: string,
   newStartDate: Date,
   newEndDate: Date
 ): Promise<CalendarEvent> {
+  // Check if this is a personal event (has user_id, not household_id)
+  const { data: event, error: fetchError } = await supabase
+    .from('calendar_events')
+    .select('user_id, household_id')
+    .eq('id', eventId)
+    .single();
+
+  if (fetchError) {
+    console.error('[moveEvent] Error fetching event:', fetchError);
+    // Fallback to standard update
+    return updateEvent(eventId, {
+      start_at: newStartDate.toISOString(),
+      end_at: newEndDate.toISOString()
+    });
+  }
+
+  // If event has user_id and no household_id, it's a personal event
+  // Use updatePersonalCalendarEvent for proper task carry-over
+  if (event?.user_id && !event?.household_id) {
+    const { updatePersonalCalendarEvent } = await import('./personalSpaces/calendarService');
+    const updated = await updatePersonalCalendarEvent(
+      event.user_id,
+      eventId,
+      {
+        startAt: newStartDate.toISOString(),
+        endAt: newEndDate.toISOString()
+      }
+    );
+    // Convert PersonalCalendarEvent back to CalendarEvent format
+    return {
+      id: updated.id,
+      title: updated.title,
+      description: updated.description || '',
+      start_at: updated.startAt,
+      end_at: updated.endAt || null,
+      all_day: updated.allDay,
+      event_type: updated.event_type || 'event',
+      color: null,
+      location: null,
+      created_by: updated.userId,
+      household_id: null,
+      user_id: updated.userId,
+      created_at: updated.createdAt,
+      updated_at: updated.updatedAt,
+    } as CalendarEvent;
+  }
+
+  // For household events, use standard update
   return updateEvent(eventId, {
     start_at: newStartDate.toISOString(),
     end_at: newEndDate.toISOString()
   });
 }
 
+/**
+ * Resize an event (change end time)
+ * 
+ * Phase 5: For personal events, uses updatePersonalCalendarEvent to ensure
+ * task carry-over works correctly (though end_at changes don't affect task dates).
+ */
 export async function resizeEvent(
   eventId: string,
   newEndDate: Date
 ): Promise<CalendarEvent> {
+  // Check if this is a personal event (has user_id, not household_id)
+  const { data: event, error: fetchError } = await supabase
+    .from('calendar_events')
+    .select('user_id, household_id')
+    .eq('id', eventId)
+    .single();
+
+  if (fetchError) {
+    console.error('[resizeEvent] Error fetching event:', fetchError);
+    // Fallback to standard update
+    return updateEvent(eventId, {
+      end_at: newEndDate.toISOString()
+    });
+  }
+
+  // If event has user_id and no household_id, it's a personal event
+  // Use updatePersonalCalendarEvent for consistency (end_at changes don't affect task dates)
+  if (event?.user_id && !event?.household_id) {
+    const { updatePersonalCalendarEvent } = await import('./personalSpaces/calendarService');
+    const updated = await updatePersonalCalendarEvent(
+      event.user_id,
+      eventId,
+      {
+        endAt: newEndDate.toISOString()
+      }
+    );
+    // Convert PersonalCalendarEvent back to CalendarEvent format
+    return {
+      id: updated.id,
+      title: updated.title,
+      description: updated.description || '',
+      start_at: updated.startAt,
+      end_at: updated.endAt || null,
+      all_day: updated.allDay,
+      event_type: updated.event_type || 'event',
+      color: null,
+      location: null,
+      created_by: updated.userId,
+      household_id: null,
+      user_id: updated.userId,
+      created_at: updated.createdAt,
+      updated_at: updated.updatedAt,
+    } as CalendarEvent;
+  }
+
+  // For household events, use standard update
   return updateEvent(eventId, {
     end_at: newEndDate.toISOString()
   });

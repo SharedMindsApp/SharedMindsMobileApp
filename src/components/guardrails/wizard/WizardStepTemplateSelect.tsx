@@ -287,15 +287,15 @@ export function WizardStepTemplateSelect() {
               >
                 {isSelected && <Check className="w-3 h-3 text-white" />}
               </div>
-              <div className="flex-1">
-                <div className="flex items-center gap-2 mb-1">
-                  <div className="font-semibold text-gray-900">{template.name}</div>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 mb-1 flex-wrap">
+                  <div className="font-semibold text-gray-900 text-sm md:text-base truncate">{template.name}</div>
                   {getDomainBadge(template.domain_type)}
                 </div>
                 {template.description && (
-                  <div className="text-sm text-gray-600 mt-1">{template.description}</div>
+                  <div className="text-xs md:text-sm text-gray-600 mt-1">{template.description}</div>
                 )}
-                <div className="text-xs text-gray-500 mt-2">
+                <div className="text-xs text-gray-500 mt-1.5 md:mt-2">
                   {template.subtracks.length} subtrack{template.subtracks.length !== 1 ? 's' : ''}
                 </div>
               </div>
@@ -324,16 +324,16 @@ export function WizardStepTemplateSelect() {
             </button>
 
             {isExpanded && (
-              <div className="mt-3 space-y-1.5 pl-6">
+              <div className="mt-2 md:mt-3 space-y-1.5 pl-4 md:pl-6">
                 {template.subtracks.map((subtrack, index) => (
                   <div
                     key={subtrack.id}
-                    className="flex items-center gap-2 py-1.5 px-3 bg-white bg-opacity-60 rounded text-sm"
+                    className="flex items-start gap-2 py-1.5 px-2.5 md:px-3 bg-white bg-opacity-60 rounded text-xs md:text-sm min-w-0"
                   >
-                    <span className="text-gray-400 font-mono text-xs">{index + 1}.</span>
-                    <span className="font-medium text-gray-900">{subtrack.name}</span>
+                    <span className="text-gray-400 font-mono text-xs flex-shrink-0">{index + 1}.</span>
+                    <span className="font-medium text-gray-900 min-w-0 truncate">{subtrack.name}</span>
                     {subtrack.description && (
-                      <span className="text-gray-500 text-xs">— {subtrack.description}</span>
+                      <span className="text-gray-500 text-xs hidden md:inline">— {subtrack.description}</span>
                     )}
                   </div>
                 ))}
@@ -367,44 +367,44 @@ export function WizardStepTemplateSelect() {
         )}
       </div>
 
-      <div className="mb-6">
+      <div className="mb-4 md:mb-6">
         <button
           onClick={() => setShowCreateModal(true)}
-          className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-white border-2 border-dashed border-blue-300 rounded-lg text-blue-600 hover:bg-blue-50 hover:border-blue-400 transition-all font-medium"
+          className="w-full flex items-center justify-center gap-2 px-4 py-2.5 md:py-3 bg-white border-2 border-dashed border-blue-300 rounded-lg text-blue-600 hover:bg-blue-50 hover:border-blue-400 transition-all font-medium text-sm md:text-base min-h-[44px]"
         >
-          <Plus className="w-5 h-5" />
+          <Plus className="w-4 h-4 md:w-5 md:h-5" />
           Create Custom Template
         </button>
       </div>
 
       {templates.length === 0 && !loading && (
-        <div className="mb-6 p-4 bg-amber-50 border border-amber-200 rounded-lg">
+        <div className="mb-4 md:mb-6 p-3 md:p-4 bg-amber-50 border border-amber-200 rounded-lg">
           <div className="flex items-center gap-2">
-            <span className="text-amber-800 font-medium">
-              No templates found for this domain. Create a custom template to get started.
+            <span className="text-xs md:text-sm text-amber-800 font-medium">
+              No templates found for this domain. <span className="hidden sm:inline">Create a custom template to get started.</span>
             </span>
           </div>
         </div>
       )}
 
       {templates.length > 0 && (
-        <div className="mb-6 p-3 bg-gray-50 border border-gray-200 rounded-lg text-sm text-gray-600">
+        <div className="mb-4 md:mb-6 p-2.5 md:p-3 bg-gray-50 border border-gray-200 rounded-lg text-xs md:text-sm text-gray-600">
           Showing {templates.length} template{templates.length !== 1 ? 's' : ''} for{' '}
           <span className="font-semibold">{displayDomainConfig?.name || domainConfig?.label}</span> domain
-          {' '}({defaultTemplates.length} default, {systemTemplates.length} additional, {userTemplates.length} custom)
+          <span className="hidden sm:inline"> ({defaultTemplates.length} default, {systemTemplates.length} additional, {userTemplates.length} custom)</span>
         </div>
       )}
 
       {defaultTemplates.length > 0 && (
-        <div className="mb-8">
-          <div className="flex items-center gap-2 mb-4">
-            <Sparkles className="w-5 h-5 text-green-600" />
-            <h3 className="text-lg font-semibold text-gray-900">
+        <div className="mb-6 md:mb-8">
+          <div className="flex items-center gap-2 mb-3 md:mb-4">
+            <Sparkles className="w-4 h-4 md:w-5 md:h-5 text-green-600 flex-shrink-0" />
+            <h3 className="text-base md:text-lg font-semibold text-gray-900">
               Recommended Templates ({defaultTemplates.length})
             </h3>
           </div>
-          <div className="mb-3 p-3 bg-green-50 border border-green-200 rounded-lg text-sm text-green-800">
-            These are the recommended starting templates for your domain. Click to select or deselect.
+          <div className="mb-2 md:mb-3 p-2.5 md:p-3 bg-green-50 border border-green-200 rounded-lg text-xs md:text-sm text-green-800">
+            <span className="hidden sm:inline">These are the recommended starting templates for your domain. </span>Click to select or deselect.
           </div>
           <div className="space-y-2">
             {defaultTemplates.map(template =>

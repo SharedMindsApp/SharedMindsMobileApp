@@ -169,7 +169,7 @@ export function WizardStepIdeaIntake() {
                      initialExpectations.trim().length > 0;
 
   return (
-    <div className="max-w-3xl mx-auto px-6 py-8">
+    <div className="max-w-3xl mx-auto px-4 md:px-6 py-6 md:py-8 w-full">
       {state.aiError && (
         <AIErrorBanner
           error={state.aiError}
@@ -178,16 +178,16 @@ export function WizardStepIdeaIntake() {
         />
       )}
 
-      <div className="mb-8">
-        <h2 className="text-2xl font-bold text-gray-900 mb-2">Describe Your Project Idea</h2>
-        <p className="text-gray-600">
+      <div className="mb-6 md:mb-8">
+        <h2 className="text-xl md:text-2xl font-bold text-gray-900 mb-2">Describe Your Project Idea</h2>
+        <p className="text-sm md:text-base text-gray-600 px-2">
           Tell us what you think this project is about. Don't worry about planning or execution yet.
         </p>
       </div>
 
-      <div className="space-y-6 mb-6">
+      <div className="space-y-4 md:space-y-6 mb-4 md:mb-6">
         {/* Core Idea Description */}
-        <div className="bg-white border border-gray-200 rounded-xl p-6">
+        <div className="bg-white border border-gray-200 rounded-xl p-4 md:p-6">
           <div className="flex items-center justify-between mb-2">
             <label htmlFor="coreIdea" className="block text-sm font-semibold text-gray-900">
               Describe your project idea <span className="text-red-500">*</span>

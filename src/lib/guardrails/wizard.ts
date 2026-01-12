@@ -9,6 +9,7 @@ import type {
 import type { Track } from './tracksTypes';
 import type { SubTrack } from './subtracksTypes';
 import type { AnyTrackTemplate } from './templateTypes';
+import { saveUniversalTrackInfo } from './universalTrackInfo';
 import {
   getDefaultTemplatesForDomain,
   getTrackTemplateById,
@@ -21,7 +22,7 @@ import {
   isUserTrackTemplate,
   createTrackFromUserTemplate as createTrackFromUserTemplateUtil,
 } from './userTemplates';
-import { getTracksByProject } from './trackService';
+import { getTracksByProject, getTrackChildren } from './trackService';
 
 async function resolveTemplatesForWizard(
   input: TemplateResolutionInput
@@ -135,6 +136,9 @@ export async function createProjectWithWizard(
     selected_system_template_ids,
     selected_user_template_ids,
     generate_initial_roadmap = false,
+    quick_goal,
+    first_priority_track_template_id,
+    wizard_track_setup,
   } = input;
 
   if (!domain_type) {
@@ -149,8 +153,8 @@ export async function createProjectWithWizard(
   const project = await createMasterProject(domain_id, name, description);
 
   await supabase
-    .from('guardrails_master_projects')
-    .update({ wizard_completed: true })
+    .from('master_projects')
+    .update({ has_completed_wizard: true })
     .eq('id', project.id);
 
   const resolvedTemplates = await resolveTemplatesForWizard({
@@ -161,9 +165,22 @@ export async function createProjectWithWizard(
     selected_user_template_ids,
   });
 
+  console.log('[WIZARD] Resolved templates:', {
+    count: resolvedTemplates.length,
+    templates: resolvedTemplates.map(t => ({ id: t.id, name: t.name })),
+    use_default_templates,
+    selected_default_template_ids,
+    selected_system_template_ids,
+    selected_user_template_ids,
+  });
+
   const tracks: Track[] = [];
   const subtracks: SubTrack[] = [];
   const roadmapPreview: RoadmapItemPreview[] = [];
+
+  if (resolvedTemplates.length === 0) {
+    console.warn('[WIZARD] No templates resolved! Tracks will not be created.');
+  }
 
   for (const template of resolvedTemplates) {
     if (!template.id || typeof template.id !== 'string' || template.id === 'undefined') {
@@ -194,22 +211,46 @@ export async function createProjectWithWizard(
 
       tracks.push(createdTrack);
 
-      const { data: createdSubtracks, error } = await supabase
-        .from('guardrails_subtracks')
-        .select('*')
-        .eq('track_id', track.id)
-        .order('ordering_index', { ascending: true });
+      // Query subtracks from guardrails_tracks using parent_track_id (hierarchical architecture)
+      const createdSubtrackTracks = await getTrackChildren(track.id);
+      
+      // Convert Track[] to SubTrack[] format
+      const createdSubtracks: SubTrack[] = createdSubtrackTracks.map((subtrackTrack) => ({
+        id: subtrackTrack.id,
+        track_id: subtrackTrack.parentTrackId!,
+        name: subtrackTrack.name,
+        description: subtrackTrack.description || null,
+        ordering_index: subtrackTrack.orderingIndex,
+        is_default: subtrackTrack.metadata?.is_default ?? false,
+        start_date: subtrackTrack.metadata?.start_date || null,
+        end_date: subtrackTrack.metadata?.end_date || null,
+        created_at: subtrackTrack.createdAt,
+        updated_at: subtrackTrack.updatedAt,
+      }));
 
-      if (!error && createdSubtracks) {
+      if (createdSubtracks.length > 0) {
         subtracks.push(...createdSubtracks);
 
         if (generate_initial_roadmap) {
+          const isPriorityTrack = first_priority_track_template_id === template.id;
           for (const subtrack of createdSubtracks) {
+            // Generate smarter title using subtrack name
+            let itemTitle = subtrack.name;
+            if (!itemTitle.toLowerCase().startsWith('complete')) {
+              itemTitle = `Complete ${itemTitle}`;
+            }
+            
+            // Enhance with quick goal if provided and applicable
+            if (quick_goal && isPriorityTrack) {
+              // Could use quick_goal to enhance description, but for now just use for priority
+            }
+            
             roadmapPreview.push({
               track_id: track.id,
               subtrack_id: subtrack.id,
-              title: subtrack.name,
+              title: itemTitle,
               status: 'not_started',
+              metadata: isPriorityTrack ? { priority: true } : undefined,
             });
           }
         }
@@ -238,14 +279,100 @@ export async function createProjectWithWizard(
       subtracks.push(...result.subtracks);
 
       if (generate_initial_roadmap && result.subtracks.length > 0) {
+        const isPriorityTrack = first_priority_track_template_id === template.id;
         for (const subtrack of result.subtracks) {
+          // Generate smarter title using subtrack name
+          let itemTitle = subtrack.name;
+          if (!itemTitle.toLowerCase().startsWith('complete')) {
+            itemTitle = `Complete ${itemTitle}`;
+          }
+          
           roadmapPreview.push({
             track_id: result.track.id,
             subtrack_id: subtrack.id,
-            title: subtrack.name,
+            title: itemTitle,
             status: 'not_started',
+            metadata: isPriorityTrack ? { priority: true } : undefined,
           });
         }
+      }
+    }
+  }
+
+  // Save universal track info for all tracks (Quick Setup Step 3 data)
+  if (wizard_track_setup && wizard_track_setup.length > 0) {
+    // Build template ID to track ID mapping
+    const templateToTrackMap = new Map<string, string>();
+    
+    // Fetch template_id from database for all tracks
+    const trackIds = tracks.map(t => t.id);
+    if (trackIds.length > 0) {
+      const { data: tracksWithTemplate, error } = await supabase
+        .from('guardrails_tracks')
+        .select('id, template_id, name')
+        .in('id', trackIds);
+      
+      if (!error && tracksWithTemplate) {
+        for (const dbTrack of tracksWithTemplate) {
+          if (dbTrack.template_id) {
+            templateToTrackMap.set(dbTrack.template_id, dbTrack.id);
+          }
+        }
+      }
+    }
+    
+    // Fallback: match by name for any tracks that weren't matched by template_id
+    const trackIdsInMap = new Set(templateToTrackMap.values());
+    for (const track of tracks) {
+      if (!trackIdsInMap.has(track.id)) {
+        const matchingSetup = wizard_track_setup.find(
+          setup => {
+            const template = resolvedTemplates.find(t => t.id === setup.track_template_id);
+            return template && template.name === track.name;
+          }
+        );
+        if (matchingSetup) {
+          templateToTrackMap.set(matchingSetup.track_template_id, track.id);
+          trackIdsInMap.add(track.id);
+        }
+      }
+    }
+
+    // Save universal track info for each track
+    console.log('[WIZARD] Saving universal track info:', {
+      wizardTrackSetupCount: wizard_track_setup.length,
+      templateToTrackMapSize: templateToTrackMap.size,
+      templateToTrackMap: Array.from(templateToTrackMap.entries()),
+    });
+
+    for (const setup of wizard_track_setup) {
+      const trackId = templateToTrackMap.get(setup.track_template_id);
+      if (trackId) {
+        try {
+          console.log('[WIZARD] Saving universal track info for track:', {
+            trackId,
+            templateId: setup.track_template_id,
+            objective: setup.objective,
+            definition_of_done: setup.definition_of_done,
+            time_mode: setup.time_mode,
+          });
+          await saveUniversalTrackInfo({
+            master_project_id: project.id,
+            track_id: trackId,
+            objective: setup.objective,
+            definition_of_done: setup.definition_of_done,
+            time_mode: setup.time_mode,
+            start_date: setup.start_date || null,
+            end_date: setup.end_date || null,
+            target_date: setup.target_date || null,
+          });
+          console.log('[WIZARD] Successfully saved universal track info for track:', trackId);
+        } catch (error) {
+          console.error(`Failed to save universal track info for track ${trackId}:`, error);
+          // Continue with other tracks even if one fails
+        }
+      } else {
+        console.warn('[WIZARD] No track ID found for template:', setup.track_template_id);
       }
     }
   }
@@ -320,13 +447,24 @@ export async function addTracksToProject(input: {
 
       tracks.push(createdTrack);
 
-      const { data: createdSubtracks, error } = await supabase
-        .from('guardrails_subtracks')
-        .select('*')
-        .eq('track_id', track.id)
-        .order('ordering_index', { ascending: true });
+      // Query subtracks from guardrails_tracks using parent_track_id (hierarchical architecture)
+      const createdSubtrackTracks = await getTrackChildren(track.id);
+      
+      // Convert Track[] to SubTrack[] format
+      const createdSubtracks: SubTrack[] = createdSubtrackTracks.map((subtrackTrack) => ({
+        id: subtrackTrack.id,
+        track_id: subtrackTrack.parentTrackId!,
+        name: subtrackTrack.name,
+        description: subtrackTrack.description || null,
+        ordering_index: subtrackTrack.orderingIndex,
+        is_default: subtrackTrack.metadata?.is_default ?? false,
+        start_date: subtrackTrack.metadata?.start_date || null,
+        end_date: subtrackTrack.metadata?.end_date || null,
+        created_at: subtrackTrack.createdAt,
+        updated_at: subtrackTrack.updatedAt,
+      }));
 
-      if (!error && createdSubtracks) {
+      if (createdSubtracks.length > 0) {
         subtracks.push(...createdSubtracks);
       }
     } else {
@@ -353,8 +491,8 @@ export async function addTracksToProject(input: {
   }
 
   await supabase
-    .from('guardrails_master_projects')
-    .update({ wizard_completed: true })
+    .from('master_projects')
+    .update({ has_completed_wizard: true })
     .eq('id', project_id);
 
   return {

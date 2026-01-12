@@ -55,7 +55,7 @@ import { emitFromInteractionEvent, batchEmitFromInteractionEvents } from './tele
  * These are authoritative sources owned by other systems.
  *
  * Guardrails owns:
- * - master_projects, domains, guardrails_tracks_v2
+ * - master_projects, domains, guardrails_tracks
  * - roadmap_items_v2, side_projects, offshoot_ideas
  * - project_users, people, global_people
  *
@@ -70,7 +70,7 @@ const FORBIDDEN_TABLES = new Set([
   // Guardrails tables (NEVER mutate)
   'master_projects',
   'domains',
-  'guardrails_tracks_v2',
+  'guardrails_tracks',
   'roadmap_items_v2',
   'side_projects',
   'offshoot_ideas',
@@ -730,7 +730,7 @@ function assertNoGuardrailsMutations(
       case 'create_guardrails_track':
         // CONTROLLED EXCEPTION: Integrated container creation may create Guardrails entities
         // This is validated at plan time and is atomic with Mind Mesh container creation
-        targetTable = 'guardrails_tracks_v2';
+        targetTable = 'guardrails_tracks';
         break;
       case 'create_guardrails_roadmap_item':
         // CONTROLLED EXCEPTION: Integrated task/event creation creates Guardrails roadmap items

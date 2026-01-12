@@ -308,12 +308,12 @@ export async function getRoadmapItemsWithMultipleAssignees(
         metadata,
         created_at,
         updated_at,
-        guardrails_tracks_v2!inner (
+        guardrails_tracks!inner (
           master_project_id
         )
       )
     `)
-    .eq('roadmap_items.guardrails_tracks_v2.master_project_id', masterProjectId);
+    .eq('roadmap_items.guardrails_tracks.master_project_id', masterProjectId);
 
   if (error) throw error;
 
@@ -365,11 +365,11 @@ export async function getUnassignedRoadmapItems(
       metadata,
       created_at,
       updated_at,
-      guardrails_tracks_v2!inner (
+      guardrails_tracks!inner (
         master_project_id
       )
     `)
-    .eq('guardrails_tracks_v2.master_project_id', masterProjectId);
+    .eq('guardrails_tracks.master_project_id', masterProjectId);
 
   if (error) throw error;
 

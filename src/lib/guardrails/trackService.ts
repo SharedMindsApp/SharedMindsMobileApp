@@ -10,7 +10,7 @@ import type {
 } from './coreTypes';
 import { CATEGORY_RULES } from './coreTypes';
 
-const TABLE_NAME = 'guardrails_tracks_v2';
+const TABLE_NAME = 'guardrails_tracks';
 
 function camelToSnake(str: string): string {
   return str.replace(/[A-Z]/g, (letter) => `_${letter.toLowerCase()}`);
@@ -29,6 +29,12 @@ function transformKeysToSnake(obj: Record<string, any>): Record<string, any> {
 }
 
 function transformKeysFromDb(row: any): Track {
+  // Default includeInRoadmap to true if not set (tracks should be visible by default)
+  // The database column has DEFAULT true, but existing tracks might have NULL values
+  const includeInRoadmap = row.include_in_roadmap !== undefined && row.include_in_roadmap !== null 
+    ? row.include_in_roadmap 
+    : true;
+  
   return {
     id: row.id,
     masterProjectId: row.master_project_id,
@@ -38,7 +44,7 @@ function transformKeysFromDb(row: any): Track {
     color: row.color,
     orderingIndex: row.ordering_index,
     category: row.category,
-    includeInRoadmap: row.include_in_roadmap,
+    includeInRoadmap: includeInRoadmap,
     status: row.status,
     templateId: row.template_id,
     metadata: row.metadata || {},
@@ -167,13 +173,13 @@ export async function updateTrack(id: string, input: UpdateTrackInput): Promise<
   return transformKeysFromDb(data);
 }
 
+/**
+ * @deprecated Use softDeleteTrack from trackSoftDeleteService instead
+ * This function now performs a soft delete for backward compatibility
+ */
 export async function deleteTrack(id: string): Promise<void> {
-  const { error } = await supabase
-    .from(TABLE_NAME)
-    .delete()
-    .eq('id', id);
-
-  if (error) throw error;
+  const { softDeleteTrack } = await import('./trackSoftDeleteService');
+  await softDeleteTrack(id);
 }
 
 export async function getTrack(id: string): Promise<Track | null> {
@@ -181,6 +187,7 @@ export async function getTrack(id: string): Promise<Track | null> {
     .from(TABLE_NAME)
     .select('*')
     .eq('id', id)
+    .is('deleted_at', null)
     .maybeSingle();
 
   if (error) throw error;
@@ -194,6 +201,7 @@ export async function getTracksByProject(masterProjectId: string): Promise<Track
     .from(TABLE_NAME)
     .select('*')
     .eq('master_project_id', masterProjectId)
+    .is('deleted_at', null)
     .order('ordering_index', { ascending: true });
 
   if (error) throw error;
@@ -209,6 +217,7 @@ export async function getTracksByCategory(
     .select('*')
     .eq('master_project_id', masterProjectId)
     .eq('category', category)
+    .is('deleted_at', null)
     .order('ordering_index', { ascending: true });
 
   if (error) throw error;
@@ -220,6 +229,7 @@ export async function getTrackChildren(trackId: string): Promise<Track[]> {
     .from(TABLE_NAME)
     .select('*')
     .eq('parent_track_id', trackId)
+    .is('deleted_at', null)
     .order('ordering_index', { ascending: true });
 
   if (error) throw error;

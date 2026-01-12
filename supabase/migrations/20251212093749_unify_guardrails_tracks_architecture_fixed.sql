@@ -4,14 +4,14 @@
   ## Overview
   This migration transforms the fragmented track system into a unified architecture where:
   - ONE Track entity rules all (no separate subtracks, side_projects, offshoot_ideas tables)
-  - Hierarchy is achieved via parent_track_id (already exists in tracks_v2)
+  - Hierarchy is achieved via parent_track_id (already exists in guardrails_tracks)
   - State is managed via category field (main, side_project, offshoot_idea)
   - Roadmap visibility is explicit via include_in_roadmap boolean
   - Templates are creation-only, never referenced in runtime except metadata
 
   ## Changes
 
-  1. **Extend guardrails_tracks_v2 with new fields**
+  1. **Extend guardrails_tracks with new fields**
      - `category` enum: 'main', 'side_project', 'offshoot_idea' (default: 'main')
      - `include_in_roadmap` boolean (default: true for main, false for offshoots)
      - `status` enum: 'active', 'completed', 'archived' (default: 'active')
@@ -27,8 +27,8 @@
      - Offshoot → Parent Track connections
 
   4. **Data Migration**
-     - Migrate side_projects → tracks_v2 with category='side_project'
-     - Migrate offshoot_ideas → tracks_v2 with category='offshoot_idea'
+     - Migrate side_projects → guardrails_tracks with category='side_project'
+     - Migrate offshoot_ideas → guardrails_tracks with category='offshoot_idea'
      - Preserve all relationships
 
   ## Security
@@ -38,7 +38,7 @@
 
   ## Important Notes
   - Old tables (side_projects, offshoot_ideas) remain for backward compatibility during transition
-  - New code must use tracks_v2 exclusively
+  - New code must use guardrails_tracks exclusively
   - category field enforces behavioral rules (enforced at service layer, not DB)
 */
 
@@ -61,7 +61,7 @@ EXCEPTION
 END $$;
 
 -- =====================================================
--- STEP 2: Extend guardrails_tracks_v2 table
+-- STEP 2: Extend guardrails_tracks table
 -- =====================================================
 
 -- Add category field
@@ -69,9 +69,9 @@ DO $$
 BEGIN
   IF NOT EXISTS (
     SELECT 1 FROM information_schema.columns
-    WHERE table_name = 'guardrails_tracks_v2' AND column_name = 'category'
+    WHERE table_name = 'guardrails_tracks' AND column_name = 'category'
   ) THEN
-    ALTER TABLE guardrails_tracks_v2
+    ALTER TABLE guardrails_tracks
     ADD COLUMN category track_category NOT NULL DEFAULT 'main';
   END IF;
 END $$;
@@ -81,9 +81,9 @@ DO $$
 BEGIN
   IF NOT EXISTS (
     SELECT 1 FROM information_schema.columns
-    WHERE table_name = 'guardrails_tracks_v2' AND column_name = 'include_in_roadmap'
+    WHERE table_name = 'guardrails_tracks' AND column_name = 'include_in_roadmap'
   ) THEN
-    ALTER TABLE guardrails_tracks_v2
+    ALTER TABLE guardrails_tracks
     ADD COLUMN include_in_roadmap boolean NOT NULL DEFAULT true;
   END IF;
 END $$;
@@ -93,9 +93,9 @@ DO $$
 BEGIN
   IF NOT EXISTS (
     SELECT 1 FROM information_schema.columns
-    WHERE table_name = 'guardrails_tracks_v2' AND column_name = 'status'
+    WHERE table_name = 'guardrails_tracks' AND column_name = 'status'
   ) THEN
-    ALTER TABLE guardrails_tracks_v2
+    ALTER TABLE guardrails_tracks
     ADD COLUMN status track_status NOT NULL DEFAULT 'active';
   END IF;
 END $$;
@@ -105,17 +105,17 @@ DO $$
 BEGIN
   IF NOT EXISTS (
     SELECT 1 FROM information_schema.columns
-    WHERE table_name = 'guardrails_tracks_v2' AND column_name = 'template_id'
+    WHERE table_name = 'guardrails_tracks' AND column_name = 'template_id'
   ) THEN
-    ALTER TABLE guardrails_tracks_v2
+    ALTER TABLE guardrails_tracks
     ADD COLUMN template_id uuid REFERENCES guardrails_track_templates(id) ON DELETE SET NULL;
   END IF;
 END $$;
 
 -- Create index on category for fast filtering
-CREATE INDEX IF NOT EXISTS idx_tracks_v2_category ON guardrails_tracks_v2(category);
-CREATE INDEX IF NOT EXISTS idx_tracks_v2_status ON guardrails_tracks_v2(status);
-CREATE INDEX IF NOT EXISTS idx_tracks_v2_include_roadmap ON guardrails_tracks_v2(include_in_roadmap);
+CREATE INDEX IF NOT EXISTS idx_guardrails_tracks_category ON guardrails_tracks(category);
+CREATE INDEX IF NOT EXISTS idx_guardrails_tracks_status ON guardrails_tracks(status);
+CREATE INDEX IF NOT EXISTS idx_guardrails_tracks_include_roadmap ON guardrails_tracks(include_in_roadmap);
 
 -- =====================================================
 -- STEP 3: Create Mind Mesh tables
@@ -287,21 +287,21 @@ END;
 $$ LANGUAGE plpgsql;
 
 -- Trigger for new tracks
-DROP TRIGGER IF EXISTS trigger_create_track_hierarchy_connection ON guardrails_tracks_v2;
+DROP TRIGGER IF EXISTS trigger_create_track_hierarchy_connection ON guardrails_tracks;
 CREATE TRIGGER trigger_create_track_hierarchy_connection
-  AFTER INSERT ON guardrails_tracks_v2
+  AFTER INSERT ON guardrails_tracks
   FOR EACH ROW
   EXECUTE FUNCTION create_track_hierarchy_connection();
 
 -- =====================================================
--- STEP 5: Migrate side_projects to tracks_v2
+-- STEP 5: Migrate side_projects to guardrails_tracks
 -- =====================================================
 
 -- Migrate existing side projects as tracks with category='side_project'
 DO $$
 BEGIN
   IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'side_projects') THEN
-    INSERT INTO guardrails_tracks_v2 (
+    INSERT INTO guardrails_tracks (
       master_project_id,
       parent_track_id,
       name,
@@ -330,20 +330,20 @@ BEGIN
       sp.updated_at
     FROM side_projects sp
     WHERE NOT EXISTS (
-      SELECT 1 FROM guardrails_tracks_v2 t WHERE t.metadata->>'original_id' = sp.id::text
+      SELECT 1 FROM guardrails_tracks t WHERE t.metadata->>'original_id' = sp.id::text
     );
   END IF;
 END $$;
 
 -- =====================================================
--- STEP 6: Migrate offshoot_ideas to tracks_v2
+-- STEP 6: Migrate offshoot_ideas to guardrails_tracks
 -- =====================================================
 
 -- Migrate existing offshoot ideas as tracks with category='offshoot_idea'
 DO $$
 BEGIN
   IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'offshoot_ideas') THEN
-    INSERT INTO guardrails_tracks_v2 (
+    INSERT INTO guardrails_tracks (
       master_project_id,
       parent_track_id,
       name,
@@ -377,7 +377,7 @@ BEGIN
       oi.updated_at
     FROM offshoot_ideas oi
     WHERE NOT EXISTS (
-      SELECT 1 FROM guardrails_tracks_v2 t WHERE t.metadata->>'original_id' = oi.id::text
+      SELECT 1 FROM guardrails_tracks t WHERE t.metadata->>'original_id' = oi.id::text
     );
   END IF;
 END $$;
@@ -390,7 +390,7 @@ END $$;
 CREATE OR REPLACE FUNCTION convert_track_to_side_project(track_id uuid)
 RETURNS void AS $$
 BEGIN
-  UPDATE guardrails_tracks_v2
+  UPDATE guardrails_tracks
   SET
     category = 'side_project',
     include_in_roadmap = false,
@@ -399,7 +399,7 @@ BEGIN
   AND category = 'main';
   
   -- Update all descendants
-  UPDATE guardrails_tracks_v2
+  UPDATE guardrails_tracks
   SET
     category = 'side_project',
     updated_at = now()
@@ -411,7 +411,7 @@ $$ LANGUAGE plpgsql SECURITY DEFINER;
 CREATE OR REPLACE FUNCTION convert_track_to_offshoot(track_id uuid)
 RETURNS void AS $$
 BEGIN
-  UPDATE guardrails_tracks_v2
+  UPDATE guardrails_tracks
   SET
     category = 'offshoot_idea',
     include_in_roadmap = false,
@@ -437,7 +437,7 @@ BEGIN
     id,
     'offshoot',
     true
-  FROM guardrails_tracks_v2
+  FROM guardrails_tracks
   WHERE id = track_id
   AND parent_track_id IS NOT NULL
   ON CONFLICT DO NOTHING;
@@ -452,7 +452,7 @@ DECLARE
   track_record RECORD;
 BEGIN
   -- Get track details
-  SELECT * INTO track_record FROM guardrails_tracks_v2 WHERE id = track_id AND category = 'side_project';
+  SELECT * INTO track_record FROM guardrails_tracks WHERE id = track_id AND category = 'side_project';
   
   IF NOT FOUND THEN
     RAISE EXCEPTION 'Track not found or not a side project';
@@ -477,7 +477,7 @@ BEGIN
   RETURNING id INTO new_master_project_id;
   
   -- Move track and all descendants to new master project
-  UPDATE guardrails_tracks_v2
+  UPDATE guardrails_tracks
   SET
     master_project_id = new_master_project_id,
     parent_track_id = NULL,

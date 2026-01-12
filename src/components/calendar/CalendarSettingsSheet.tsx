@@ -30,6 +30,15 @@ export function CalendarSettingsSheet({ isOpen, onClose }: CalendarSettingsSheet
   const [guardRailsSyncOpen, setGuardRailsSyncOpen] = useState(false);
   const [colorPickerOpen, setColorPickerOpen] = useState(false);
   const [selectedEventType, setSelectedEventType] = useState<CalendarEventType | null>(null);
+  const [isMobile, setIsMobile] = useState(false);
+
+  // Mobile detection
+  useEffect(() => {
+    const checkMobile = () => setIsMobile(window.innerWidth < 768);
+    checkMobile();
+    window.addEventListener('resize', checkMobile);
+    return () => window.removeEventListener('resize', checkMobile);
+  }, []);
 
   // Sync local settings when settings change
   useEffect(() => {
@@ -82,7 +91,7 @@ export function CalendarSettingsSheet({ isOpen, onClose }: CalendarSettingsSheet
       closeOnBackdrop={!hasChanges}
       preventClose={hasChanges}
       footer={
-        <div className="flex gap-3">
+        <div className={`flex gap-3 ${isMobile ? 'pb-20' : ''}`}>
           <button
             onClick={handleReset}
             className="px-4 py-2.5 text-sm text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors font-medium min-h-[44px]"

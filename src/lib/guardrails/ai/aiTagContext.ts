@@ -134,7 +134,7 @@ async function buildTrackSnapshot(
   maxLength: number
 ): Promise<Record<string, any> | null> {
   const { data, error } = await supabase
-    .from('guardrails_tracks_v2')
+    .from('guardrails_tracks')
     .select('id, name, description, color, is_shared, parent_track_id')
     .eq('id', trackId)
     .maybeSingle();

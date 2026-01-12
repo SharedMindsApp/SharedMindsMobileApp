@@ -90,7 +90,7 @@ CREATE TRIGGER roadmap_items_updated_at_trigger
 CREATE INDEX IF NOT EXISTS idx_roadmap_items_type ON roadmap_items(type);
 
 -- Step 9: Create index on track_id for querying by track
-CREATE INDEX IF NOT EXISTS idx_roadmap_items_track_id_v2 ON roadmap_items(track_id) WHERE track_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_roadmap_items_track_id ON roadmap_items(track_id) WHERE track_id IS NOT NULL;
 
 -- Step 10: Update constraint to allow NULL dates
 ALTER TABLE roadmap_items DROP CONSTRAINT IF EXISTS valid_date_range;

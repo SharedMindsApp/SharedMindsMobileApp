@@ -2,13 +2,15 @@
  * CalendarSearchOverlay - Calendar Event Search
  * 
  * Overlay component for searching calendar events.
- * Slides down from top, covers content below CalendarHeader.
+ * Mobile: Bottom sheet
+ * Desktop: Full-screen overlay
  */
 
 import { useState, useEffect, useMemo, useRef } from 'react';
-import { X, Search } from 'lucide-react';
+import { X, Search, ArrowLeft } from 'lucide-react';
 import type { CalendarEventWithMembers } from '../../lib/calendarTypes';
 import { formatTime } from '../../lib/calendarUtils';
+import { BottomSheet } from '../shared/BottomSheet';
 
 interface CalendarSearchOverlayProps {
   isOpen: boolean;
@@ -25,7 +27,16 @@ export function CalendarSearchOverlay({
 }: CalendarSearchOverlayProps) {
   const [query, setQuery] = useState('');
   const [debouncedQuery, setDebouncedQuery] = useState('');
+  const [isMobile, setIsMobile] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
+
+  // Detect mobile
+  useEffect(() => {
+    const checkMobile = () => setIsMobile(window.innerWidth < 768);
+    checkMobile();
+    window.addEventListener('resize', checkMobile);
+    return () => window.removeEventListener('resize', checkMobile);
+  }, []);
 
   // Debounce search query
   useEffect(() => {
@@ -147,8 +158,131 @@ export function CalendarSearchOverlay({
     onClose();
   };
 
+  // Render search input header
+  const renderSearchHeader = () => (
+    <div className="flex items-center gap-3 w-full">
+      {/* Back Button - Mobile only */}
+      {isMobile && (
+        <button
+          onClick={onClose}
+          className="min-w-[44px] min-h-[44px] flex items-center justify-center rounded-lg hover:bg-gray-100 active:bg-gray-200 transition-colors flex-shrink-0 -ml-2"
+          aria-label="Back to calendar"
+        >
+          <ArrowLeft size={20} className="text-gray-700" />
+        </button>
+      )}
+      <Search size={20} className="text-gray-400 flex-shrink-0" />
+      <input
+        ref={inputRef}
+        type="text"
+        placeholder="Search events…"
+        value={query}
+        onChange={(e) => setQuery(e.target.value)}
+        onKeyDown={(e) => {
+          // Handle Enter key on input
+          if (e.key === 'Enter' && filteredEvents.length > 0) {
+            e.preventDefault();
+            onEventSelect(filteredEvents[0]);
+          }
+        }}
+        className="flex-1 text-base bg-transparent border-none outline-none text-gray-900 placeholder-gray-400"
+        autoFocus={!isMobile} // Auto-focus on desktop, mobile will focus after animation
+      />
+      {query && (
+        <button
+          onClick={() => setQuery('')}
+          className="min-w-[44px] min-h-[44px] flex items-center justify-center rounded-lg hover:bg-gray-100 active:bg-gray-200 transition-colors flex-shrink-0"
+          aria-label="Clear search"
+        >
+          <X size={18} className="text-gray-500" />
+        </button>
+      )}
+    </div>
+  );
+
+  // Render search results
+  const renderResults = () => {
+    if (!debouncedQuery.trim()) {
+      return (
+        <div className="flex items-center justify-center h-full p-8">
+          <p className="text-sm text-gray-500 text-center">
+            Search your calendar by event name or description
+          </p>
+        </div>
+      );
+    }
+
+    if (filteredEvents.length === 0) {
+      return (
+        <div className="flex items-center justify-center h-full p-8">
+          <p className="text-sm text-gray-500 text-center">
+            No matching events found
+          </p>
+        </div>
+      );
+    }
+
+    return (
+      <div className="divide-y divide-gray-100">
+        {filteredEvents.map((event) => {
+          const eventDate = new Date(event.start_at);
+          return (
+            <button
+              key={event.id}
+              onClick={() => handleEventClick(event)}
+              className="w-full px-4 py-3 text-left hover:bg-gray-50 active:bg-gray-100 transition-colors flex items-start gap-3 min-h-[44px]"
+            >
+              {/* Color Indicator */}
+              <div
+                className={`w-3 h-3 rounded-full flex-shrink-0 mt-1.5 ${getEventColorClass(event.color)}`}
+                aria-hidden="true"
+              />
+
+              {/* Event Details */}
+              <div className="flex-1 min-w-0">
+                <div className="font-semibold text-gray-900 mb-0.5 truncate">
+                  {event.title}
+                </div>
+                <div className="text-sm text-gray-600 flex items-center gap-2 flex-wrap">
+                  <span>{formatEventDate(eventDate)}</span>
+                  {!event.all_day && (
+                    <>
+                      <span className="text-gray-300">·</span>
+                      <span>{formatTimeRange(event)}</span>
+                    </>
+                  )}
+                </div>
+                {event.location && (
+                  <div className="text-xs text-gray-500 mt-1 truncate">
+                    📍 {event.location}
+                  </div>
+                )}
+              </div>
+            </button>
+          );
+        })}
+      </div>
+    );
+  };
+
   if (!isOpen) return null;
 
+  // Mobile: Bottom Sheet
+  if (isMobile) {
+    return (
+      <BottomSheet
+        isOpen={isOpen}
+        onClose={onClose}
+        maxHeight="85vh"
+        header={renderSearchHeader()}
+        showCloseButton={false}
+      >
+        <div className="px-4 py-3">{renderResults()}</div>
+      </BottomSheet>
+    );
+  }
+
+  // Desktop: Full-screen overlay
   return (
     <>
       {/* Backdrop */}
@@ -188,7 +322,7 @@ export function CalendarSearchOverlay({
             {query && (
               <button
                 onClick={() => setQuery('')}
-                className="min-w-[44px] min-h-[44px] flex items-center justify-center rounded-lg hover:bg-gray-100 active:bg-gray-200 transition-colors"
+                className="min-w-[44px] min-h-[44px] flex items-center justify-center rounded-lg hover:bg-gray-100 active:bg-gray-200 transition-colors flex-shrink-0"
                 aria-label="Clear search"
               >
                 <X size={18} className="text-gray-500" />
@@ -198,60 +332,8 @@ export function CalendarSearchOverlay({
         </div>
 
         {/* Search Results - Scrollable */}
-        <div className="flex-1 overflow-y-auto overscroll-contain">
-          {!debouncedQuery.trim() ? (
-            <div className="flex items-center justify-center h-full p-8">
-              <p className="text-sm text-gray-500 text-center">
-                Search your calendar by event name or description
-              </p>
-            </div>
-          ) : filteredEvents.length === 0 ? (
-            <div className="flex items-center justify-center h-full p-8">
-              <p className="text-sm text-gray-500 text-center">
-                No matching events found
-              </p>
-            </div>
-          ) : (
-            <div className="divide-y divide-gray-100">
-              {filteredEvents.map((event) => {
-                const eventDate = new Date(event.start_at);
-                return (
-                  <button
-                    key={event.id}
-                    onClick={() => handleEventClick(event)}
-                    className="w-full px-4 py-3 text-left hover:bg-gray-50 active:bg-gray-100 transition-colors flex items-start gap-3"
-                  >
-                    {/* Color Indicator */}
-                    <div
-                      className={`w-3 h-3 rounded-full flex-shrink-0 mt-1.5 ${getEventColorClass(event.color)}`}
-                      aria-hidden="true"
-                    />
-
-                    {/* Event Details */}
-                    <div className="flex-1 min-w-0">
-                      <div className="font-semibold text-gray-900 mb-0.5 truncate">
-                        {event.title}
-                      </div>
-                      <div className="text-sm text-gray-600 flex items-center gap-2 flex-wrap">
-                        <span>{formatEventDate(eventDate)}</span>
-                        {!event.all_day && (
-                          <>
-                            <span className="text-gray-300">·</span>
-                            <span>{formatTimeRange(event)}</span>
-                          </>
-                        )}
-                      </div>
-                      {event.location && (
-                        <div className="text-xs text-gray-500 mt-1 truncate">
-                          📍 {event.location}
-                        </div>
-                      )}
-                    </div>
-                  </button>
-                );
-              })}
-            </div>
-          )}
+        <div className="flex-1 overflow-y-auto overscroll-contain safe-bottom">
+          {renderResults()}
         </div>
       </div>
     </>

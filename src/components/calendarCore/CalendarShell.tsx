@@ -47,8 +47,18 @@ function applyFilters(
     filtered = filtered.filter(event => filters.colors?.includes(event.color as any));
   }
 
+  // NOTE: created_by is a profile ID, not auth.users ID
+  // We can't reliably filter by created_by without a profile lookup
+  // For now, skip this filter for personal calendar events
+  // TODO: Add profile lookup if myEventsOnly filter is needed
   if (filters.myEventsOnly && user) {
-    filtered = filtered.filter(event => event.created_by === user.id);
+    // For personal calendar events, created_by is a profile ID
+    // We would need to look up the user's profile ID to filter correctly
+    // For now, we'll use user_id if available, or skip filtering
+    // This is a known limitation - the filter may not work correctly for personal events
+    console.warn('[CalendarShell] myEventsOnly filter may not work correctly for personal calendar events (created_by is profile ID, not user ID)');
+    // Skip the filter for now since we can't reliably match profile ID to user ID without a lookup
+    // filtered = filtered.filter(event => event.created_by === user.id);
   }
 
   return filtered;
@@ -75,6 +85,7 @@ export function CalendarShell({
     defaultView: propDefaultView,
     enableGestures = true,
     filters,
+    readOnly = false,
   } = ui;
 
   const { user } = useAuth();
@@ -119,24 +130,34 @@ export function CalendarShell({
   };
 
   const handleTimeSlotClick = (date: Date, time: string) => {
+    // Permission check: Don't allow creating events in read-only mode
+    // This prevents mutations when viewing shared calendars with read-only access
+    if (readOnly) return;
+    
     if (handlers.onTimeSlotClick) {
       handlers.onTimeSlotClick(date, time);
     }
   };
 
   const handleDayClick = (date: Date) => {
-    // In month view, single click selects the day
+    // Permission logic:
+    // - Month view: Single click selects day (read-only allowed, no mutation)
+    // - Other views: Navigation/creation requires write access
     if (navigation.view === 'month') {
       setSelectedDate(date);
-    } else if (handlers.onDayClick) {
+    } else if (!readOnly && handlers.onDayClick) {
       handlers.onDayClick(date);
-    } else if (navigation.view !== 'day') {
+    } else if (!readOnly && navigation.view !== 'day') {
       navigation.setCurrentDate(date);
       navigation.setView('day');
     }
   };
 
   const handleDayDoubleClick = (date: Date) => {
+    // Permission check: Double-click creates events, requires write access
+    // This is a mutation operation, so read-only mode must block it
+    if (readOnly) return;
+    
     if (handlers.onDayDoubleClick) {
       handlers.onDayDoubleClick(date);
     }
@@ -152,18 +173,23 @@ export function CalendarShell({
 
   // Quick add event handler (for Month view inline bar)
   const handleQuickAdd = (_title: string, date: Date) => {
+    // Permission check: Quick add creates events, requires write access
+    // Guard: Ensure handler exists and we're not in read-only mode
+    if (readOnly || !handlers.onEventCreate) return;
+    
     // Open event creation modal with the selected date
     // Note: title is captured but modals don't support pre-filled titles yet
     // This can be enhanced later to pass title to modal
-    if (handlers.onEventCreate) {
-      handlers.onEventCreate(date);
-    }
+    handlers.onEventCreate(date);
     // Clear selection after submitting
     setSelectedDate(null);
   };
 
   // Global quick add event handler (for header button)
   const handleQuickAddEvent = () => {
+    // Don't allow creating events in read-only mode
+    if (readOnly || !handlers.onEventCreate) return;
+    
     let date: Date;
 
     switch (navigation.view) {
@@ -197,9 +223,7 @@ export function CalendarShell({
         break;
     }
 
-    if (handlers.onEventCreate) {
-      handlers.onEventCreate(date);
-    }
+    handlers.onEventCreate(date);
   };
 
   // Render view
@@ -253,7 +277,10 @@ export function CalendarShell({
             events={events}
             onEventClick={handleEventClick}
             onRefresh={reload}
-            onTimeSlotClick={handleTimeSlotClick}
+            onTimeSlotClick={readOnly ? undefined : handleTimeSlotClick}
+            onPrevious={navigation.handlePrevious}
+            onNext={navigation.handleNext}
+            readOnly={readOnly}
           />
         );
       case 'month':
@@ -266,6 +293,8 @@ export function CalendarShell({
             onDayDoubleClick={handleDayDoubleClick}
             selectedDate={selectedDate}
             onDaySelect={setSelectedDate}
+            onPrevious={navigation.handlePrevious}
+            onNext={navigation.handleNext}
           />
         );
       case 'year':
@@ -329,7 +358,7 @@ export function CalendarShell({
             }
           }}
           onSearchOpen={() => setIsSearchOpen(true)}
-          onQuickAddEvent={handleQuickAddEvent}
+          onQuickAddEvent={readOnly ? undefined : handleQuickAddEvent}
         />
       )}
 
@@ -338,8 +367,8 @@ export function CalendarShell({
           {renderView()}
         </div>
 
-        {/* Quick Add Event Bar - Only visible in Month view when day is selected */}
-        {navigation.view === 'month' && selectedDate && (
+        {/* Quick Add Event Bar - Only visible in Month view when day is selected, and not read-only */}
+        {!readOnly && navigation.view === 'month' && selectedDate && (
           <CalendarQuickAddBar
             date={selectedDate}
             onSubmit={handleQuickAdd}

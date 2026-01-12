@@ -7,7 +7,7 @@
   
   Functions updated (5):
   - update_track_template_updated_at
-  - update_tracks_v2_updated_at
+  - update_guardrails_tracks_updated_at
   - update_user_skills_updated_at
   - update_user_subtrack_template_updated_at
   - update_user_track_template_updated_at
@@ -25,8 +25,8 @@ BEGIN
 END;
 $function$;
 
--- 2. update_tracks_v2_updated_at
-CREATE OR REPLACE FUNCTION public.update_tracks_v2_updated_at()
+-- 2. update_guardrails_tracks_updated_at
+CREATE OR REPLACE FUNCTION public.update_guardrails_tracks_updated_at()
 RETURNS trigger
 LANGUAGE plpgsql
 SET search_path = public
