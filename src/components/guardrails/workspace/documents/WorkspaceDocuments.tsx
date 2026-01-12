@@ -115,7 +115,7 @@ export function WorkspaceDocuments({
     } finally {
       setUploading(false);
     }
-  }, [trackId, isSubtrack, user?.id, projectId, loadDocuments]);
+  }, [trackId, subtrackId, user?.id, projectId, loadDocuments]);
 
   // Handle delete
   const handleDelete = useCallback(async (documentId: string) => {

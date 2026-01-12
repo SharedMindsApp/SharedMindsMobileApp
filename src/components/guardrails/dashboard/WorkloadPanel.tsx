@@ -49,14 +49,14 @@ export function WorkloadPanel({ domains, projects, items }: WorkloadPanelProps) 
   const maxDailyItems = Math.max(...itemsByDate.map(d => d.count), 1);
 
   return (
-    <div className="bg-white rounded-xl border border-gray-200 p-6">
-      <h2 className="text-xl font-bold text-gray-900 mb-6">Workload Distribution</h2>
+    <div className="bg-white rounded-xl border border-gray-200 p-4 md:p-6">
+      <h2 className="text-lg md:text-xl font-bold text-gray-900 mb-4 md:mb-6">Workload Distribution</h2>
 
-      <div className="space-y-6">
+      <div className="space-y-4 md:space-y-6">
         <div>
-          <div className="flex items-center gap-2 mb-4">
-            <BarChart3 size={20} className="text-gray-600" />
-            <h3 className="text-lg font-semibold text-gray-900">By Domain</h3>
+          <div className="flex items-center gap-2 mb-3 md:mb-4">
+            <BarChart3 size={18} className="md:w-5 md:h-5 text-gray-600" />
+            <h3 className="text-base md:text-lg font-semibold text-gray-900">By Domain</h3>
           </div>
           <div className="space-y-4">
             {workloadByDomain.map(({ domain, projectCount, itemCount, activeItems }) => (
@@ -81,11 +81,11 @@ export function WorkloadPanel({ domains, projects, items }: WorkloadPanelProps) 
         </div>
 
         <div>
-          <div className="flex items-center gap-2 mb-4">
-            <Calendar size={20} className="text-gray-600" />
-            <h3 className="text-lg font-semibold text-gray-900">Next 30 Days</h3>
+          <div className="flex items-center gap-2 mb-3 md:mb-4">
+            <Calendar size={18} className="md:w-5 md:h-5 text-gray-600" />
+            <h3 className="text-base md:text-lg font-semibold text-gray-900">Next 30 Days</h3>
           </div>
-          <div className="flex items-end gap-1 h-32">
+          <div className="flex items-end gap-0.5 md:gap-1 h-24 md:h-32 overflow-x-auto -mx-4 md:mx-0 px-4 md:px-0">
             {itemsByDate.map(({ date, count }, index) => {
               const height = (count / maxDailyItems) * 100;
               const isToday = date === new Date().toISOString().split('T')[0];
@@ -107,13 +107,13 @@ export function WorkloadPanel({ domains, projects, items }: WorkloadPanelProps) 
               );
             })}
           </div>
-          <div className="mt-8 flex items-center justify-center gap-4 text-xs text-gray-600">
+          <div className="mt-4 md:mt-8 flex items-center justify-center gap-3 md:gap-4 text-xs text-gray-600 flex-wrap">
             <div className="flex items-center gap-2">
-              <div className="w-3 h-3 rounded bg-blue-400" />
+              <div className="w-3 h-3 rounded bg-blue-400 flex-shrink-0" />
               <span>Regular day</span>
             </div>
             <div className="flex items-center gap-2">
-              <div className="w-3 h-3 rounded bg-blue-600" />
+              <div className="w-3 h-3 rounded bg-blue-600 flex-shrink-0" />
               <span>Today</span>
             </div>
           </div>

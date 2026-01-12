@@ -82,28 +82,28 @@ function SortableCollapsedProject({ domainProject, onExpand }: {
     <div
       ref={setNodeRef}
       style={style}
-      className={`p-4 bg-gradient-to-br ${domainConfig.colors.gradient} border ${domainConfig.colors.border} rounded-lg hover:shadow-md transition-shadow text-left relative`}
+      className={`p-3 md:p-4 bg-gradient-to-br ${domainConfig.colors.gradient} border ${domainConfig.colors.border} rounded-lg hover:shadow-md transition-shadow text-left relative`}
     >
       <div
         {...attributes}
         {...listeners}
-        className="absolute top-2 right-2 cursor-grab active:cursor-grabbing p-1 rounded hover:bg-white/50"
+        className="absolute top-2 right-2 cursor-grab active:cursor-grabbing p-1.5 rounded hover:bg-white/50 min-w-[44px] min-h-[44px] flex items-center justify-center touch-none"
       >
         <GripVertical size={16} className={domainConfig.colors.text} />
       </div>
       <button
         onClick={() => onExpand(domain.id)}
-        className="w-full text-left"
+        className="w-full text-left min-h-[44px]"
       >
-        <div className="mb-3 flex items-center gap-2">
+        <div className="mb-2 md:mb-3 flex items-center gap-2">
           <div className={`p-1.5 rounded-lg ${domainConfig.colors.light} border ${domainConfig.colors.border}`}>
-            <DomainIcon size={16} className={domainConfig.colors.text} />
+            <DomainIcon size={14} className="md:w-4 md:h-4 ${domainConfig.colors.text}" />
           </div>
           <p className={`text-xs font-semibold uppercase tracking-wide ${domainConfig.colors.text}`}>
             {domainConfig.name}
           </p>
         </div>
-        <h4 className="font-semibold text-gray-900 line-clamp-1 mb-3">
+        <h4 className="text-sm md:text-base font-semibold text-gray-900 line-clamp-1 mb-2 md:mb-3">
           {activeProject.project.name}
         </h4>
         <div className="space-y-2">
@@ -157,24 +157,24 @@ function SortableExpandedProject({ domainProject, onCollapse, expandedDomains, t
 
   return (
     <div ref={setNodeRef} style={style} className={`bg-white rounded-xl border-2 ${domainConfig.colors.border} overflow-hidden`}>
-      <div className={`p-6 border-b ${domainConfig.colors.border} bg-gradient-to-r ${domainConfig.colors.gradient}`}>
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
+      <div className={`p-4 md:p-6 border-b ${domainConfig.colors.border} bg-gradient-to-r ${domainConfig.colors.gradient}`}>
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sm:gap-4">
+          <div className="flex items-center gap-2 md:gap-3 flex-1 min-w-0">
             <div
               {...attributes}
               {...listeners}
-              className="cursor-grab active:cursor-grabbing p-2 rounded-lg hover:bg-white/50"
+              className="cursor-grab active:cursor-grabbing p-2 rounded-lg hover:bg-white/50 min-w-[44px] min-h-[44px] flex items-center justify-center touch-none"
             >
-              <GripVertical size={20} className={domainConfig.colors.text} />
+              <GripVertical size={18} className="md:w-5 md:h-5 ${domainConfig.colors.text}" />
             </div>
-            <div className={`p-2.5 rounded-xl ${domainConfig.colors.light} border ${domainConfig.colors.border}`}>
-              <DomainIcon size={24} className={domainConfig.colors.text} />
+            <div className={`p-2 md:p-2.5 rounded-xl ${domainConfig.colors.light} border ${domainConfig.colors.border}`}>
+              <DomainIcon size={20} className="md:w-6 md:h-6 ${domainConfig.colors.text}" />
             </div>
-            <div>
-              <h3 className="text-xl font-bold text-gray-900">
+            <div className="flex-1 min-w-0">
+              <h3 className="text-lg md:text-xl font-bold text-gray-900 truncate">
                 {domainConfig.name}
               </h3>
-              <p className="text-sm text-gray-600">
+              <p className="text-xs md:text-sm text-gray-600">
                 Active project
                 {hasInactive && ` • ${completedProjects.length + abandonedProjects.length} inactive`}
               </p>
@@ -182,16 +182,16 @@ function SortableExpandedProject({ domainProject, onCollapse, expandedDomains, t
           </div>
           <button
             onClick={() => onCollapse(domain.id)}
-            className={`flex items-center gap-2 px-3 py-1.5 text-sm font-medium ${domainConfig.colors.text} bg-white border ${domainConfig.colors.border} rounded-lg hover:${domainConfig.colors.light} transition-colors`}
+            className={`flex items-center justify-center gap-2 px-3 py-2 text-sm font-medium ${domainConfig.colors.text} bg-white border ${domainConfig.colors.border} rounded-lg hover:${domainConfig.colors.light} transition-colors min-h-[44px] w-full sm:w-auto`}
             title="Collapse project"
           >
             <ChevronUp size={16} />
-            Collapse
+            <span className="hidden sm:inline">Collapse</span>
           </button>
         </div>
       </div>
 
-      <div className="p-6">
+      <div className="p-4 md:p-6">
         {activeProject && (
           <div className="mb-4">
             <ProjectCard
@@ -211,15 +211,15 @@ function SortableExpandedProject({ domainProject, onCollapse, expandedDomains, t
           <div className="mt-4">
             <button
               onClick={() => toggleDomain(domain.id)}
-              className="w-full flex items-center justify-between px-4 py-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors"
+              className="w-full flex items-center justify-between px-4 py-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors min-h-[44px]"
             >
-              <span className="text-sm font-medium text-gray-700">
+              <span className="text-sm font-medium text-gray-700 text-left flex-1">
                 {isExpanded ? 'Hide' : 'Show'} Completed & Abandoned Projects ({completedProjects.length + abandonedProjects.length})
               </span>
               {isExpanded ? (
-                <ChevronDown size={20} className="text-gray-600" />
+                <ChevronDown size={20} className="text-gray-600 flex-shrink-0 ml-2" />
               ) : (
-                <ChevronRight size={20} className="text-gray-600" />
+                <ChevronRight size={20} className="text-gray-600 flex-shrink-0 ml-2" />
               )}
             </button>
 
@@ -371,13 +371,13 @@ function SortableDomainWithoutActiveProject({ domainProject, expandedDomains, to
         )}
 
         {!hasInactive && (
-          <div className="text-center py-8">
-            <p className="text-gray-500 mb-4">No projects yet</p>
+          <div className="text-center py-6 md:py-8">
+            <p className="text-sm md:text-base text-gray-500 mb-4">No projects yet</p>
             <button
               onClick={() => onCreateProject(domain.id)}
-              className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+              className="inline-flex items-center justify-center gap-2 px-4 py-2.5 md:py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm md:text-base font-medium min-h-[44px]"
             >
-              <Plus size={16} />
+              <Plus size={18} className="md:w-5 md:h-5" />
               Create Project
             </button>
           </div>
@@ -504,29 +504,29 @@ export function ProjectsOverview({
 
   if (!hasAnyProjects) {
     return (
-      <div className="space-y-6">
+      <div className="space-y-4 md:space-y-6">
         <div>
-          <h2 className="text-2xl font-bold text-gray-900 mb-2">Your Projects</h2>
-          <p className="text-gray-600">Manage and track all your master projects across domains</p>
+          <h2 className="text-xl md:text-2xl font-bold text-gray-900 mb-1 md:mb-2">Your Projects</h2>
+          <p className="text-sm md:text-base text-gray-600">Manage and track all your master projects across domains</p>
         </div>
 
-        <div className="bg-white rounded-xl border border-gray-200 p-12">
+        <div className="bg-white rounded-xl border border-gray-200 p-6 md:p-12">
           <div className="text-center max-w-lg mx-auto">
-            <div className="w-20 h-20 bg-blue-50 rounded-full flex items-center justify-center mx-auto mb-6">
-              <Plus size={40} className="text-blue-600" />
+            <div className="w-16 h-16 md:w-20 md:h-20 bg-blue-50 rounded-full flex items-center justify-center mx-auto mb-4 md:mb-6">
+              <Plus size={32} className="md:w-10 md:h-10 text-blue-600" />
             </div>
-            <h3 className="text-2xl font-bold text-gray-900 mb-3">
+            <h3 className="text-xl md:text-2xl font-bold text-gray-900 mb-2 md:mb-3">
               Create Your First Project
             </h3>
-            <p className="text-gray-600 mb-6 leading-relaxed">
+            <p className="text-sm md:text-base text-gray-600 mb-4 md:mb-6 leading-relaxed">
               Start by creating a project in one of your domains: Work, Personal, Startup, or Health.
               Each project helps you track progress, manage tasks, and achieve your goals.
             </p>
             <button
               onClick={() => onCreateProject('')}
-              className="inline-flex items-center gap-2 px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium text-lg"
+              className="inline-flex items-center justify-center gap-2 px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium text-base md:text-lg min-h-[44px]"
             >
-              <Plus size={24} />
+              <Plus size={20} className="md:w-6 md:h-6" />
               Create Project
             </button>
           </div>
@@ -536,16 +536,16 @@ export function ProjectsOverview({
   }
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-start justify-between">
+    <div className="space-y-4 md:space-y-6">
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sm:gap-4">
         <div>
-          <h2 className="text-2xl font-bold text-gray-900 mb-2">Your Projects</h2>
-          <p className="text-gray-600">Manage and track all your master projects across domains</p>
+          <h2 className="text-xl md:text-2xl font-bold text-gray-900 mb-1 md:mb-2">Your Projects</h2>
+          <p className="text-sm md:text-base text-gray-600">Manage and track all your master projects across domains</p>
         </div>
         {domainsWithAnyProject.some(({ activeProject }) => activeProject) && (
           <button
             onClick={allCollapsed ? expandAllProjects : collapseAllProjects}
-            className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+            className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors min-h-[44px] w-full sm:w-auto justify-center sm:justify-start"
           >
             {allCollapsed ? (
               <>
@@ -568,12 +568,12 @@ export function ProjectsOverview({
           collisionDetection={closestCenter}
           onDragEnd={handleDragEnd}
         >
-          <div className="bg-white rounded-xl border border-gray-200 p-6">
+          <div className="bg-white rounded-xl border border-gray-200 p-4 md:p-6">
             <SortableContext
               items={collapsedProjects.map(d => d.domain.id)}
               strategy={verticalListSortingStrategy}
             >
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4">
                 {collapsedProjects.map((domainProject) => (
                   <SortableCollapsedProject
                     key={domainProject.domain.id}

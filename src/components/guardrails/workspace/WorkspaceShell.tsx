@@ -25,7 +25,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, FolderTree, Target, FileText, BookOpen, Calendar, DollarSign, List, MoreVertical, Edit2, Trash2, Loader2 } from 'lucide-react';
+import { ArrowLeft, FolderTree, Target, FileText, BookOpen, Calendar, DollarSign, List, MoreVertical, Edit2, Trash2, Loader2, Shield } from 'lucide-react';
 import { WorkspaceOverview } from './overview/WorkspaceOverview';
 import { WorkspaceObjectives } from './objectives/WorkspaceObjectives';
 import { WorkspaceDocuments } from './documents/WorkspaceDocuments';
@@ -38,6 +38,8 @@ import { ConfirmDialog } from '../../ConfirmDialog';
 import { softDeleteTrack } from '../../../lib/guardrails/trackSoftDeleteService';
 import { updateTrack } from '../../../lib/guardrails/tracksHierarchy';
 import type { TrackV2 } from '../../../lib/guardrails/tracksHierarchy';
+import { ENABLE_ENTITY_GRANTS } from '../../../lib/featureFlags';
+import { useCanEditTrack } from '../../../hooks/permissions/useCanEditTrack';
 
 export type WorkspaceTab = 'overview' | 'objectives' | 'documents' | 'research' | 'time-planning' | 'financials' | 'roadmap-items';
 
@@ -88,6 +90,9 @@ export function WorkspaceShell({
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
+
+  // Phase 5.1: Check edit permission for Permissions menu item
+  const { canEdit: canEditTrack, loading: permissionLoading } = useCanEditTrack(trackId);
 
   useEffect(() => {
     const checkMobile = () => setIsMobile(window.innerWidth < 768);
@@ -368,6 +373,18 @@ export function WorkspaceShell({
                 >
                   <Edit2 size={16} /> Edit {isSubtrack ? 'Subtrack' : 'Track'}
                 </button>
+                {/* Phase 5.1: Permissions link (visible only when feature enabled and user has edit permission) */}
+                {ENABLE_ENTITY_GRANTS && !permissionLoading && canEditTrack && (
+                  <button
+                    onClick={() => {
+                      setMenuOpen(false);
+                      navigate(`/projects/${projectId}/tracks/${trackId}/permissions`);
+                    }}
+                    className="w-full flex items-center gap-2 px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-50 transition-colors"
+                  >
+                    <Shield size={16} /> Permissions
+                  </button>
+                )}
                 <button
                   onClick={handleDeleteClick}
                   disabled={isDeleting}

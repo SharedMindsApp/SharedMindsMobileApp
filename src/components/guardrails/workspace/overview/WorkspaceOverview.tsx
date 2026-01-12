@@ -35,6 +35,8 @@ import { updateTrack } from '../../../../lib/guardrails/tracksHierarchy';
 import { getCategoryById } from '../../../../lib/guardrails/trackCategories';
 import type { UniversalTrackInfo } from '../../../../lib/guardrails/universalTrackInfo';
 import type { ProjectTrackCategory } from '../../../../lib/guardrails/trackCategories';
+import { ENABLE_ENTITY_GRANTS } from '../../../../lib/featureFlags';
+import { WorkspacePermissionsSection } from './WorkspacePermissionsSection';
 
 export interface WorkspaceOverviewProps {
   // Context data
@@ -447,6 +449,15 @@ export function WorkspaceOverview({
             <p className="text-gray-700">{formatTimeIntent()}</p>
           )}
         </div>
+
+        {/* Phase 6.2: Access & Permissions Section */}
+        {ENABLE_ENTITY_GRANTS && (
+          <WorkspacePermissionsSection
+            projectId={projectId}
+            trackId={trackId}
+            isSubtrack={isSubtrack}
+          />
+        )}
 
         {/* Edit Mode Actions */}
         {isEditing && (

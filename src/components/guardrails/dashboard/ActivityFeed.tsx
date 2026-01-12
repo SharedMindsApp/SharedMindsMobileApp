@@ -98,31 +98,31 @@ export function ActivityFeed({ items, projects, sideIdeas = [], offshootIdeas = 
   };
 
   return (
-    <div className="bg-white rounded-xl border border-gray-200 p-6">
-      <h2 className="text-xl font-bold text-gray-900 mb-6">Recent Activity</h2>
+    <div className="bg-white rounded-xl border border-gray-200 p-4 md:p-6">
+      <h2 className="text-lg md:text-xl font-bold text-gray-900 mb-4 md:mb-6">Recent Activity</h2>
 
       {sortedActivities.length > 0 ? (
-        <div className="space-y-3 max-h-96 overflow-y-auto">
+        <div className="space-y-2 md:space-y-3 max-h-96 overflow-y-auto">
           {sortedActivities.map(activity => (
-            <div key={activity.id} className="flex items-start gap-3 p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors">
-              <div className="mt-0.5">
+            <div key={activity.id} className="flex items-start gap-2 md:gap-3 p-2.5 md:p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors">
+              <div className="mt-0.5 flex-shrink-0">
                 {getActivityIcon(activity.type)}
               </div>
               <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium text-gray-900 line-clamp-1">{activity.title}</p>
+                <p className="text-xs md:text-sm font-medium text-gray-900 line-clamp-1">{activity.title}</p>
                 {activity.description && (
-                  <p className="text-xs text-gray-600 mt-0.5">{activity.description}</p>
+                  <p className="text-xs text-gray-600 mt-0.5 line-clamp-1">{activity.description}</p>
                 )}
               </div>
-              <span className="text-xs text-gray-500 whitespace-nowrap">
+              <span className="text-xs text-gray-500 whitespace-nowrap flex-shrink-0 ml-2">
                 {getRelativeTime(activity.timestamp)}
               </span>
             </div>
           ))}
         </div>
       ) : (
-        <div className="text-center py-8">
-          <Clock size={48} className="text-gray-300 mx-auto mb-3" />
+        <div className="text-center py-6 md:py-8">
+          <Clock size={40} className="md:w-12 md:h-12 text-gray-300 mx-auto mb-3" />
           <p className="text-sm text-gray-500">No recent activity</p>
           <p className="text-xs text-gray-400 mt-1">Start creating projects and tasks to see activity</p>
         </div>

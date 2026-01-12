@@ -56,46 +56,46 @@ export function AnalyticsPanel({ items, projects }: AnalyticsPanelProps) {
   };
 
   return (
-    <div className="bg-white rounded-xl border border-gray-200 p-6">
-      <h2 className="text-xl font-bold text-gray-900 mb-6">Project Analytics</h2>
+    <div className="bg-white rounded-xl border border-gray-200 p-4 md:p-6">
+      <h2 className="text-lg md:text-xl font-bold text-gray-900 mb-4 md:mb-6">Project Analytics</h2>
 
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-        <div className="p-4 bg-gray-50 rounded-lg">
-          <div className="flex items-center gap-2 mb-2">
-            <Circle size={16} className="text-gray-600" />
-            <span className="text-sm text-gray-600">Not Started</span>
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4 mb-6 md:mb-8">
+        <div className="p-3 md:p-4 bg-gray-50 rounded-lg">
+          <div className="flex items-center gap-1.5 md:gap-2 mb-1.5 md:mb-2">
+            <Circle size={14} className="md:w-4 md:h-4 text-gray-600" />
+            <span className="text-xs md:text-sm text-gray-600">Not Started</span>
           </div>
-          <p className="text-2xl font-bold text-gray-900">{statusCounts.not_started}</p>
+          <p className="text-xl md:text-2xl font-bold text-gray-900">{statusCounts.not_started}</p>
         </div>
 
-        <div className="p-4 bg-blue-50 rounded-lg">
-          <div className="flex items-center gap-2 mb-2">
-            <Clock size={16} className="text-blue-600" />
-            <span className="text-sm text-blue-600">In Progress</span>
+        <div className="p-3 md:p-4 bg-blue-50 rounded-lg">
+          <div className="flex items-center gap-1.5 md:gap-2 mb-1.5 md:mb-2">
+            <Clock size={14} className="md:w-4 md:h-4 text-blue-600" />
+            <span className="text-xs md:text-sm text-blue-600">In Progress</span>
           </div>
-          <p className="text-2xl font-bold text-blue-900">{statusCounts.in_progress}</p>
+          <p className="text-xl md:text-2xl font-bold text-blue-900">{statusCounts.in_progress}</p>
         </div>
 
-        <div className="p-4 bg-green-50 rounded-lg">
-          <div className="flex items-center gap-2 mb-2">
-            <CheckCircle size={16} className="text-green-600" />
-            <span className="text-sm text-green-600">Completed</span>
+        <div className="p-3 md:p-4 bg-green-50 rounded-lg">
+          <div className="flex items-center gap-1.5 md:gap-2 mb-1.5 md:mb-2">
+            <CheckCircle size={14} className="md:w-4 md:h-4 text-green-600" />
+            <span className="text-xs md:text-sm text-green-600">Completed</span>
           </div>
-          <p className="text-2xl font-bold text-green-900">{statusCounts.completed}</p>
+          <p className="text-xl md:text-2xl font-bold text-green-900">{statusCounts.completed}</p>
         </div>
 
-        <div className="p-4 bg-red-50 rounded-lg">
-          <div className="flex items-center gap-2 mb-2">
-            <AlertCircle size={16} className="text-red-600" />
-            <span className="text-sm text-red-600">Blocked</span>
+        <div className="p-3 md:p-4 bg-red-50 rounded-lg">
+          <div className="flex items-center gap-1.5 md:gap-2 mb-1.5 md:mb-2">
+            <AlertCircle size={14} className="md:w-4 md:h-4 text-red-600" />
+            <span className="text-xs md:text-sm text-red-600">Blocked</span>
           </div>
-          <p className="text-2xl font-bold text-red-900">{statusCounts.blocked}</p>
+          <p className="text-xl md:text-2xl font-bold text-red-900">{statusCounts.blocked}</p>
         </div>
       </div>
 
       {projectCompletions.length > 0 && (
-        <div className="mb-8">
-          <h3 className="text-lg font-semibold text-gray-900 mb-4">Project Completion</h3>
+        <div className="mb-6 md:mb-8">
+          <h3 className="text-base md:text-lg font-semibold text-gray-900 mb-3 md:mb-4">Project Completion</h3>
           <div className="space-y-3">
             {projectCompletions.map(({ project, percentage, completed, total }) => (
               <div key={project.id}>
@@ -115,9 +115,9 @@ export function AnalyticsPanel({ items, projects }: AnalyticsPanelProps) {
         </div>
       )}
 
-      <div className="grid lg:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 md:gap-6">
         <div>
-          <h3 className="text-lg font-semibold text-gray-900 mb-4">Upcoming Tasks</h3>
+          <h3 className="text-base md:text-lg font-semibold text-gray-900 mb-3 md:mb-4">Upcoming Tasks</h3>
           {upcomingTasks.length > 0 ? (
             <div className="space-y-2">
               {upcomingTasks.map(task => (
@@ -140,7 +140,7 @@ export function AnalyticsPanel({ items, projects }: AnalyticsPanelProps) {
         </div>
 
         <div>
-          <h3 className="text-lg font-semibold text-gray-900 mb-4">Blockers</h3>
+          <h3 className="text-base md:text-lg font-semibold text-gray-900 mb-3 md:mb-4">Blockers</h3>
           {blockedTasks.length > 0 ? (
             <div className="space-y-2">
               {blockedTasks.map(task => {

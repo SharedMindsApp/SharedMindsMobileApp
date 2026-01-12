@@ -39,9 +39,10 @@
  * - ✅ Reuses RoadmapBucketCell
  */
 
-import { useMemo, useCallback, useState } from 'react';
+import { useMemo, useCallback, useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ChevronDown, ChevronRight, ChevronLeft, ChevronRight as ChevronRightIcon } from 'lucide-react';
+import { useOrientation } from '../../../../hooks/ui/useOrientation';
 import type { RoadmapProjection } from '../../../lib/guardrails/roadmapProjectionTypes';
 import type { RoadmapItem } from '../../../lib/guardrails/coreTypes';
 import {
@@ -72,12 +73,62 @@ const SIDEBAR_WIDTH_EXPANDED = 240; // Expanded sidebar width - full track names
 const BUCKET_WIDTH = 180; // Phase 3.9 UI Polish: Increased from 150px for better readability
 
 export function RoadmapMonthView({ projection, anchorDate, masterProjectId, onBucketClick, onMonthClick, onNavigateMonth, onNavigateToToday }: RoadmapMonthViewProps) {
+  const navigate = useNavigate();
+  const { isLandscape } = useOrientation();
+  
   // Get UI state management for collapse/expand
   const { toggleTrackCollapse } = useRoadmapUIState(masterProjectId);
   
-  // Sidebar collapse/expand state
+  // Phase 8.1: Orientation-aware sidebar - auto-expand in landscape for streamlined UI
   const [isSidebarExpanded, setIsSidebarExpanded] = useState(false);
-  const sidebarWidth = isSidebarExpanded ? SIDEBAR_WIDTH_EXPANDED : SIDEBAR_WIDTH_COLLAPSED;
+  
+  // Auto-expand sidebar in landscape mode
+  useEffect(() => {
+    if (isLandscape) {
+      setIsSidebarExpanded(true);
+    }
+  }, [isLandscape]);
+  
+  const sidebarWidth = isSidebarExpanded 
+    ? SIDEBAR_WIDTH_EXPANDED 
+    : SIDEBAR_WIDTH_COLLAPSED;
+  
+  // Phase 8.1: Orientation-aware bucket width (significantly wider in landscape for professional appearance)
+  const bucketWidth = isLandscape ? Math.round(BUCKET_WIDTH * 1.2) : BUCKET_WIDTH;
+  
+  // Menu state (track which row's menu is open)
+  const [openMenuId, setOpenMenuId] = useState<string | null>(null);
+  const menuRefs = useRef<Map<string, HTMLDivElement>>(new Map());
+  
+  // Assign modal state
+  const [assignModal, setAssignModal] = useState<{
+    isOpen: boolean;
+    entityType: 'track' | 'subtrack';
+    entityId: string;
+    entityName: string;
+  }>({
+    isOpen: false,
+    entityType: 'track',
+    entityId: '',
+    entityName: '',
+  });
+  
+  // Close menu when clicking outside
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (openMenuId) {
+        const menuEl = menuRefs.current.get(openMenuId);
+        if (menuEl && !menuEl.contains(event.target as Node)) {
+          setOpenMenuId(null);
+        }
+      }
+    }
+    
+    if (openMenuId) {
+      document.addEventListener('mousedown', handleClickOutside);
+      return () => document.removeEventListener('mousedown', handleClickOutside);
+    }
+  }, [openMenuId]);
 
   // Phase 3.9: Handle month header click (switch to Week view)
   const handleMonthClick = useCallback((monthStartDate: string) => {
@@ -146,6 +197,7 @@ export function RoadmapMonthView({ projection, anchorDate, masterProjectId, onBu
       parentTrackId?: string;
       hasChildren: boolean;
       isCollapsed: boolean;
+      canEdit: boolean;
       items: RoadmapItem[];
     }> = [];
 
@@ -161,6 +213,7 @@ export function RoadmapMonthView({ projection, anchorDate, masterProjectId, onBu
         isSubtrack: false,
         hasChildren,
         isCollapsed,
+        canEdit: track.canEdit,
         items: track.items,
       });
 
@@ -175,6 +228,7 @@ export function RoadmapMonthView({ projection, anchorDate, masterProjectId, onBu
             parentTrackId: track.track.id,
             hasChildren: false,
             isCollapsed: false,
+            canEdit: subtrack.canEdit,
             items: subtrack.items,
           });
         });
@@ -209,7 +263,6 @@ export function RoadmapMonthView({ projection, anchorDate, masterProjectId, onBu
   }, [rows, buckets]);
 
   // Phase 3.0: Handle track/subtrack name click (navigate to workspace)
-  const navigate = useNavigate();
   const handleRowNameClick = useCallback((rowId: string, isSubtrack: boolean, parentTrackId?: string) => {
     // Phase 3.0: Navigate to workspace
     if (isSubtrack && parentTrackId) {
@@ -227,7 +280,7 @@ export function RoadmapMonthView({ projection, anchorDate, masterProjectId, onBu
 
   // Phase 4.0: Skeleton loading state
   if (projection.loading) {
-    const skeletonTimelineWidth = MONTHS_TO_DISPLAY * BUCKET_WIDTH;
+    const skeletonTimelineWidth = MONTHS_TO_DISPLAY * bucketWidth;
     const skeletonTotalWidth = sidebarWidth + skeletonTimelineWidth;
     
     return (
@@ -259,7 +312,7 @@ export function RoadmapMonthView({ projection, anchorDate, masterProjectId, onBu
                   <div
                     key={i}
                     className="flex-1 border-r border-gray-300 flex items-center justify-center bg-white"
-                    style={{ width: `${BUCKET_WIDTH}px`, height: '52px' }}
+                    style={{ width: `${bucketWidth}px`, height: '52px' }}
                   >
                     <div className="w-24 h-3 bg-gray-200 rounded"></div>
                   </div>
@@ -286,7 +339,7 @@ export function RoadmapMonthView({ projection, anchorDate, masterProjectId, onBu
                     <div
                       key={bucketIdx}
                       className="flex-1 border-r border-gray-200 flex items-center justify-center"
-                      style={{ width: `${BUCKET_WIDTH}px` }}
+                      style={{ width: `${bucketWidth}px` }}
                     >
                       <div className="w-12 h-8 bg-gray-100 rounded border border-gray-200"></div>
                     </div>
@@ -310,8 +363,8 @@ export function RoadmapMonthView({ projection, anchorDate, masterProjectId, onBu
     );
   }
 
-  // Calculate timeline width
-  const timelineWidth = buckets.length * BUCKET_WIDTH;
+  // Phase 8.1: Calculate timeline width with orientation-aware bucket width
+  const timelineWidth = buckets.length * bucketWidth;
   const totalWidth = sidebarWidth + timelineWidth;
 
   return (
@@ -398,7 +451,7 @@ export function RoadmapMonthView({ projection, anchorDate, masterProjectId, onBu
                     className={`flex-1 border-r border-gray-300 flex items-center justify-center bg-white transition-all duration-150 ease-out ${
                       isClickable ? 'hover:bg-gray-50 cursor-pointer active:bg-gray-100' : ''
                     } ${isCurrentMonth ? 'bg-blue-50 border-b-2 border-b-blue-500' : ''}`}
-                    style={{ width: `${BUCKET_WIDTH}px`, height: '52px' }}
+                    style={{ width: `${bucketWidth}px`, height: '52px' }}
                     title={isClickable ? 'Click to view weeks in this month' : undefined}
                   >
                     <span className={`text-xs font-medium text-center px-2 py-1 ${isCurrentMonth ? 'text-blue-700' : 'text-gray-800'}`}>
@@ -422,12 +475,12 @@ export function RoadmapMonthView({ projection, anchorDate, masterProjectId, onBu
                 });
               }
 
-              return (
-                <div
-                  key={row.id}
-                  className="flex border-b border-gray-200 hover:bg-gray-50 transition-all duration-150 ease-out"
-                  style={{ height: `${ROW_HEIGHT}px` }}
-                >
+            return (
+              <div
+                key={row.id}
+                className="flex border-b border-gray-200 hover:bg-gray-50 transition-all duration-150 ease-out group"
+                style={{ height: `${ROW_HEIGHT}px` }}
+              >
                   {/* Track/Subtrack Name (Sidebar) */}
                   {/* Phase 3.9 UI Polish: Improved padding and subtrack visual differentiation */}
                   <div
@@ -481,6 +534,54 @@ export function RoadmapMonthView({ projection, anchorDate, masterProjectId, onBu
                         </span>
                       )}
                     </button>
+                    
+                    {/* Permissions menu (when feature enabled and user can edit) */}
+                    {ENABLE_ENTITY_GRANTS && row.canEdit && (
+                      <div className="relative opacity-0 group-hover:opacity-100 transition-opacity" ref={(el) => { if (el) menuRefs.current.set(row.id, el); }}>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setOpenMenuId(openMenuId === row.id ? null : row.id);
+                          }}
+                          className="p-1 hover:bg-gray-200 rounded"
+                          title="Track options"
+                        >
+                          <MoreVertical size={14} className="text-gray-600" />
+                        </button>
+                        
+                        {openMenuId === row.id && (
+                          <div className="absolute right-0 top-full mt-1 w-48 bg-white border border-gray-200 rounded-lg shadow-lg z-50">
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setOpenMenuId(null);
+                                setAssignModal({
+                                  isOpen: true,
+                                  entityType: row.isSubtrack ? 'subtrack' : 'track',
+                                  entityId: row.id,
+                                  entityName: row.name,
+                                });
+                              }}
+                              className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2 transition-colors"
+                            >
+                              <UserPlus size={14} />
+                              Assign to...
+                            </button>
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setOpenMenuId(null);
+                                navigate(`/projects/${masterProjectId}/tracks/${row.id}/permissions`);
+                              }}
+                              className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2 transition-colors border-t border-gray-100"
+                            >
+                              <Shield size={14} />
+                              Permissions
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
 
                 {/* Month Buckets */}
@@ -493,7 +594,7 @@ export function RoadmapMonthView({ projection, anchorDate, masterProjectId, onBu
                       <div
                         key={bucket.key}
                         className="border-r border-gray-200"
-                        style={{ width: `${BUCKET_WIDTH}px` }}
+                        style={{ width: `${bucketWidth}px` }}
                       >
                         <RoadmapBucketCell
                           aggregation={aggregation}
@@ -515,6 +616,14 @@ export function RoadmapMonthView({ projection, anchorDate, masterProjectId, onBu
         </div>
         </div>
       </div>
+
+      <AssignTrackModal
+        entityType={assignModal.entityType}
+        entityId={assignModal.entityId}
+        entityName={assignModal.entityName}
+        isOpen={assignModal.isOpen}
+        onClose={() => setAssignModal({ ...assignModal, isOpen: false })}
+      />
     </div>
   );
 }

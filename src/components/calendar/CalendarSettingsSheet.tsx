@@ -8,7 +8,7 @@
  */
 
 import { useState, useEffect } from 'react';
-import { Settings, RefreshCw, ChevronRight, Info } from 'lucide-react';
+import { Settings, RefreshCw, ChevronRight, Info, Shield, X, Plus } from 'lucide-react';
 import { BottomSheet } from '../shared/BottomSheet';
 import { useCalendarSettings, type CalendarSettings } from '../../hooks/useCalendarSettings';
 import { useEventTypeColors, DEFAULT_EVENT_TYPE_COLORS } from '../../hooks/useEventTypeColors';
@@ -16,10 +16,205 @@ import { EventTypeColorPicker } from './EventTypeColorPicker';
 import type { CalendarView } from '../calendarCore/types';
 import type { CalendarEventType } from '../../lib/personalSpaces/calendarService';
 import { GuardRailsCalendarSyncSheet } from './GuardRailsCalendarSyncSheet';
+import { ENABLE_GROUP_DISTRIBUTION } from '../../lib/featureFlags';
+import { useCalendarVisibilityDefaults, type VisibilityAudienceType } from '../../hooks/useCalendarVisibilityDefaults';
 
 interface CalendarSettingsSheetProps {
   isOpen: boolean;
   onClose: () => void;
+}
+
+/**
+ * Calendar Visibility Defaults Section
+ * 
+ * Phase 6.3 - Prompt 2: UI for managing default visibility audiences
+ * 
+ * Allows calendar owner to define who should automatically receive visibility
+ * on newly created events and tasks.
+ */
+function CalendarVisibilityDefaultsSection() {
+  const { defaults, isLoaded, updateDefaults, addAudience, removeAudience } = useCalendarVisibilityDefaults();
+  const [newGroupId, setNewGroupId] = useState('');
+  const [newAudienceType, setNewAudienceType] = useState<VisibilityAudienceType>('group');
+
+  if (!isLoaded) {
+    return null;
+  }
+
+  const handleToggleEnabled = () => {
+    updateDefaults({ enabled: !defaults.enabled });
+  };
+
+  const handleAddAudience = () => {
+    if (!newGroupId.trim()) {
+      return;
+    }
+    addAudience({
+      id: newGroupId.trim(),
+      type: newAudienceType,
+    });
+    setNewGroupId('');
+  };
+
+  const groupAudiences = defaults.audiences.filter(a => a.type === 'group');
+  const userAudiences = defaults.audiences.filter(a => a.type === 'user');
+  const householdAudiences = defaults.audiences.filter(a => a.type === 'household');
+  const totalAudiences = defaults.audiences.length;
+
+  return (
+    <section>
+      <div className="flex items-center gap-2 mb-3">
+        <Shield size={18} className="text-gray-700" />
+        <h3 className="text-base font-semibold text-gray-900">Default Visibility & Sharing</h3>
+      </div>
+      
+      <div className="space-y-4">
+        <div>
+          <p className="text-sm text-gray-600 mb-4">
+            Choose who can automatically see new events and tasks you create in this calendar.
+          </p>
+          <p className="text-xs text-gray-500 mb-4">
+            These defaults apply only when creating new events or tasks. Existing items are not affected, and visibility can still be adjusted per event or task.
+          </p>
+        </div>
+
+        {/* Master Toggle */}
+        <div className="flex items-center justify-between py-2 border-b border-gray-200 pb-4">
+          <div>
+            <label className="text-sm font-medium text-gray-700">
+              Automatically share new items
+            </label>
+            <p className="text-xs text-gray-500 mt-0.5">
+              Enable default visibility sharing
+            </p>
+          </div>
+          <button
+            onClick={handleToggleEnabled}
+            className={`
+              relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 min-h-[44px] min-w-[44px] items-center justify-center
+              ${defaults.enabled ? 'bg-blue-600' : 'bg-gray-200'}
+            `}
+            role="switch"
+            aria-checked={defaults.enabled}
+          >
+            <span
+              className={`
+                pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out
+                ${defaults.enabled ? 'translate-x-5' : 'translate-x-0'}
+              `}
+            />
+          </button>
+        </div>
+
+        {/* Audience Selection (shown when enabled) */}
+        {defaults.enabled && (
+          <div className="space-y-4 pt-2">
+            {/* Add Audience */}
+            <div className="space-y-3 p-4 bg-gray-50 rounded-lg border border-gray-200">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Add Audience
+                </label>
+                <div className="flex gap-2">
+                  <select
+                    value={newAudienceType}
+                    onChange={(e) => setNewAudienceType(e.target.value as VisibilityAudienceType)}
+                    className="px-3 py-2 text-sm border border-gray-300 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  >
+                    <option value="group">Group</option>
+                    <option value="user">User</option>
+                    <option value="household">Household</option>
+                  </select>
+                  <input
+                    type="text"
+                    value={newGroupId}
+                    onChange={(e) => setNewGroupId(e.target.value)}
+                    placeholder={`Enter ${newAudienceType} ID`}
+                    className="flex-1 px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  />
+                  <button
+                    type="button"
+                    onClick={handleAddAudience}
+                    disabled={!newGroupId.trim()}
+                    className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:bg-gray-400 disabled:cursor-not-allowed flex items-center gap-2"
+                  >
+                    <Plus size={16} />
+                    Add
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {/* Audience List */}
+            {totalAudiences > 0 && (
+              <div className="space-y-2">
+                <label className="block text-sm font-medium text-gray-700">
+                  Current Audiences
+                </label>
+                <div className="space-y-2">
+                  {defaults.audiences.map((audience) => (
+                    <div
+                      key={`${audience.type}-${audience.id}`}
+                      className="flex items-center justify-between p-3 bg-white border border-gray-200 rounded-lg"
+                    >
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-medium text-gray-900 capitalize">
+                          {audience.type}
+                        </span>
+                        <span className="text-sm text-gray-600">:</span>
+                        <span className="text-sm text-gray-700 font-mono">
+                          {audience.id}
+                        </span>
+                      </div>
+                      <button
+                        onClick={() => removeAudience(audience.id, audience.type)}
+                        className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                        title={`Remove ${audience.type}`}
+                      >
+                        <X size={16} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Summary */}
+            <div className="pt-2 border-t border-gray-200">
+              {totalAudiences === 0 ? (
+                <p className="text-sm text-amber-600">
+                  No recipients selected — new items will not be shared
+                </p>
+              ) : (
+                <p className="text-sm text-gray-700">
+                  New items will be shared with{' '}
+                  <span className="font-medium text-gray-900">
+                    {totalAudiences} {totalAudiences === 1 ? 'audience' : 'audiences'}
+                  </span>
+                  {groupAudiences.length > 0 && (
+                    <span className="text-gray-600">
+                      {' '}({groupAudiences.length} {groupAudiences.length === 1 ? 'group' : 'groups'}
+                      {userAudiences.length > 0 && `, ${userAudiences.length} ${userAudiences.length === 1 ? 'user' : 'users'}`}
+                      {householdAudiences.length > 0 && `, ${householdAudiences.length} ${householdAudiences.length === 1 ? 'household' : 'households'}`})
+                    </span>
+                  )}
+                </p>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Summary when disabled */}
+        {!defaults.enabled && (
+          <div className="pt-2 border-t border-gray-200">
+            <p className="text-sm text-gray-600">
+              No default visibility configured
+            </p>
+          </div>
+        )}
+      </div>
+    </section>
+  );
 }
 
 export function CalendarSettingsSheet({ isOpen, onClose }: CalendarSettingsSheetProps) {
@@ -491,6 +686,11 @@ export function CalendarSettingsSheet({ isOpen, onClose }: CalendarSettingsSheet
             </button>
           </div>
         </section>
+
+        {/* Default Visibility & Sharing */}
+        {ENABLE_GROUP_DISTRIBUTION && (
+          <CalendarVisibilityDefaultsSection />
+        )}
       </div>
 
       {/* Event Type Color Picker */}

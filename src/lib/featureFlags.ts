@@ -40,3 +40,31 @@ export const FEATURE_HABITS_GOALS_REALTIME = true;
  */
 export const FEATURE_CONTEXT_TAGGING = true;
 
+/**
+ * Enable team-scoped groups feature
+ * When true: Groups can be created and managed within teams
+ * When false: Group features are disabled
+ */
+export const ENABLE_GROUPS = false;
+
+/**
+ * Enable entity-level permission grants
+ * When true: Permission grants can be created for tracks and subtracks
+ * When false: Entity grants are disabled (only project permissions apply)
+ */
+export const ENABLE_ENTITY_GRANTS = false;
+
+/**
+ * Enable creator default rights and revocation
+ * When true: Creator rights are applied and can be revoked by project owners
+ * When false: Creator rights are disabled
+ */
+export const ENABLE_CREATOR_RIGHTS = false;
+
+/**
+ * Enable group-based distribution
+ * When true: Tasks and calendar events can be distributed via groups
+ * When false: Distribution features are disabled
+ */
+export const ENABLE_GROUP_DISTRIBUTION = false;
+

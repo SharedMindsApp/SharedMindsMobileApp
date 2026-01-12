@@ -99,6 +99,10 @@ import { ArchiveManagementPage } from './components/guardrails/settings/ArchiveM
 import { SideProjectsPage } from './components/SideProjectsPage';
 import { OffshootIdeasListPage } from './components/OffshootIdeasListPage';
 import { OffshootIdeaDetailPage } from './components/OffshootIdeaDetailPage';
+import { TeamGroupsRouteGuard } from './components/groups/TeamGroupsRouteGuard';
+import { TeamGroupsPage } from './components/groups/TeamGroupsPage';
+import { TrackPermissionsRouteGuard } from './components/track-permissions/TrackPermissionsRouteGuard';
+import { TrackPermissionsPage } from './components/track-permissions/TrackPermissionsPage';
 import { PersonalSpacePage } from './components/PersonalSpacePage';
 import { PersonalCalendarPage } from './components/personal-spaces/PersonalCalendarPage';
 import { SharedSpacesListPage } from './components/SharedSpacesListPage';
@@ -1997,6 +2001,26 @@ function AppContent() {
                 <Layout>
                   <PlannerJournal />
                 </Layout>
+              </AuthGuard>
+            }
+          />
+          <Route
+            path="/teams/:teamId/groups"
+            element={
+              <AuthGuard>
+                <TeamGroupsRouteGuard>
+                  <TeamGroupsPage />
+                </TeamGroupsRouteGuard>
+              </AuthGuard>
+            }
+          />
+          <Route
+            path="/projects/:projectId/tracks/:trackId/permissions"
+            element={
+              <AuthGuard>
+                <TrackPermissionsRouteGuard>
+                  <TrackPermissionsPage />
+                </TrackPermissionsRouteGuard>
               </AuthGuard>
             }
           />

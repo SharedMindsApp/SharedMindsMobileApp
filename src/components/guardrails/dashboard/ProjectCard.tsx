@@ -170,10 +170,10 @@ export function ProjectCard({
             : `${domainConfig.colors.border} hover:shadow-md`
         }`}
       >
-        <div className="p-6">
-          <div className="flex items-start justify-between mb-4">
-            <div className="flex-1">
-              <div className="flex items-center gap-2 mb-2">
+        <div className="p-4 md:p-6">
+          <div className="flex items-start justify-between mb-4 gap-3">
+            <div className="flex-1 min-w-0">
+              <div className="flex flex-wrap items-center gap-2 mb-2">
                 <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium border ${config.color}`}>
                   <StatusIcon size={14} />
                   {config.label}
@@ -190,7 +190,7 @@ export function ProjectCard({
                       }
                     }}
                     disabled={settingActive || (isActive && settingActive)}
-                    className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium transition-all ${
+                    className={`inline-flex items-center gap-1 px-2.5 py-1.5 rounded-full text-xs font-medium transition-all min-h-[32px] ${
                       isActive
                         ? `${domainConfig.colors.primary} text-white cursor-default`
                         : `${domainConfig.colors.light} ${domainConfig.colors.text} hover:${domainConfig.colors.bg} border ${domainConfig.colors.border}`
@@ -212,20 +212,21 @@ export function ProjectCard({
                   </span>
                 )}
               </div>
-              <h3 className="text-lg font-bold text-gray-900 mb-1">{project.name}</h3>
-              <p className={`text-sm font-medium ${domainConfig.colors.text}`}>
+              <h3 className="text-base md:text-lg font-bold text-gray-900 mb-1 truncate">{project.name}</h3>
+              <p className={`text-xs md:text-sm font-medium ${domainConfig.colors.text}`}>
                 {domainConfig.name} Domain
               </p>
               {project.description && (
-                <p className="text-sm text-gray-500 mt-2 line-clamp-2">{project.description}</p>
+                <p className="text-xs md:text-sm text-gray-500 mt-2 line-clamp-2">{project.description}</p>
               )}
             </div>
 
             {project.status === 'active' && (
-              <div className="relative ml-2">
+              <div className="relative flex-shrink-0">
                 <button
                   onClick={() => setShowMenu(!showMenu)}
-                  className="p-2 rounded-lg hover:bg-gray-100 transition-colors"
+                  className="p-2 rounded-lg hover:bg-gray-100 transition-colors min-w-[44px] min-h-[44px] flex items-center justify-center"
+                  aria-label="Project options"
                 >
                   <MoreVertical size={20} className="text-gray-600" />
                 </button>
@@ -268,13 +269,13 @@ export function ProjectCard({
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-2 text-sm">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs md:text-sm">
               <div className="flex items-center gap-2">
-                <div className="w-3 h-3 rounded-full bg-yellow-500" />
+                <div className="w-3 h-3 rounded-full bg-yellow-500 flex-shrink-0" />
                 <span className="text-gray-600">{stats.inProgressItems} In Progress</span>
               </div>
               <div className="flex items-center gap-2">
-                <div className="w-3 h-3 rounded-full bg-red-500" />
+                <div className="w-3 h-3 rounded-full bg-red-500 flex-shrink-0" />
                 <span className="text-gray-600">{stats.blockedItems} Blocked</span>
               </div>
             </div>
@@ -291,53 +292,53 @@ export function ProjectCard({
               {(lifecyclePhase === 'intent' || lifecyclePhase === 'intent_checked' || lifecyclePhase === 'feasibility' || lifecyclePhase === 'feasibility_checked' || lifecyclePhase === 'execution') && (
                 <button
                   onClick={handleLaunchWizard}
-                  className={`w-full flex items-center justify-center gap-2 px-4 py-2.5 ${domainConfig.colors.primary} text-white rounded-lg hover:opacity-90 transition-all text-sm font-semibold shadow-md`}
+                  className={`w-full flex items-center justify-center gap-2 px-4 py-2.5 md:py-3 ${domainConfig.colors.primary} text-white rounded-lg hover:opacity-90 transition-all text-sm font-semibold shadow-md min-h-[44px]`}
                 >
-                  <Wand2 size={16} />
-                  {getContinuePhaseButtonLabel(lifecyclePhase)}
+                  <Wand2 size={16} className="md:w-5 md:h-5" />
+                  <span className="text-xs md:text-sm">{getContinuePhaseButtonLabel(lifecyclePhase)}</span>
                 </button>
               )}
 
               {/* Execution Tools */}
-              <div className="flex gap-2">
+              <div className="grid grid-cols-3 gap-2">
                 <button
                   onClick={() => onOpenRoadmap(project.id)}
                   disabled={!canAccessExecution}
                   title={!canAccessExecution ? executionTooltip : ''}
-                  className={`flex-1 flex items-center justify-center gap-2 px-3 py-2 ${domainConfig.colors.light} ${domainConfig.colors.text} rounded-lg transition-colors text-sm font-medium ${
+                  className={`flex-1 flex flex-col items-center justify-center gap-1 px-2 py-2.5 md:py-3 ${domainConfig.colors.light} ${domainConfig.colors.text} rounded-lg transition-colors text-xs md:text-sm font-medium min-h-[44px] ${
                     canAccessExecution
                       ? `hover:${domainConfig.colors.bg}`
                       : 'opacity-50 cursor-not-allowed'
                   }`}
                 >
-                  <MapPin size={16} />
-                  Roadmap
+                  <MapPin size={16} className="md:w-4 md:h-4" />
+                  <span>Roadmap</span>
                 </button>
                 <button
                   onClick={() => onOpenMindMesh(project.id)}
                   disabled={!canAccessExecution}
                   title={!canAccessExecution ? executionTooltip : ''}
-                  className={`flex-1 flex items-center justify-center gap-2 px-3 py-2 ${domainConfig.colors.light} ${domainConfig.colors.text} rounded-lg transition-colors text-sm font-medium ${
+                  className={`flex-1 flex flex-col items-center justify-center gap-1 px-2 py-2.5 md:py-3 ${domainConfig.colors.light} ${domainConfig.colors.text} rounded-lg transition-colors text-xs md:text-sm font-medium min-h-[44px] ${
                     canAccessExecution
                       ? `hover:${domainConfig.colors.bg}`
                       : 'opacity-50 cursor-not-allowed'
                   }`}
                 >
-                  <Network size={16} />
-                  Mesh
+                  <Network size={16} className="md:w-4 md:h-4" />
+                  <span>Mesh</span>
                 </button>
                 <button
                   onClick={() => onOpenTaskFlow(project.id)}
                   disabled={!canAccessExecution}
                   title={!canAccessExecution ? executionTooltip : ''}
-                  className={`flex-1 flex items-center justify-center gap-2 px-3 py-2 ${domainConfig.colors.light} ${domainConfig.colors.text} rounded-lg transition-colors text-sm font-medium ${
+                  className={`flex-1 flex flex-col items-center justify-center gap-1 px-2 py-2.5 md:py-3 ${domainConfig.colors.light} ${domainConfig.colors.text} rounded-lg transition-colors text-xs md:text-sm font-medium min-h-[44px] ${
                     canAccessExecution
                       ? `hover:${domainConfig.colors.bg}`
                       : 'opacity-50 cursor-not-allowed'
                   }`}
                 >
-                  <ListChecks size={16} />
-                  Tasks
+                  <ListChecks size={16} className="md:w-4 md:h-4" />
+                  <span>Tasks</span>
                 </button>
               </div>
             </div>
@@ -347,27 +348,28 @@ export function ProjectCard({
 
       {showAbandonModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-xl shadow-xl max-w-md w-full p-6">
-            <div className="flex items-start justify-between mb-4">
-              <div className="flex items-center gap-3">
-                <div className="p-2 bg-red-100 rounded-lg">
-                  <AlertTriangle className="text-red-600" size={24} />
+          <div className="bg-white rounded-xl shadow-xl max-w-md w-full p-4 md:p-6 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-start justify-between mb-4 gap-3">
+              <div className="flex items-center gap-3 flex-1 min-w-0">
+                <div className="p-2 bg-red-100 rounded-lg flex-shrink-0">
+                  <AlertTriangle className="text-red-600" size={20} className="md:w-6 md:h-6" />
                 </div>
-                <div>
-                  <h2 className="text-xl font-bold text-gray-900">Abandon Project</h2>
-                  <p className="text-sm text-gray-600 mt-1">This action cannot be undone</p>
+                <div className="flex-1 min-w-0">
+                  <h2 className="text-lg md:text-xl font-bold text-gray-900">Abandon Project</h2>
+                  <p className="text-xs md:text-sm text-gray-600 mt-1">This action cannot be undone</p>
                 </div>
               </div>
               <button
                 onClick={() => setShowAbandonModal(false)}
-                className="text-gray-400 hover:text-gray-600"
+                className="text-gray-400 hover:text-gray-600 flex-shrink-0 min-w-[44px] min-h-[44px] flex items-center justify-center"
+                aria-label="Close"
               >
                 <X size={24} />
               </button>
             </div>
 
             <div className="mb-6">
-              <p className="text-gray-700 mb-4">
+              <p className="text-sm md:text-base text-gray-700 mb-4">
                 You are about to abandon <span className="font-semibold">{project.name}</span>. Please provide a reason for abandoning this project.
               </p>
 
@@ -376,22 +378,22 @@ export function ProjectCard({
                 onChange={(e) => setAbandonReason(e.target.value)}
                 placeholder="e.g., Shifted priorities, no longer relevant, scope too large..."
                 rows={4}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500 resize-none"
+                className="w-full px-3 md:px-4 py-2 text-sm md:text-base border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500 resize-none"
                 autoFocus
               />
             </div>
 
-            <div className="flex gap-3">
+            <div className="flex flex-col sm:flex-row gap-3">
               <button
                 onClick={() => setShowAbandonModal(false)}
-                className="flex-1 px-4 py-2.5 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors font-medium"
+                className="flex-1 px-4 py-2.5 md:py-3 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors font-medium text-sm md:text-base min-h-[44px]"
               >
                 Cancel
               </button>
               <button
                 onClick={handleAbandon}
                 disabled={!abandonReason.trim() || abandoning}
-                className="flex-1 px-4 py-2.5 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors font-medium"
+                className="flex-1 px-4 py-2.5 md:py-3 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors font-medium text-sm md:text-base min-h-[44px]"
               >
                 {abandoning ? 'Abandoning...' : 'Abandon Project'}
               </button>

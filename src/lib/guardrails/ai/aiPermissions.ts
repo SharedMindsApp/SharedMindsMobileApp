@@ -1,4 +1,8 @@
 import { supabase } from '../../supabase';
+import { ENABLE_ENTITY_GRANTS, ENABLE_CREATOR_RIGHTS } from '../../featureFlags';
+import { resolveEntityPermissions } from '../../permissions/entityPermissionResolver';
+
+const USE_ENTITY_PERMISSION_RESOLVER = ENABLE_ENTITY_GRANTS || ENABLE_CREATOR_RIGHTS;
 
 export async function canUserAccessProject(
   userId: string,
@@ -28,6 +32,16 @@ export async function canUserAccessTrack(
   userId: string,
   trackId: string
 ): Promise<boolean> {
+  if (USE_ENTITY_PERMISSION_RESOLVER) {
+    const resolved = await resolveEntityPermissions({
+      userId,
+      entityType: 'track',
+      entityId: trackId,
+    });
+    return resolved.canView;
+  }
+
+  // Legacy behavior when flags are OFF
   const { data: track } = await supabase
     .from('guardrails_tracks')
     .select('master_project_id')
@@ -39,6 +53,75 @@ export async function canUserAccessTrack(
   }
 
   return canUserAccessProject(userId, track.master_project_id);
+}
+
+export async function canUserEditTrack(
+  userId: string,
+  trackId: string
+): Promise<boolean> {
+  if (USE_ENTITY_PERMISSION_RESOLVER) {
+    const resolved = await resolveEntityPermissions({
+      userId,
+      entityType: 'track',
+      entityId: trackId,
+    });
+    return resolved.canEdit;
+  }
+
+  // Legacy behavior when flags are OFF: use project-level edit permission
+  const { data: track } = await supabase
+    .from('guardrails_tracks')
+    .select('master_project_id')
+    .eq('id', trackId)
+    .maybeSingle();
+
+  if (!track) {
+    return false;
+  }
+
+  // Check if user has edit permission at project level
+  const { data: projectUser } = await supabase
+    .from('project_users')
+    .select('role')
+    .eq('master_project_id', track.master_project_id)
+    .eq('user_id', userId)
+    .is('archived_at', null)
+    .maybeSingle();
+
+  if (!projectUser) {
+    return false;
+  }
+
+  // Editor and owner can edit
+  return projectUser.role === 'editor' || projectUser.role === 'owner';
+}
+
+export async function canUserAccessSubtrack(
+  userId: string,
+  subtrackId: string
+): Promise<boolean> {
+  if (USE_ENTITY_PERMISSION_RESOLVER) {
+    const resolved = await resolveEntityPermissions({
+      userId,
+      entityType: 'subtrack',
+      entityId: subtrackId,
+    });
+    return resolved.canView;
+  }
+
+  // Legacy behavior when flags are OFF: inherit from parent track
+  const { data: subtrack } = await supabase
+    .from('guardrails_subtracks')
+    .select('track_id')
+    .eq('id', subtrackId)
+    .maybeSingle();
+
+  if (!subtrack) {
+    return false;
+  }
+
+  // Check access via parent track
+  return canUserAccessTrack(userId, subtrack.track_id);
 }
 
 export async function canUserAccessRoadmapItem(
@@ -134,6 +217,18 @@ export const AI_PERMISSION_RULES = {
   NO_PERSONAL_SPACES: 'AI cannot access Personal Spaces',
   AUDIT_ALL: 'All AI interactions are logged',
 };
+
+export async function debugResolveTrackPermissions(
+  userId: string,
+  trackId: string
+) {
+  if (!USE_ENTITY_PERMISSION_RESOLVER) return null;
+  return resolveEntityPermissions({
+    userId,
+    entityType: 'track',
+    entityId: trackId,
+  });
+}
 
 export const AI_DATA_ACCESS_BOUNDARIES = {
   CAN_READ: [
