@@ -474,6 +474,10 @@ export function getDefaultWidgetContent(type: WidgetType): WidgetContent {
       return {};
     case "tables":
       return { tableId: '', tableName: '', rowCount: 0, columnCount: 0 } as TablesContent;
+    case "tracker":
+      // Tracker widget requires tracker_id to be set via selection modal
+      // This default should never be used, but provides type safety
+      return { tracker_id: '' } as TrackerContent;
     default:
       return {} as CustomContent;
   }

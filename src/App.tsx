@@ -207,6 +207,14 @@ import { TripDetailPage } from './components/planner/travel/TripDetailPage';
 import { PlannerSocial } from './components/planner/PlannerSocial';
 import { PlannerJournal } from './components/planner/PlannerJournal';
 import { DailyAlignmentPage } from './components/regulation/DailyAlignmentPage';
+import { TrackerTemplatesPage } from './components/tracker-studio/TrackerTemplatesPage';
+import { MyTrackersPage } from './components/tracker-studio/MyTrackersPage';
+import { TrackerDetailPage } from './components/tracker-studio/TrackerDetailPage';
+import { CreateTrackerFromScratchPage } from './components/tracker-studio/CreateTrackerFromScratchPage';
+import { TemplateImportPage } from './components/tracker-studio/TemplateImportPage';
+import { CreateGlobalTemplatePage } from './components/tracker-studio/CreateGlobalTemplatePage';
+import { ContextEventsPage } from './components/tracker-studio/ContextEventsPage';
+import { CrossTrackerInsightsPage } from './components/tracker-studio/CrossTrackerInsightsPage';
 
 // Phase 8: Wrapper to show boot screen when auth is stuck (must be inside AuthProvider)
 function AppBootScreenWrapper() {
@@ -2000,6 +2008,97 @@ function AppContent() {
               <AuthGuard>
                 <Layout>
                   <PlannerJournal />
+                </Layout>
+              </AuthGuard>
+            }
+          />
+          {/* Tracker Studio Routes */}
+          <Route
+            path="/tracker-studio"
+            element={
+              <AuthGuard>
+                <Layout>
+                  <MyTrackersPage />
+                </Layout>
+              </AuthGuard>
+            }
+          />
+          <Route
+            path="/tracker-studio/templates"
+            element={
+              <AuthGuard>
+                <Layout>
+                  <TrackerTemplatesPage />
+                </Layout>
+              </AuthGuard>
+            }
+          />
+          <Route
+            path="/tracker-studio/my-trackers"
+            element={
+              <AuthGuard>
+                <Layout>
+                  <MyTrackersPage />
+                </Layout>
+              </AuthGuard>
+            }
+          />
+          <Route
+            path="/tracker-studio/create"
+            element={
+              <AuthGuard>
+                <Layout>
+                  <CreateTrackerFromScratchPage />
+                </Layout>
+              </AuthGuard>
+            }
+          />
+          <Route
+            path="/tracker-studio/tracker/:trackerId"
+            element={
+              <AuthGuard>
+                <Layout>
+                  <TrackerDetailPage />
+                </Layout>
+              </AuthGuard>
+            }
+          />
+          <Route
+            path="/tracker-studio/templates/import/:token"
+            element={
+              <AuthGuard>
+                <Layout>
+                  <TemplateImportPage />
+                </Layout>
+              </AuthGuard>
+            }
+          />
+          <Route
+            path="/tracker-studio/templates/create-global"
+            element={
+              <AuthGuard>
+                <Layout>
+                  <CreateGlobalTemplatePage />
+                </Layout>
+              </AuthGuard>
+            }
+          />
+          <Route
+            path="/tracker-studio/context"
+            element={
+              <AuthGuard>
+                <Layout>
+                  <ContextEventsPage />
+                </Layout>
+              </AuthGuard>
+            }
+          />
+          <Route
+            path="/tracker-studio/insights"
+            element={
+              <AuthGuard>
+                <Layout>
+                  <CrossTrackerInsightsPage />
                 </Layout>
               </AuthGuard>
             }

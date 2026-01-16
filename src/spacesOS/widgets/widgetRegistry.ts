@@ -22,6 +22,7 @@ import {
   Folder,
   Table,
   ImagePlus,
+  Activity,
 } from 'lucide-react';
 import type { WidgetType } from '../../lib/fridgeCanvasTypes';
 
@@ -189,6 +190,15 @@ export const widgetRegistry: WidgetRegistryItem[] = [
     iconColor: 'text-emerald-600',
     category: 'Media',
     description: 'Upload and place SVG graphics',
+  },
+  {
+    id: 'tracker',
+    label: 'Tracker',
+    icon: Activity,
+    color: 'bg-indigo-50',
+    iconColor: 'text-indigo-600',
+    category: 'Tracking',
+    description: 'View tracker data from Tracker Studio',
   },
 ];
 

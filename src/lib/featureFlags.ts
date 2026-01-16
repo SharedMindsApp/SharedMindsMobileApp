@@ -45,7 +45,7 @@ export const FEATURE_CONTEXT_TAGGING = true;
  * When true: Groups can be created and managed within teams
  * When false: Group features are disabled
  */
-export const ENABLE_GROUPS = false;
+export const ENABLE_GROUPS = true;
 
 /**
  * Enable entity-level permission grants

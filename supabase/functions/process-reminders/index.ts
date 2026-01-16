@@ -50,7 +50,7 @@ Deno.serve(async (req) => {
 
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    // Get due reminders from database
+    // Get due reminders from database (events and tasks)
     const { data: dueReminders, error: fetchError } = await supabase.rpc(
       'get_due_reminders'
     );
@@ -60,7 +60,19 @@ Deno.serve(async (req) => {
       throw fetchError;
     }
 
-    if (!dueReminders || dueReminders.length === 0) {
+    // Get due tracker reminders
+    const { data: dueTrackerReminders, error: trackerFetchError } = await supabase.rpc(
+      'get_due_tracker_reminders'
+    );
+
+    if (trackerFetchError) {
+      console.error('[process-reminders] Error fetching due tracker reminders:', trackerFetchError);
+      // Don't throw - continue processing event/task reminders
+    }
+
+    const totalReminders = (dueReminders?.length || 0) + (dueTrackerReminders?.length || 0);
+
+    if (totalReminders === 0) {
       return new Response(
         JSON.stringify({ success: true, processed: 0, message: 'No due reminders' }),
         {
@@ -70,7 +82,7 @@ Deno.serve(async (req) => {
       );
     }
 
-    console.log(`[process-reminders] Processing ${dueReminders.length} due reminders`);
+    console.log(`[process-reminders] Processing ${dueReminders?.length || 0} event/task reminders and ${dueTrackerReminders?.length || 0} tracker reminders`);
 
     const processed = [];
     const errors = [];
@@ -196,6 +208,57 @@ Deno.serve(async (req) => {
       } catch (err) {
         console.error(`[process-reminders] Error processing reminder ${reminder.reminder_id}:`, err);
         errors.push({ reminder_id: reminder.reminder_id, error: String(err) });
+      }
+    }
+
+    // Process tracker reminders
+    if (dueTrackerReminders && dueTrackerReminders.length > 0) {
+      for (const trackerReminder of dueTrackerReminders) {
+        try {
+          const title = trackerReminder.reminder_kind === 'entry_prompt'
+            ? `Log today's ${trackerReminder.tracker_name}?`
+            : `Add a note to ${trackerReminder.tracker_name}?`;
+
+          const body = trackerReminder.reminder_kind === 'entry_prompt'
+            ? `Want to add an entry for today?`
+            : `Anything you noticed today?`;
+
+          const actionUrl = `/tracker-studio/tracker/${trackerReminder.tracker_id}`;
+
+          // Create notification
+          const { error: notifError } = await supabase
+            .from('notifications')
+            .insert({
+              user_id: trackerReminder.owner_user_id,
+              type: 'system', // Tracker reminders use system type
+              title,
+              body,
+              source_type: 'tracker',
+              source_id: trackerReminder.tracker_id,
+              action_url: actionUrl,
+              is_read: false,
+            });
+
+          if (notifError) {
+            console.error(`[process-reminders] Error creating tracker notification:`, notifError);
+            errors.push({ reminder_id: trackerReminder.reminder_id, error: notifError.message });
+          } else {
+            // Mark reminder as sent
+            const { error: markError } = await supabase.rpc('mark_reminder_sent', {
+              p_reminder_id: trackerReminder.reminder_id,
+            });
+
+            if (markError) {
+              console.error(`[process-reminders] Error marking tracker reminder as sent:`, markError);
+              errors.push({ reminder_id: trackerReminder.reminder_id, error: markError.message });
+            } else {
+              processed.push(trackerReminder.reminder_id);
+            }
+          }
+        } catch (err) {
+          console.error(`[process-reminders] Error processing tracker reminder ${trackerReminder.reminder_id}:`, err);
+          errors.push({ reminder_id: trackerReminder.reminder_id, error: String(err) });
+        }
       }
     }
 

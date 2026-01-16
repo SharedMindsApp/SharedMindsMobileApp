@@ -23,6 +23,7 @@ import {
   ImagePlus,
   Table,
   Check,
+  Activity,
 } from 'lucide-react';
 import { WidgetType } from '../../lib/fridgeCanvasTypes';
 import { TrashViewer } from './TrashViewer';
@@ -65,6 +66,7 @@ const widgetOptions: WidgetOption[] = [
   { type: 'files', icon: FileText, label: 'Files', category: 'Organization', description: 'Manage your files' },
   { type: 'collections', icon: Folder, label: 'Collections', category: 'Organization', description: 'Curate and organize references' },
   { type: 'tables', icon: Table, label: 'Tables', category: 'Organization', description: 'Spreadsheet-style data tables' },
+  { type: 'tracker', icon: Activity, label: 'Tracker', category: 'Tracking', description: 'View tracker data from Tracker Studio' },
   { type: 'graphics', icon: ImagePlus, label: 'Graphics', category: 'Media', description: 'Upload and place SVG graphics' },
 ];
 

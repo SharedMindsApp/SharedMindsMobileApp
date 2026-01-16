@@ -73,6 +73,7 @@ export type NavigationTabId =
   | 'planner'
   | 'guardrails'
   | 'regulation'
+  | 'tracker-studio'
   | 'messages'
   | 'report'
   | 'admin';
@@ -91,8 +92,8 @@ export const ALL_NAVIGATION_TABS: NavigationTab[] = [
   { id: 'planner', label: 'Planner', path: '/planner', icon: 'Calendar' },
   { id: 'guardrails', label: 'Guardrails', path: '/guardrails', icon: 'Target' },
   { id: 'regulation', label: 'Regulation', path: '/regulation', icon: 'Zap' },
+  { id: 'tracker-studio', label: 'Tracker Studio', path: '/tracker-studio', icon: 'Activity' },
   { id: 'messages', label: 'Messages', path: '/messages', icon: 'MessageCircle' },
-  { id: 'report', label: 'Report', path: '/report', icon: 'FileText' },
   { id: 'admin', label: 'Admin', path: '/admin', icon: 'Shield', requiresAdmin: true },
 ];
 
@@ -102,6 +103,7 @@ export const DEFAULT_FAVOURITE_NAV_TABS: NavigationTabId[] = [
   'planner',
   'guardrails',
   'regulation',
+  'tracker-studio',
 ];
 
 export interface UIPreferencesConfig {

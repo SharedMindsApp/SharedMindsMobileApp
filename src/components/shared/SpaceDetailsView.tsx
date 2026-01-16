@@ -9,6 +9,7 @@ import { ArrowLeft, Home, Users, User, Shield, Bell, Eye, AlertTriangle, Trash2,
 import { getSpaceDetails, leaveSpace, updateMemberRole, removeMember, transferOwnership, deleteSpace, type SpaceDetails } from '../../lib/sharedSpacesManagement';
 import { useAuth } from '../../contexts/AuthContext';
 import { ConfirmDialog } from '../ConfirmDialog';
+import { GroupsSection } from './GroupsSection';
 
 interface SpaceDetailsViewProps {
   spaceId: string;
@@ -24,7 +25,7 @@ export function SpaceDetailsView({
   const { profile } = useAuth();
   const [space, setSpace] = useState<SpaceDetails | null>(null);
   const [loading, setLoading] = useState(true);
-  const [activeSection, setActiveSection] = useState<'overview' | 'members' | 'permissions' | 'visibility' | 'danger'>('overview');
+  const [activeSection, setActiveSection] = useState<'overview' | 'members' | 'groups' | 'permissions' | 'visibility' | 'danger'>('overview');
   const [showLeaveConfirm, setShowLeaveConfirm] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [showTransferConfirm, setShowTransferConfirm] = useState(false);
@@ -183,6 +184,18 @@ export function SpaceDetailsView({
         >
           Members
         </button>
+        {space.type === 'team' && canManageOthers && (
+          <button
+            onClick={() => setActiveSection('groups')}
+            className={`px-4 py-3 font-medium text-sm transition-colors border-b-2 min-h-[44px] whitespace-nowrap ${
+              activeSection === 'groups'
+                ? 'border-blue-600 text-blue-600'
+                : 'border-transparent text-gray-600 hover:text-gray-900'
+            }`}
+          >
+            Groups
+          </button>
+        )}
         {canManageOthers && (
           <button
             onClick={() => setActiveSection('permissions')}
@@ -230,6 +243,14 @@ export function SpaceDetailsView({
             onUpdateRole={handleUpdateRole}
             onRemoveMember={handleRemoveMember}
             actionLoading={actionLoading}
+          />
+        )}
+
+        {activeSection === 'groups' && space.type === 'team' && space.contextId && (
+          <GroupsSection
+            teamId={space.contextId}
+            canManage={canManageOthers}
+            teamMembers={space.members}
           />
         )}
 

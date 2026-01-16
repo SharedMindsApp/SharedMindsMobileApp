@@ -9,6 +9,7 @@ import {
   Home,
   LayoutGrid,
   Compass,
+  Activity,
 } from 'lucide-react';
 import { Section, Member, Progress } from '../../lib/supabase';
 import { Household } from '../../lib/household';
@@ -215,6 +216,37 @@ export function StandardDashboardLayout({
           </div>
         </div>
       )}
+
+      {/* Tracker Studio Card */}
+      <div className="mb-6">
+        <div className="bg-gradient-to-r from-purple-500 via-violet-500 to-indigo-500 rounded-2xl shadow-lg overflow-hidden border-2 border-purple-200">
+          <div className="p-6">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-4">
+                <div className="w-14 h-14 bg-white/90 backdrop-blur-sm rounded-xl flex items-center justify-center shadow-md">
+                  <Activity size={28} className="text-purple-600" />
+                </div>
+                <div>
+                  <h2 className="text-xl font-bold text-white mb-1">
+                    Tracker Studio
+                  </h2>
+                  <p className="text-white/90 text-sm">
+                    Track anything you want - sleep, mood, habits, or custom metrics
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => navigate('/tracker-studio')}
+                className="bg-white/20 hover:bg-white/30 backdrop-blur-sm text-white px-6 py-3 rounded-xl transition-all font-semibold flex items-center gap-2 shadow-md"
+              >
+                <Activity size={20} />
+                Open Studio
+                <ArrowRight size={20} />
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
 
       <div className="mb-6 space-y-4">
         <PersonalCalendarCard />

@@ -199,6 +199,58 @@ export async function removeMember(
 }
 
 /**
+ * Get member count for a group
+ */
+export async function getMemberCount(groupId: string): Promise<number> {
+  if (!ENABLE_GROUPS) {
+    throw new Error('Groups feature is disabled');
+  }
+
+  const { count, error } = await supabase
+    .from('team_group_members')
+    .select('*', { count: 'exact', head: true })
+    .eq('group_id', groupId);
+
+  if (error) {
+    throw new Error(`Error getting member count: ${error.message}`);
+  }
+
+  return count || 0;
+}
+
+/**
+ * Get member counts for multiple groups
+ */
+export async function getMemberCounts(groupIds: string[]): Promise<Record<string, number>> {
+  if (!ENABLE_GROUPS) {
+    throw new Error('Groups feature is disabled');
+  }
+
+  if (groupIds.length === 0) {
+    return {};
+  }
+
+  const { data, error } = await supabase
+    .from('team_group_members')
+    .select('group_id')
+    .in('group_id', groupIds);
+
+  if (error) {
+    throw new Error(`Error getting member counts: ${error.message}`);
+  }
+
+  // Count members per group
+  const counts: Record<string, number> = {};
+  groupIds.forEach(id => counts[id] = 0);
+  
+  (data || []).forEach((row) => {
+    counts[row.group_id] = (counts[row.group_id] || 0) + 1;
+  });
+
+  return counts;
+}
+
+/**
  * List all members of a group
  */
 export async function listMembers(groupId: string): Promise<GroupMember[]> {

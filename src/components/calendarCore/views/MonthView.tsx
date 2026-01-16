@@ -3,6 +3,9 @@ import { CalendarEventWithMembers } from '../../../lib/calendarTypes';
 import { getMonthDays, isSameDay, isToday, getEventsForDay } from '../../../lib/calendarUtils';
 import { useEventTypeColors } from '../../../hooks/useEventTypeColors';
 import { useSwipeGesture } from '../../../hooks/useSwipeGesture';
+import { useContextEvents } from '../../../hooks/trackerStudio/useContextEvents';
+import { getContextEventTypeColor, CONTEXT_EVENT_TYPE_LABELS } from '../../../lib/trackerStudio/contextEventTypes';
+import { isContextEventActiveOnDate } from '../../../lib/trackerStudio/contextEventTypes';
 import type { CalendarEventType } from '../../../lib/personalSpaces/calendarService';
 
 // Helper functions for hex color handling
@@ -49,6 +52,14 @@ export function MonthView({
   const { colors: eventTypeColors } = useEventTypeColors();
   const days = getMonthDays(currentDate.getFullYear(), currentDate.getMonth());
   const weekDays = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+  
+  // Load context events for the month
+  const monthStart = new Date(currentDate.getFullYear(), currentDate.getMonth(), 1);
+  const monthEnd = new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 0);
+  const { contextEvents } = useContextEvents(
+    monthStart.toISOString().split('T')[0],
+    monthEnd.toISOString().split('T')[0]
+  );
   
   // Month expansion state (mobile only)
   const [isMonthExpanded, setIsMonthExpanded] = useState(false);
@@ -178,6 +189,11 @@ export function MonthView({
           const isTodayDate = isToday(date);
 
           const isSelectedDate = isSelected(date);
+          
+          // Get active context events for this day
+          const activeContexts = contextEvents.filter(event =>
+            isContextEventActiveOnDate(event, date.toISOString().split('T')[0])
+          );
 
           return (
             <div
@@ -193,17 +209,34 @@ export function MonthView({
               onDoubleClick={() => handleDayDoubleClick(date)}
             >
               <div className="flex items-center justify-between mb-1">
-                <span
-                  className={`${isMobile && isMonthExpanded ? 'text-base' : 'text-sm'} font-medium ${
-                    !isCurrentMonth
-                      ? 'text-gray-400'
-                      : isTodayDate
-                      ? 'bg-blue-600 text-white w-7 h-7 rounded-full flex items-center justify-center'
-                      : 'text-gray-900'
-                  }`}
-                >
-                  {date.getDate()}
-                </span>
+                <div className="flex items-center gap-1">
+                  <span
+                    className={`${isMobile && isMonthExpanded ? 'text-base' : 'text-sm'} font-medium ${
+                      !isCurrentMonth
+                        ? 'text-gray-400'
+                        : isTodayDate
+                        ? 'bg-blue-600 text-white w-7 h-7 rounded-full flex items-center justify-center'
+                        : 'text-gray-900'
+                    }`}
+                  >
+                    {date.getDate()}
+                  </span>
+                  {/* Context event indicators */}
+                  {activeContexts.length > 0 && (
+                    <div className="flex items-center gap-0.5">
+                      {activeContexts.slice(0, 2).map(context => (
+                        <div
+                          key={context.id}
+                          className={`w-1.5 h-1.5 rounded-full ${getContextEventTypeColor(context.type).split(' ')[0]}`}
+                          title={`${context.label} (${CONTEXT_EVENT_TYPE_LABELS[context.type]})`}
+                        />
+                      ))}
+                      {activeContexts.length > 2 && (
+                        <span className="text-[8px] text-gray-500">+{activeContexts.length - 2}</span>
+                      )}
+                    </div>
+                  )}
+                </div>
               </div>
 
               {/* Event Type Dots - Show more dots when expanded */}

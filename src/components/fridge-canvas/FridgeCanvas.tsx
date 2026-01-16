@@ -31,6 +31,8 @@ import { FilesCanvasWidget } from "./widgets/FilesCanvasWidget";
 import { CollectionsCanvasWidget } from "./widgets/CollectionsCanvasWidget";
 import { TablesCanvasWidget } from "./widgets/TablesCanvasWidget";
 import { TodoCanvasWidget } from "./widgets/TodoCanvasWidget";
+import { TrackerCanvasWidget } from "./widgets/TrackerCanvasWidget";
+import { SelectTrackerModal } from "./widgets/SelectTrackerModal";
 import { CanvasSVGObject } from "./CanvasSVGObject";
 
 import {
@@ -75,6 +77,7 @@ import {
   StackCardContent,
   FilesContent,
   TablesContent,
+  TrackerContent,
   GraphicsContent,
   FridgeGroup,
 } from "../../lib/fridgeCanvasTypes";
@@ -117,6 +120,10 @@ export function FridgeCanvas({ householdId }: FridgeCanvasProps) {
 
   // SVG upload modal state
   const [showSVGUpload, setShowSVGUpload] = useState(false);
+  
+  // Tracker selection modal state
+  const [showTrackerSelect, setShowTrackerSelect] = useState(false);
+  const [pendingTrackerWidgetType, setPendingTrackerWidgetType] = useState<WidgetType | null>(null);
 
   // Phase 6A: Mobile canvas disclaimer state (must be before any early returns)
   const [showMobileDisclaimer, setShowMobileDisclaimer] = useState(() => {
@@ -262,6 +269,15 @@ const handleAddWidget = async (type: WidgetType) => {
   }
 
   // --------------------------------------
+  // Tracker widget requires selection
+  // --------------------------------------
+  if (type === 'tracker') {
+    setPendingTrackerWidgetType(type);
+    setShowTrackerSelect(true);
+    return;
+  }
+
+  // --------------------------------------
   // Generate initial content
   // --------------------------------------
   const content = getDefaultWidgetContent(type);
@@ -374,6 +390,103 @@ const handleAddWidget = async (type: WidgetType) => {
 
   console.log("──────────────────────────────");
 };
+
+  // Handle tracker selection for tracker widget
+  const handleTrackerSelected = async (trackerId: string) => {
+    if (!pendingTrackerWidgetType || !householdId || !canEdit) {
+      return;
+    }
+
+    const type = pendingTrackerWidgetType;
+    setPendingTrackerWidgetType(null);
+    setShowTrackerSelect(false);
+
+    // Create widget with selected tracker
+    const content: TrackerContent = { tracker_id: trackerId };
+    
+    const widgetTypeNames: Record<WidgetType, string> = {
+      note: 'Note',
+      task: 'Task',
+      reminder: 'Reminder',
+      calendar: 'Calendar',
+      goal: 'Goal',
+      habit: 'Habit',
+      habit_tracker: 'Habit Tracker',
+      achievements: 'Achievements',
+      photo: 'Photo',
+      insight: 'Insight',
+      agreement: 'Agreement',
+      meal_planner: 'Meal Planner',
+      grocery_list: 'Grocery List',
+      stack_card: 'Stack Cards',
+      files: 'Files',
+      collections: 'Collections',
+      tables: 'Tables',
+      todos: 'Todos',
+      tracker: 'Tracker',
+      custom: 'Custom Widget',
+    };
+
+    const optimisticWidget: WidgetWithLayout = {
+      id: `temp-${Date.now()}`,
+      space_id: householdId,
+      created_by: '',
+      widget_type: type,
+      title: widgetTypeNames[type] || 'Widget',
+      content,
+      color: 'yellow',
+      icon: 'StickyNote',
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+      deleted_at: null,
+      group_id: null,
+      layout: {
+        id: `temp-layout-${Date.now()}`,
+        widget_id: `temp-${Date.now()}`,
+        member_id: '',
+        position_x: 200,
+        position_y: 200,
+        size_mode: 'mini',
+        z_index: 1,
+        rotation: 0,
+        is_collapsed: false,
+        group_id: null,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      },
+    };
+
+    const result = await executeOptimisticUpdate(
+      `widget-create-${Date.now()}`,
+      widgets,
+      [...widgets, optimisticWidget],
+      setWidgets,
+      async () => {
+        const widget = await createWidget(householdId, type, content);
+        setWidgets((prev) => {
+          const filtered = prev.filter(w => w.id !== optimisticWidget.id);
+          return [...filtered, widget];
+        });
+        checkStateConsistency('widgets', [...filtered, widget], [
+          (w) => w.every(widget => widget.id && widget.layout?.id) || 'All widgets must have valid IDs',
+          (w) => {
+            const ids = w.map(widget => widget.id);
+            const uniqueIds = new Set(ids);
+            return ids.length === uniqueIds.size || 'Widget IDs must be unique';
+          },
+        ], { component: 'FridgeCanvas', action: 'createWidget' });
+      },
+      { component: 'FridgeCanvas', action: 'createWidget' }
+    );
+
+    if (!result.success) {
+      const message = result.error?.message || "Failed to create tracker widget.";
+      setError(message);
+      if (result.rolledBack) {
+        showToast('error', 'Tracker widget creation failed. Changes have been reverted.');
+      }
+    }
+  };
 
 
 
@@ -875,6 +988,14 @@ const handleAddWidget = async (type: WidgetType) => {
           />
         );
 
+      case "tracker":
+        return (
+          <TrackerCanvasWidget
+            content={widget.content as TrackerContent}
+            viewMode={viewMode}
+          />
+        );
+
       default:
         return (
           <div className="p-4 text-gray-600 text-sm">
@@ -1104,6 +1225,15 @@ const handleAddWidget = async (type: WidgetType) => {
         isOpen={showSVGUpload}
         onClose={() => setShowSVGUpload(false)}
         onUpload={handleSVGUpload}
+      />
+
+      <SelectTrackerModal
+        isOpen={showTrackerSelect}
+        onClose={() => {
+          setShowTrackerSelect(false);
+          setPendingTrackerWidgetType(null);
+        }}
+        onSelect={handleTrackerSelected}
       />
 
       {/* Fullscreen Group View */}

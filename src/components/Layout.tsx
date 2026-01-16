@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { Home, FileText, LogOut, Shield, Eye, X, MessageCircle, Brain, Users, Target, User, ChevronDown, Zap, Sun, Moon, Check, Calendar, Menu, MoreHorizontal, Home as HomeIcon, Settings } from 'lucide-react';
+import { Home, FileText, LogOut, Shield, Eye, X, MessageCircle, Brain, Users, Target, User, ChevronDown, Zap, Sun, Moon, Check, Calendar, Menu, MoreHorizontal, Home as HomeIcon, Settings, Activity } from 'lucide-react';
 import { ToastContainer, useToasts } from './Toast';
 import { getUserHousehold, Household } from '../lib/household';
 import { signOut } from '../lib/auth';
@@ -34,6 +34,7 @@ const ICON_MAP: Record<string, any> = {
   MessageCircle,
   FileText,
   Shield,
+  Activity,
   BookOpen: Calendar,
 };
 
@@ -146,6 +147,9 @@ export function Layout({ children }: LayoutProps) {
     }
     if (tabPath === '/regulation') {
       return location.pathname.startsWith('/regulation');
+    }
+    if (tabPath === '/tracker-studio') {
+      return location.pathname.startsWith('/tracker-studio');
     }
     if (tabPath === '/messages') {
       return location.pathname.startsWith('/messages');
@@ -531,6 +535,24 @@ export function Layout({ children }: LayoutProps) {
                 <button
                   onClick={() => {
                     setShowMobileMenu(false);
+                    navigate('/tracker-studio');
+                  }}
+                  className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-colors ${
+                    location.pathname.startsWith('/tracker-studio')
+                      ? 'bg-blue-50 text-blue-700 ring-2 ring-blue-200'
+                      : config.appTheme === 'dark' || config.appTheme === 'neon-dark'
+                      ? 'text-gray-200 hover:bg-gray-800 active:bg-gray-700'
+                      : 'text-gray-700 hover:bg-gray-50 active:bg-gray-100'
+                  }`}
+                  aria-current={location.pathname.startsWith('/tracker-studio') ? 'page' : undefined}
+                >
+                  <Activity size={20} />
+                  Tracker Studio
+                </button>
+
+                <button
+                  onClick={() => {
+                    setShowMobileMenu(false);
                     navigate('/messages');
                   }}
                   className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-colors ${
@@ -544,24 +566,6 @@ export function Layout({ children }: LayoutProps) {
                 >
                   <MessageCircle size={20} />
                   Messages
-                </button>
-
-                <button
-                  onClick={() => {
-                    setShowMobileMenu(false);
-                    navigate('/report');
-                  }}
-                  className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-colors ${
-                    isActive('/report')
-                      ? 'bg-blue-50 text-blue-700 ring-2 ring-blue-200'
-                      : config.appTheme === 'dark' || config.appTheme === 'neon-dark'
-                      ? 'text-gray-200 hover:bg-gray-800 active:bg-gray-700'
-                      : 'text-gray-700 hover:bg-gray-50 active:bg-gray-100'
-                  }`}
-                  aria-current={isActive('/report') ? 'page' : undefined}
-                >
-                  <FileText size={20} />
-                  Report
                 </button>
 
                 <button
@@ -600,28 +604,6 @@ export function Layout({ children }: LayoutProps) {
                     Admin
                   </button>
                 )}
-
-                <div className={`border-t my-4 ${
-                  config.appTheme === 'dark' || config.appTheme === 'neon-dark'
-                    ? 'border-gray-700'
-                    : 'border-gray-200'
-                }`}></div>
-
-
-                <button
-                  onClick={() => {
-                    setShowMobileMenu(false);
-                    navigate('/brain-profile/cards');
-                  }}
-                  className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-colors ${
-                    config.appTheme === 'dark' || config.appTheme === 'neon-dark'
-                      ? 'text-gray-200 hover:bg-gray-800'
-                      : 'text-gray-700 hover:bg-gray-50'
-                  }`}
-                >
-                  <Brain size={20} />
-                  My Brain Profile
-                </button>
 
                 <div className={`border-t my-4 ${
                   config.appTheme === 'dark' || config.appTheme === 'neon-dark'

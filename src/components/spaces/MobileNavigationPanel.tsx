@@ -19,6 +19,7 @@ import {
   User,
   Shield,
   LayoutGrid,
+  Activity,
 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 
@@ -87,16 +88,16 @@ export function MobileNavigationPanel({ isOpen, onClose, currentSpaceName }: Mob
       description: 'Daily alignment',
     },
     {
+      label: 'Tracker Studio',
+      path: '/tracker-studio',
+      icon: Activity,
+      description: 'Track anything you want',
+    },
+    {
       label: 'Messages',
       path: '/messages',
       icon: MessageCircle,
       description: 'Household messages',
-    },
-    {
-      label: 'Report',
-      path: '/report',
-      icon: FileText,
-      description: 'Household reports',
     },
     {
       label: 'Settings',

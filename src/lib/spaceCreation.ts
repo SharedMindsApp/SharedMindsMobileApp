@@ -169,19 +169,14 @@ export async function createTeam(input: {
 
   if (!profile) throw new Error('Profile not found');
 
-  // Create team record
-  const { data: team, error: teamError } = await supabase
-    .from('teams')
-    .insert({
-      name: input.name,
-      description: input.description || null,
-      created_by: profile.id,
-    })
-    .select()
-    .single();
+  // Create team record + ownership atomically via RPC
+  const { data: teamId, error: teamError } = await supabase.rpc('create_team', {
+    p_name: input.name,
+    p_description: input.description || null,
+  });
 
   if (teamError) throw teamError;
-  if (!team) throw new Error('Failed to create team');
+  if (!teamId) throw new Error('Failed to create team');
 
   // Create space with team context
   const { data: space, error: spaceError } = await supabase
@@ -191,25 +186,13 @@ export async function createTeam(input: {
       description: input.description || null,
       space_type: 'shared', // Keep for backward compatibility
       context_type: 'team',
-      context_id: team.id,
+      context_id: teamId,
     })
     .select()
     .single();
 
   if (spaceError) throw spaceError;
   if (!space) throw new Error('Failed to create space');
-
-  // Add creator as owner
-  const { error: memberError } = await supabase
-    .from('team_members')
-    .insert({
-      team_id: team.id,
-      user_id: profile.id,
-      role: 'owner',
-      status: 'active',
-    });
-
-  if (memberError) throw memberError;
 
   // Add creator to space_members as well
   const { error: spaceMemberError } = await supabase

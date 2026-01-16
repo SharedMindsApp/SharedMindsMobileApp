@@ -19,6 +19,7 @@ export type WidgetType =
   | 'collections'
   | 'tables'
   | 'todos'
+  | 'tracker'
   | 'custom';
 
 export type SizeMode = 'icon' | 'mini' | 'large' | 'xlarge';
@@ -171,6 +172,10 @@ export interface TablesContent {
   columnCount: number;
 }
 
+export interface TrackerContent {
+  tracker_id: string;
+}
+
 export interface CustomContent {
   [key: string]: unknown;
 }
@@ -192,6 +197,7 @@ export type WidgetContent =
   | StackCardContent
   | FilesContent
   | TablesContent
+  | TrackerContent
   | CustomContent;
 
 export type { CalendarEvent };
