@@ -212,7 +212,10 @@ export function CollapsibleMobileNav({
       {showCollapseHint && !isCollapsed && (
         <button
           onClick={handleCollapseHintClick}
-          onTouchEnd={handleCollapseHintClick}
+          onTouchEnd={(e) => {
+            e.currentTarget.style.opacity = '0.65';
+            handleCollapseHintClick();
+          }}
           className={`
             lg:hidden fixed left-1/2 -translate-x-1/2
             z-[60]
@@ -234,9 +237,6 @@ export function CollapsibleMobileNav({
           }}
           onTouchStart={(e) => {
             e.currentTarget.style.opacity = '0.9';
-          }}
-          onTouchEnd={(e) => {
-            e.currentTarget.style.opacity = '0.65';
           }}
         >
           <ChevronDown 

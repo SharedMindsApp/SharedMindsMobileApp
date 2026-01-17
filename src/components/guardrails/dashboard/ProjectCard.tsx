@@ -352,7 +352,7 @@ export function ProjectCard({
             <div className="flex items-start justify-between mb-4 gap-3">
               <div className="flex items-center gap-3 flex-1 min-w-0">
                 <div className="p-2 bg-red-100 rounded-lg flex-shrink-0">
-                  <AlertTriangle className="text-red-600" size={20} className="md:w-6 md:h-6" />
+                  <AlertTriangle className="text-red-600 md:w-6 md:h-6" size={20} />
                 </div>
                 <div className="flex-1 min-w-0">
                   <h2 className="text-lg md:text-xl font-bold text-gray-900">Abandon Project</h2>
