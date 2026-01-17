@@ -276,6 +276,12 @@ export function validateEntryValues(tracker: Tracker, fieldValues: Record<string
 
   // Validate all provided values
   for (const [fieldId, value] of Object.entries(fieldValues)) {
+    // Allow metadata fields (starting with _) without schema validation
+    // These are used for analytics and special processing (e.g., _emotion_words)
+    if (fieldId.startsWith('_')) {
+      continue;
+    }
+    
     const field = schemaMap.get(fieldId);
     if (!field) {
       throw new TrackerValidationError(

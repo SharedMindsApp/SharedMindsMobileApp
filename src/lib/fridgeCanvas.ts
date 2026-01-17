@@ -26,6 +26,9 @@ import {
   StackCardContent,
   TablesContent,
   CustomContent,
+  TrackerContent,
+  TrackerAppContent,
+  TrackerQuickLinkContent,
 } from "./fridgeCanvasTypes";
 import { createStackCardWithInitialCards } from "./stackCards";
 
@@ -223,7 +226,8 @@ export async function getWidgetById(widgetId: string): Promise<WidgetWithLayout 
 export async function createWidget(
   householdId: string,
   widgetType: WidgetType,
-  content: WidgetContent
+  content: WidgetContent,
+  options?: { icon?: string; color?: string; title?: string }
 ): Promise<WidgetWithLayout> {
   console.log("🟦 createWidget() starting…");
 
@@ -271,6 +275,17 @@ export async function createWidget(
     } as StackCardContent;
   }
 
+  // Handle tracker_app and tracker_quicklink default content
+  if (widgetType === 'tracker_app' && !content) {
+    // tracker_app requires tracker_id, so we'll use empty content and let the UI handle it
+    widgetContent = { tracker_id: '' } as TrackerAppContent;
+  }
+  
+  if (widgetType === 'tracker_quicklink') {
+    // tracker_quicklink has no content needed
+    widgetContent = {} as TrackerQuickLinkContent;
+  }
+
   // Map widget type to proper display name
   const widgetTypeNames: Record<WidgetType, string> = {
     note: 'Note',
@@ -291,6 +306,9 @@ export async function createWidget(
     collections: 'Collections',
     tables: 'Tables',
     todos: 'Todos',
+    tracker: 'Tracker',
+    tracker_app: 'Tracker App',
+    tracker_quicklink: 'Tracker Quick Links',
     custom: 'Custom Widget',
   };
 
@@ -301,10 +319,10 @@ export async function createWidget(
     space_id: householdId,
     created_by: profileId,
     widget_type: widgetType,
-    title: widgetName,
+    title: options?.title || widgetName,
     content: widgetContent,
-    color: "yellow",
-    icon: "StickyNote",
+    color: options?.color || "yellow",
+    icon: options?.icon || "StickyNote",
   };
 
   console.log("📦 REAL INSERT PAYLOAD:", insertPayload);
@@ -478,6 +496,13 @@ export function getDefaultWidgetContent(type: WidgetType): WidgetContent {
       // Tracker widget requires tracker_id to be set via selection modal
       // This default should never be used, but provides type safety
       return { tracker_id: '' } as TrackerContent;
+    case "tracker_app":
+      // Tracker app requires tracker_id to be set when creating
+      // This default should never be used, but provides type safety
+      return { tracker_id: '' } as TrackerAppContent;
+    case "tracker_quicklink":
+      // Tracker quicklink has no content needed
+      return {} as TrackerQuickLinkContent;
     default:
       return {} as CustomContent;
   }

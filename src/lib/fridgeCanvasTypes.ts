@@ -20,6 +20,8 @@ export type WidgetType =
   | 'tables'
   | 'todos'
   | 'tracker'
+  | 'tracker_app'
+  | 'tracker_quicklink'
   | 'custom';
 
 export type SizeMode = 'icon' | 'mini' | 'large' | 'xlarge';
@@ -176,6 +178,14 @@ export interface TrackerContent {
   tracker_id: string;
 }
 
+export interface TrackerAppContent {
+  tracker_id: string;
+}
+
+export interface TrackerQuickLinkContent {
+  // No content needed - shows all trackers
+}
+
 export interface CustomContent {
   [key: string]: unknown;
 }
@@ -198,6 +208,8 @@ export type WidgetContent =
   | FilesContent
   | TablesContent
   | TrackerContent
+  | TrackerAppContent
+  | TrackerQuickLinkContent
   | CustomContent;
 
 export type { CalendarEvent };

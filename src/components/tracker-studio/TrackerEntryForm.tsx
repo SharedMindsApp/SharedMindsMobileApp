@@ -5,6 +5,8 @@ import { Loader2, AlertCircle, CheckCircle2, ChevronDown, ChevronUp, Plus, X } f
 import type { TrackerTheme } from '../../lib/trackerStudio/trackerThemeUtils';
 import { isMoodTracker, shouldUseLowFrictionUX } from '../../lib/trackerStudio/emotionWords';
 import { MoodTrackerEntryForm } from './MoodTrackerEntryForm';
+import { isHabitTracker } from '../../lib/trackerStudio/habitTrackerUtils';
+import { IntelligentHabitTrackerEntryForm } from './IntelligentHabitTrackerEntryForm';
 
 type TrackerEntryFormProps = {
   tracker: Tracker;
@@ -238,6 +240,20 @@ export function TrackerEntryForm({
         theme={theme}
         onSave={handleSave}
         loading={loading}
+      />
+    );
+  }
+
+  // Use intelligent form for Habit Tracker
+  if (isHabitTracker(tracker)) {
+    return (
+      <IntelligentHabitTrackerEntryForm
+        tracker={tracker}
+        entryDate={entryDate}
+        existingEntry={existingEntry}
+        onEntrySaved={onEntrySaved}
+        readOnly={readOnly}
+        theme={theme}
       />
     );
   }

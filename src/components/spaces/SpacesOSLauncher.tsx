@@ -596,14 +596,45 @@ export function SpacesOSLauncher({ widgets, householdId, householdName, onWidget
   };
 
   // Phase 9A: Get icon component for widget
-  const getIconComponent = (widgetType: string) => {
-    const iconName = WIDGET_ICON_MAP[widgetType] || 'Square';
+  const getIconComponent = (widget: WidgetWithLayout) => {
+    // For tracker_app widgets, use the widget's stored icon if available
+    if (widget.widget_type === 'tracker_app' && widget.icon) {
+      const iconName = widget.icon as keyof typeof Icons;
+      if (Icons[iconName]) {
+        return Icons[iconName] as any;
+      }
+    }
+    // Fall back to default mapping
+    const iconName = WIDGET_ICON_MAP[widget.widget_type] || 'Square';
     return Icons[iconName] as any;
   };
 
   // Phase 9A: Get color for widget
-  const getWidgetColor = (widgetType: string) => {
-    return WIDGET_COLOR_MAP[widgetType] || 'bg-gray-500';
+  const getWidgetColor = (widget: WidgetWithLayout) => {
+    // For tracker_app widgets, use the widget's stored color if available
+    if (widget.widget_type === 'tracker_app' && widget.color) {
+      // Map tracker color to background color class
+      const colorMap: Record<string, string> = {
+        'blue': 'bg-blue-500',
+        'indigo': 'bg-indigo-500',
+        'purple': 'bg-purple-500',
+        'pink': 'bg-pink-500',
+        'red': 'bg-red-500',
+        'orange': 'bg-orange-500',
+        'yellow': 'bg-yellow-500',
+        'green': 'bg-green-500',
+        'teal': 'bg-teal-500',
+        'cyan': 'bg-cyan-500',
+        'emerald': 'bg-emerald-500',
+        'amber': 'bg-amber-500',
+        'violet': 'bg-violet-500',
+        'slate': 'bg-slate-500',
+        'gray': 'bg-gray-500',
+      };
+      return colorMap[widget.color] || `bg-${widget.color}-500`;
+    }
+    // Fall back to default mapping
+    return WIDGET_COLOR_MAP[widget.widget_type] || 'bg-gray-500';
   };
 
   // Phase 9A: Widget type to display name mapping
@@ -963,8 +994,8 @@ export function SpacesOSLauncher({ widgets, householdId, householdName, onWidget
                   .slice(pageIndex * widgetsPerPage, (pageIndex + 1) * widgetsPerPage)
                   .map((widget, localIndex) => {
                     const globalIndex = pageIndex * widgetsPerPage + localIndex;
-                    const IconComponent = getIconComponent(widget.widget_type);
-                    const color = getWidgetColor(widget.widget_type);
+                    const IconComponent = getIconComponent(widget);
+                    const color = getWidgetColor(widget);
                     const name = getWidgetName(widget);
                     const isDragging = draggedWidget === widget.id;
                     const isDraggedOver = draggedOverIndex === globalIndex && draggedWidget !== widget.id && pageIndex === currentPage;

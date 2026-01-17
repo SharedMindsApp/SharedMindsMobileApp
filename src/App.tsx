@@ -159,6 +159,8 @@ import { LessonPlanning } from './components/planner/education/LessonPlanning';
 import { PlannerFinance } from './components/planner/PlannerFinance';
 import { FinancialOverview } from './components/planner/finance/FinancialOverview';
 import { IncomeAndCashFlow } from './components/planner/finance/IncomeAndCashFlow';
+import { IncomeCashFlowView } from './components/planner/finance/IncomeCashFlowView';
+import { FinancialReflectionView } from './components/planner/finance/FinancialReflectionView';
 import { SpendingAndExpenses } from './components/planner/finance/SpendingAndExpenses';
 import { SavingsAndSafetyNets } from './components/planner/finance/SavingsAndSafetyNets';
 import { InvestmentsAndAssets } from './components/planner/finance/InvestmentsAndAssets';
@@ -174,6 +176,7 @@ import { FiveYearOutlook } from './components/planner/vision/FiveYearOutlook';
 import { VisionAreas } from './components/planner/vision/VisionAreas';
 import { VisionBoard } from './components/planner/vision/VisionBoard';
 import { MonthlyCheckin } from './components/planner/vision/MonthlyCheckin';
+import { MonthlyVisionCheckinView } from './components/planner/vision/MonthlyVisionCheckinView';
 import { CareerPurpose } from './components/planner/vision/CareerPurpose';
 import { RelationshipVision } from './components/planner/vision/RelationshipVision';
 import { ValuesAlignment } from './components/planner/vision/ValuesAlignment';
@@ -192,15 +195,15 @@ import { HouseholdGroceries } from './components/planner/household/HouseholdGroc
 import { PlannerShell } from './components/planner/PlannerShell';
 import { PlannerSelfCare } from './components/planner/PlannerSelfCare';
 import { WellnessGoals } from './components/planner/selfcare/WellnessGoals';
-import { ExerciseTracker } from './components/planner/selfcare/ExerciseTracker';
-import { MentalHealthCheckins } from './components/planner/selfcare/MentalHealthCheckins';
-import { NutritionLog } from './components/planner/selfcare/NutritionLog';
-import { SleepTracker } from './components/planner/selfcare/SleepTracker';
-import { MindfulnessMeditation } from './components/planner/selfcare/MindfulnessMeditation';
+import { ExerciseTrackerView } from './components/planner/selfcare/ExerciseTrackerView';
+import { MentalHealthCheckinsView } from './components/planner/selfcare/MentalHealthCheckinsView';
+import { NutritionLogView } from './components/planner/selfcare/NutritionLogView';
+import { SleepTrackerView } from './components/planner/selfcare/SleepTrackerView';
+import { MindfulnessMeditationView } from './components/planner/selfcare/MindfulnessMeditationView';
 import { SelfCareRoutines } from './components/planner/selfcare/SelfCareRoutines';
-import { GratitudeJournal } from './components/planner/selfcare/GratitudeJournal';
+import { GratitudeJournalView } from './components/planner/selfcare/GratitudeJournalView';
 import { BeautyRoutines } from './components/planner/selfcare/BeautyRoutines';
-import { RestRecovery } from './components/planner/selfcare/RestRecovery';
+import { RestRecoveryView } from './components/planner/selfcare/RestRecoveryView';
 import { PlannerTravel } from './components/planner/PlannerTravel';
 import { CreateTripPage } from './components/planner/travel/CreateTripPage';
 import { TripDetailPage } from './components/planner/travel/TripDetailPage';
@@ -1446,7 +1449,7 @@ function AppContent() {
             element={
               <AuthGuard>
                 <Layout>
-                  <IncomeAndCashFlow />
+                  <IncomeCashFlowView />
                 </Layout>
               </AuthGuard>
             }
@@ -1516,7 +1519,7 @@ function AppContent() {
             element={
               <AuthGuard>
                 <Layout>
-                  <FinancialReflection />
+                  <FinancialReflectionView />
                 </Layout>
               </AuthGuard>
             }
@@ -1596,7 +1599,7 @@ function AppContent() {
             element={
               <AuthGuard>
                 <Layout>
-                  <MonthlyCheckin />
+                  <MonthlyVisionCheckinView />
                 </Layout>
               </AuthGuard>
             }
@@ -1861,7 +1864,7 @@ function AppContent() {
             element={
               <AuthGuard>
                 <Layout>
-                  <ExerciseTracker />
+                  <ExerciseTrackerView />
                 </Layout>
               </AuthGuard>
             }
@@ -1871,7 +1874,7 @@ function AppContent() {
             element={
               <AuthGuard>
                 <Layout>
-                  <MentalHealthCheckins />
+                  <MentalHealthCheckinsView />
                 </Layout>
               </AuthGuard>
             }
@@ -1881,7 +1884,7 @@ function AppContent() {
             element={
               <AuthGuard>
                 <Layout>
-                  <NutritionLog />
+                  <NutritionLogView />
                 </Layout>
               </AuthGuard>
             }
@@ -1891,7 +1894,7 @@ function AppContent() {
             element={
               <AuthGuard>
                 <Layout>
-                  <SleepTracker />
+                  <SleepTrackerView />
                 </Layout>
               </AuthGuard>
             }
@@ -1901,7 +1904,7 @@ function AppContent() {
             element={
               <AuthGuard>
                 <Layout>
-                  <MindfulnessMeditation />
+                  <MindfulnessMeditationView />
                 </Layout>
               </AuthGuard>
             }
@@ -1921,7 +1924,7 @@ function AppContent() {
             element={
               <AuthGuard>
                 <Layout>
-                  <GratitudeJournal />
+                  <GratitudeJournalView />
                 </Layout>
               </AuthGuard>
             }
@@ -1941,7 +1944,7 @@ function AppContent() {
             element={
               <AuthGuard>
                 <Layout>
-                  <RestRecovery />
+                  <RestRecoveryView />
                 </Layout>
               </AuthGuard>
             }

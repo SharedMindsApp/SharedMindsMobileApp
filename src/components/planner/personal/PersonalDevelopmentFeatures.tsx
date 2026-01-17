@@ -1,5 +1,5 @@
 import { Anchor, Lightbulb, Palette, Repeat } from 'lucide-react';
-import { HabitTrackerWidget } from '../widgets/HabitTrackerWidget';
+import { HabitTrackerView } from './HabitTrackerView';
 
 export function HobbiesView() {
   return (
@@ -59,16 +59,5 @@ export function IdeasView() {
 }
 
 export function HabitsView() {
-  return (
-    <div className="space-y-6">
-      <div className="flex items-center gap-3 mb-4">
-        <Repeat className="w-8 h-8 text-emerald-500" />
-        <div>
-          <h2 className="text-2xl font-bold text-slate-800">Habit Tracker</h2>
-          <p className="text-slate-600 mt-1">Support habits without streak pressure</p>
-        </div>
-      </div>
-      <HabitTrackerWidget layout="full" />
-    </div>
-  );
+  return <HabitTrackerView />;
 }

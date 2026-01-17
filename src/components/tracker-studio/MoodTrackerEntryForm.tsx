@@ -71,12 +71,19 @@ export function MoodTrackerEntryForm({
       setShowNotes(!!notesWithoutEmotions);
       setFieldValues(existingEntry.field_values);
     } else {
+      // Initialize field values with entry_date if required
+      const dateField = tracker.field_schema_snapshot.find(f => f.id === 'entry_date' || f.type === 'date');
+      const initialFieldValues: Record<string, string | number | boolean | null> = {};
+      if (dateField) {
+        initialFieldValues[dateField.id] = entryDate;
+      }
+      setFieldValues(initialFieldValues);
       setMoodLevel(null);
       setSelectedEmotions([]);
       setNotes('');
       setShowNotes(false);
     }
-  }, [existingEntry, moodField]);
+  }, [existingEntry, moodField, tracker, entryDate]);
 
   const handleMoodSelect = (level: number) => {
     if (readOnly) return;
@@ -112,11 +119,39 @@ export function MoodTrackerEntryForm({
     }
 
     try {
+      // Find date and time_of_day fields if they exist in schema
+      const dateField = tracker.field_schema_snapshot.find(f => f.id === 'entry_date' || f.type === 'date');
+      const timeOfDayField = tracker.field_schema_snapshot.find(f => f.id === 'time_of_day');
+      
+      // Get current time of day (e.g., "Morning", "Afternoon", "Evening", "Night")
+      const now = new Date();
+      const hour = now.getHours();
+      let timeOfDayLabel = '';
+      if (hour >= 5 && hour < 12) {
+        timeOfDayLabel = 'Morning';
+      } else if (hour >= 12 && hour < 17) {
+        timeOfDayLabel = 'Afternoon';
+      } else if (hour >= 17 && hour < 21) {
+        timeOfDayLabel = 'Evening';
+      } else {
+        timeOfDayLabel = 'Night';
+      }
+      
       // Prepare field values
       const finalFieldValues: Record<string, string | number | boolean | null> = {
         ...fieldValues,
         [moodField.id]: moodLevel,
       };
+      
+      // Include entry_date field if it exists in schema and is required
+      if (dateField) {
+        finalFieldValues[dateField.id] = entryDate;
+      }
+      
+      // Automatically set time_of_day if field exists in schema
+      if (timeOfDayField) {
+        finalFieldValues[timeOfDayField.id] = timeOfDayLabel;
+      }
 
       // Store emotions in field_values as structured data for analytics
       // Use a special key that won't conflict with schema fields

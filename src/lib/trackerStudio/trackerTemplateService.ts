@@ -102,7 +102,16 @@ export async function listTemplates(includeArchived: boolean = false): Promise<T
     throw new Error(`Failed to list templates: ${error.message}`);
   }
 
-  return data || [];
+  // Sort templates: Habit Tracker first, then by created_at
+  const sorted = (data || []).sort((a, b) => {
+    // Habit Tracker always comes first
+    if (a.name === 'Habit Tracker' && b.name !== 'Habit Tracker') return -1;
+    if (a.name !== 'Habit Tracker' && b.name === 'Habit Tracker') return 1;
+    // Otherwise sort by created_at (newest first)
+    return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+  });
+
+  return sorted;
 }
 
 /**

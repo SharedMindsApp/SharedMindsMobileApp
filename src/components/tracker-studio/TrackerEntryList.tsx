@@ -162,6 +162,10 @@ type EntryCardProps = {
 };
 
 function EntryCard({ entry, tracker, formatDate, formatFieldValue, theme }: EntryCardProps) {
+  // Get time_of_day field if it exists
+  const timeOfDayField = tracker.field_schema_snapshot.find(f => f.id === 'time_of_day');
+  const timeOfDay = timeOfDayField ? entry.field_values[timeOfDayField.id] as string : null;
+  
   return (
     <div className={`bg-white rounded-xl border-2 ${theme.borderColor} p-5 shadow-sm hover:shadow-md transition-all`}>
       <div className="flex items-start justify-between mb-4">
@@ -169,7 +173,12 @@ function EntryCard({ entry, tracker, formatDate, formatFieldValue, theme }: Entr
           <div className={`${theme.iconBg} ${theme.iconColor} rounded-lg p-2`}>
             <Calendar size={18} className={theme.iconColor} />
           </div>
-          <span className="font-bold text-lg text-gray-900">{formatDate(entry.entry_date)}</span>
+          <div className="flex flex-col">
+            <span className="font-bold text-lg text-gray-900">{formatDate(entry.entry_date)}</span>
+            {timeOfDay && (
+              <span className="text-sm text-gray-600 font-medium">{timeOfDay}</span>
+            )}
+          </div>
         </div>
       </div>
 

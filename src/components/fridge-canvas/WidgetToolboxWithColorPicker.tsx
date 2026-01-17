@@ -67,6 +67,7 @@ const widgetOptions: WidgetOption[] = [
   { type: 'collections', icon: Folder, label: 'Collections', category: 'Organization', description: 'Curate and organize references' },
   { type: 'tables', icon: Table, label: 'Tables', category: 'Organization', description: 'Spreadsheet-style data tables' },
   { type: 'tracker', icon: Activity, label: 'Tracker', category: 'Tracking', description: 'View tracker data from Tracker Studio' },
+  { type: 'tracker_app', icon: Activity, label: 'Tracker App', category: 'Tracking', description: 'Add a tracker as a standalone app with its own icon' },
   { type: 'graphics', icon: ImagePlus, label: 'Graphics', category: 'Media', description: 'Upload and place SVG graphics' },
 ];
 

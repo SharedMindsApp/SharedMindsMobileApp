@@ -5,12 +5,12 @@
  * Includes analytics previews and visual indicators.
  */
 
-import { useState, useEffect, useMemo, useRef } from 'react';
+import { useState, useEffect, useMemo, useRef, memo, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { 
   Plus, Calendar, FileText, Info, BarChart3, Loader2, AlertCircle,
   TrendingUp, TrendingDown, Minus, ArrowRight, Sparkles, Clock, Activity,
-  Target, Zap, CheckCircle2, AlertTriangle, GripVertical
+  Target, Zap, CheckCircle2, AlertTriangle, GripVertical, LayoutGrid, Trash2
 } from 'lucide-react';
 import {
   DndContext,
@@ -31,7 +31,9 @@ import {
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { CreateTrackerOptionsModal } from './CreateTrackerOptionsModal';
-import { listTrackers, reorderTrackers } from '../../lib/trackerStudio/trackerService';
+import { AddTrackerToSpaceModal } from './AddTrackerToSpaceModal';
+import { ConfirmDialog } from '../ConfirmDialog';
+import { listTrackers, reorderTrackers, archiveTracker } from '../../lib/trackerStudio/trackerService';
 import { useTrackerEntries } from '../../hooks/trackerStudio/useTrackerEntries';
 import { calculateAggregatedStats, getNumericFields } from '../../lib/trackerStudio/trackerAnalyticsService';
 import { getDateRangePreset } from '../../lib/trackerStudio/analyticsUtils';
@@ -49,6 +51,9 @@ export function MyTrackersPage() {
   const [loadingInsights, setLoadingInsights] = useState(false);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [isReordering, setIsReordering] = useState(false);
+  const [trackerForSpace, setTrackerForSpace] = useState<Tracker | null>(null);
+  const [trackerToDelete, setTrackerToDelete] = useState<Tracker | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   // Drag and drop sensors
   // PointerSensor for mouse, TouchSensor for touch devices
@@ -116,6 +121,38 @@ export function MyTrackersPage() {
       month: 'short',
       day: 'numeric',
     });
+  };
+
+  const handleDeleteTracker = async () => {
+    if (!trackerToDelete) return;
+
+    try {
+      setIsDeleting(true);
+      await archiveTracker(trackerToDelete.id);
+      
+      // Remove from local state and reload insights
+      setTrackers(prev => {
+        const remainingTrackers = prev.filter(t => t.id !== trackerToDelete.id);
+        
+        // Update insights with remaining trackers
+        if (remainingTrackers.length > 0) {
+          loadInsights(remainingTrackers).catch(err => {
+            console.error('Failed to reload insights after delete:', err);
+          });
+        } else {
+          setInsights(null);
+        }
+        
+        return remainingTrackers;
+      });
+      
+      setTrackerToDelete(null);
+    } catch (err) {
+      console.error('Failed to delete tracker:', err);
+      alert(err instanceof Error ? err.message : 'Failed to delete tracker');
+    } finally {
+      setIsDeleting(false);
+    }
   };
 
   const handleDragEnd = async (event: DragEndEvent) => {
@@ -366,14 +403,15 @@ export function MyTrackersPage() {
             >
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
                 {trackers.map(tracker => (
-                  <SortableTrackerCard
-                    key={tracker.id}
-                    tracker={tracker}
-                    onOpen={() => navigate(`/tracker-studio/tracker/${tracker.id}`)}
-                    getGranularityLabel={getGranularityLabel}
-                    formatDate={formatDate}
-                    disabled={isReordering}
-                  />
+                <SortableTrackerCard
+                  key={tracker.id}
+                  tracker={tracker}
+                  onOpen={() => navigate(`/tracker-studio/tracker/${tracker.id}`)}
+                  onAddToSpace={() => setTrackerForSpace(tracker)}
+                  getGranularityLabel={getGranularityLabel}
+                  formatDate={formatDate}
+                  disabled={isReordering}
+                />
                 ))}
               </div>
             </SortableContext>
@@ -411,6 +449,34 @@ export function MyTrackersPage() {
         onSelectCustom={() => navigate('/tracker-studio/create')}
         onSelectTemplates={() => navigate('/tracker-studio/templates')}
       />
+
+      {/* Add Tracker to Space Modal */}
+      {trackerForSpace && (
+        <AddTrackerToSpaceModal
+          isOpen={!!trackerForSpace}
+          onClose={() => setTrackerForSpace(null)}
+          tracker={trackerForSpace}
+          onAdded={() => {
+            setTrackerForSpace(null);
+          }}
+        />
+      )}
+
+      {/* Delete Tracker Confirmation Dialog */}
+      <ConfirmDialog
+        isOpen={!!trackerToDelete}
+        onClose={() => setTrackerToDelete(null)}
+        onConfirm={handleDeleteTracker}
+        title="Delete Tracker"
+        message={
+          trackerToDelete
+            ? `Are you sure you want to delete "${trackerToDelete.name}"? This will archive the tracker and hide it from your list. You can restore it later if needed.`
+            : ''
+        }
+        confirmText="Delete"
+        cancelText="Cancel"
+        variant="danger"
+      />
     </div>
   );
 }
@@ -418,6 +484,7 @@ export function MyTrackersPage() {
 type TrackerDashboardCardProps = {
   tracker: Tracker;
   onOpen: () => void;
+  onAddToSpace?: () => void;
   getGranularityLabel: (g: string) => string;
   formatDate: (d: string) => string;
   disabled?: boolean;
@@ -430,6 +497,7 @@ type TrackerDashboardCardInternalProps = Omit<TrackerDashboardCardProps, 'disabl
 function SortableTrackerCard({
   tracker,
   onOpen,
+  onAddToSpace,
   getGranularityLabel,
   formatDate,
   disabled = false,
@@ -474,6 +542,7 @@ function SortableTrackerCard({
       <TrackerDashboardCard
         tracker={tracker}
         onOpen={onOpen}
+        onAddToSpace={onAddToSpace}
         getGranularityLabel={getGranularityLabel}
         formatDate={formatDate}
         isDragging={isDragging}
@@ -482,9 +551,10 @@ function SortableTrackerCard({
   );
 }
 
-function TrackerDashboardCard({
+const TrackerDashboardCard = memo(function TrackerDashboardCard({
   tracker, 
-  onOpen, 
+  onOpen,
+  onAddToSpace,
   getGranularityLabel, 
   formatDate,
   isDragging = false,
@@ -492,9 +562,9 @@ function TrackerDashboardCard({
   const theme = getTrackerTheme(tracker.name);
   const Icon = theme.icon;
   
-  // Get date range for analytics (last 30 days)
+  // Get date range for analytics (last 7 days for performance - reduced from 30)
   const dateRange: DateRange = useMemo(() => {
-    return getDateRangePreset('30d');
+    return getDateRangePreset('7d');
   }, []);
 
   // Fetch entries for analytics preview
@@ -569,6 +639,82 @@ function TrackerDashboardCard({
     return entryDate >= today;
   });
 
+  // Calculate time since last entry for soft alerts
+  const hoursSinceLastEntry = useMemo(() => {
+    if (entries.length === 0) {
+      // If no entries in the last 30 days, check if tracker is old enough to warrant an alert
+      const trackerAgeHours = (new Date().getTime() - new Date(tracker.created_at).getTime()) / (1000 * 60 * 60);
+      // Only show alert if tracker is at least 48 hours old (to avoid false positives for new trackers)
+      if (trackerAgeHours >= 48) {
+        // Estimate as "30+ days" (30 * 24 = 720 hours minimum, but we'll treat as 30 days)
+        return 30 * 24; // Return 30 days worth of hours
+      }
+      return null;
+    }
+    
+    const sortedEntries = [...entries].sort((a, b) => 
+      new Date(b.entry_date).getTime() - new Date(a.entry_date).getTime()
+    );
+    const lastEntry = sortedEntries[0];
+    const lastEntryDate = new Date(lastEntry.entry_date);
+    lastEntryDate.setHours(0, 0, 0, 0); // Normalize to start of day
+    
+    const now = new Date();
+    const diffMs = now.getTime() - lastEntryDate.getTime();
+    const diffHours = diffMs / (1000 * 60 * 60);
+    
+    return diffHours;
+  }, [entries, tracker.created_at]);
+
+  // Determine alert level based on hours since last entry
+  const inactiveAlert = useMemo(() => {
+    if (hoursSinceLastEntry === null) {
+      return { level: 'none', message: null, color: null };
+    }
+    
+    // Less than 24 hours - no alert
+    if (hoursSinceLastEntry < 24) {
+      return { level: 'none', message: null, color: null };
+    }
+    
+    // 24-48 hours - gentle reminder
+    if (hoursSinceLastEntry >= 24 && hoursSinceLastEntry < 48) {
+      return {
+        level: 'gentle',
+        message: '1 day',
+        color: 'amber',
+      };
+    }
+    
+    // 48-72 hours - moderate alert
+    if (hoursSinceLastEntry >= 48 && hoursSinceLastEntry < 72) {
+      return {
+        level: 'moderate',
+        message: '2 days',
+        color: 'orange',
+      };
+    }
+    
+    // 72 hours - 1 week - stronger alert
+    if (hoursSinceLastEntry >= 72 && hoursSinceLastEntry < 168) {
+      const days = Math.floor(hoursSinceLastEntry / 24);
+      return {
+        level: 'strong',
+        message: `${days} days`,
+        color: 'red',
+      };
+    }
+    
+    // 1 week or more - strongest alert
+    const days = Math.floor(hoursSinceLastEntry / 24);
+    const weeks = Math.floor(days / 7);
+    return {
+      level: 'strongest',
+      message: weeks >= 2 ? `${weeks} weeks` : '1 week',
+      color: 'red',
+    };
+  }, [hoursSinceLastEntry]);
+
   // Handle click navigation (only if not dragging)
   const handleCardClick = (e: React.MouseEvent) => {
     if (!isDragging) {
@@ -607,6 +753,18 @@ function TrackerDashboardCard({
               )}
             </div>
           </div>
+          {onAddToSpace && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                onAddToSpace();
+              }}
+              className="ml-2 p-2 rounded-lg bg-white/20 hover:bg-white/30 text-white transition-colors flex-shrink-0 z-10"
+              title="Add to Spaces"
+            >
+              <LayoutGrid size={18} />
+            </button>
+          )}
         </div>
         {/* Subtle pattern overlay */}
         <div className="absolute inset-0 opacity-10 bg-white"></div>
@@ -681,30 +839,104 @@ function TrackerDashboardCard({
           </div>
         )}
 
-        {/* Status Indicator */}
+        {/* Status Indicator with Soft Alerts */}
         <div className="flex items-center justify-between pt-2 border-t border-gray-200">
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-1 min-w-0">
             {hasRecentEntry ? (
               <>
-                <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
+                <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse flex-shrink-0"></div>
                 <span className="text-xs text-gray-600 font-medium">Active today</span>
+              </>
+            ) : inactiveAlert.level !== 'none' ? (
+              <>
+                <AlertTriangle 
+                  size={14} 
+                  className={`flex-shrink-0 ${
+                    inactiveAlert.color === 'amber' 
+                      ? 'text-amber-500' 
+                      : inactiveAlert.color === 'orange'
+                      ? 'text-orange-500'
+                      : 'text-red-500'
+                  }`} 
+                />
+                <span 
+                  className={`text-xs font-medium flex-shrink-0 ${
+                    inactiveAlert.color === 'amber'
+                      ? 'text-amber-600'
+                      : inactiveAlert.color === 'orange'
+                      ? 'text-orange-600'
+                      : 'text-red-600'
+                  }`}
+                >
+                  {inactiveAlert.message} ago
+                </span>
               </>
             ) : (
               <>
-                <Clock size={14} className="text-gray-400" />
+                <Clock size={14} className="text-gray-400 flex-shrink-0" />
                 <span className="text-xs text-gray-500">No entry today</span>
               </>
             )}
           </div>
-          <div className="flex items-center gap-1 text-xs text-blue-600 font-semibold group-hover:gap-2 transition-all">
+          <div className="flex items-center gap-1 text-xs text-blue-600 font-semibold group-hover:gap-2 transition-all flex-shrink-0 ml-2">
             <span>View Details</span>
             <ArrowRight size={14} />
           </div>
         </div>
+        
+        {/* Soft Alert Badge (if inactive) */}
+        {inactiveAlert.level !== 'none' && (
+          <div 
+            className={`mt-2 px-3 py-1.5 rounded-lg border-2 flex items-center justify-center gap-2 ${
+              inactiveAlert.color === 'amber'
+                ? 'bg-amber-50 border-amber-200'
+                : inactiveAlert.color === 'orange'
+                ? 'bg-orange-50 border-orange-200'
+                : 'bg-red-50 border-red-200'
+            }`}
+          >
+            <Clock 
+              size={12} 
+              className={
+                inactiveAlert.color === 'amber'
+                  ? 'text-amber-600'
+                  : inactiveAlert.color === 'orange'
+                  ? 'text-orange-600'
+                  : 'text-red-600'
+              } 
+            />
+            <span 
+              className={`text-xs font-semibold ${
+                inactiveAlert.color === 'amber'
+                  ? 'text-amber-700'
+                  : inactiveAlert.color === 'orange'
+                  ? 'text-orange-700'
+                  : 'text-red-700'
+              }`}
+            >
+              {inactiveAlert.level === 'gentle' 
+                ? 'Gentle reminder to check in' 
+                : inactiveAlert.level === 'moderate'
+                ? 'Haven\'t tracked in a while'
+                : 'Long time since last entry'}
+            </span>
+          </div>
+        )}
       </div>
 
       {/* Hover Effect Overlay */}
       <div className="absolute inset-0 bg-gradient-to-br from-blue-500/0 to-purple-500/0 group-hover:from-blue-500/5 group-hover:to-purple-500/5 transition-all pointer-events-none"></div>
     </div>
   );
-}
+}, (prevProps, nextProps) => {
+  // Custom comparison function for React.memo - only re-render if these change
+  return (
+    prevProps.tracker.id === nextProps.tracker.id &&
+    prevProps.tracker.name === nextProps.tracker.name &&
+    prevProps.tracker.description === nextProps.tracker.description &&
+    prevProps.tracker.created_at === nextProps.tracker.created_at &&
+    prevProps.tracker.entry_granularity === nextProps.tracker.entry_granularity &&
+    prevProps.tracker.field_schema_snapshot.length === nextProps.tracker.field_schema_snapshot.length &&
+    prevProps.isDragging === nextProps.isDragging
+  );
+});

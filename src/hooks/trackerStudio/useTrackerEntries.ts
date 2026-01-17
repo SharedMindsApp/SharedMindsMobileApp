@@ -14,6 +14,12 @@ export function useTrackerEntries(options: ListTrackerEntriesOptions) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  // Memoize options to prevent unnecessary re-fetches
+  const trackerId = options.tracker_id;
+  const userId = options.user_id;
+  const startDate = options.start_date;
+  const endDate = options.end_date;
+
   useEffect(() => {
     let cancelled = false;
 
@@ -41,7 +47,8 @@ export function useTrackerEntries(options: ListTrackerEntriesOptions) {
     return () => {
       cancelled = true;
     };
-  }, [options.tracker_id, options.user_id, options.start_date, options.end_date]);
+    // Use individual dependencies instead of options object to prevent unnecessary re-fetches
+  }, [trackerId, userId, startDate, endDate]);
 
   return { entries, loading, error };
 }

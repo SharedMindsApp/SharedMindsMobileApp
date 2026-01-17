@@ -30,6 +30,8 @@ import { StackCardCanvasWidget } from '../fridge-canvas/widgets/StackCardCanvasW
 import { FilesCanvasWidget } from '../fridge-canvas/widgets/FilesCanvasWidget';
 import { CollectionsCanvasWidget } from '../fridge-canvas/widgets/CollectionsCanvasWidget';
 import { TablesCanvasWidget } from '../fridge-canvas/widgets/TablesCanvasWidget';
+import { TrackerAppWidget } from '../fridge-canvas/widgets/TrackerAppWidget';
+import { TrackerQuickLinkApp } from '../fridge-canvas/widgets/TrackerQuickLinkApp';
 import { useHouseholdPermissions } from '../../lib/useHouseholdPermissions';
 
 export function WidgetAppView() {
@@ -257,6 +259,55 @@ export function WidgetAppView() {
             spaceId={spaceId || ''}
             spaceType="shared"
             onUpdate={canEdit ? handleContentChange : undefined}
+          />
+        );
+
+      case 'tracker_app':
+        return (
+          <TrackerAppWidget
+            content={widget.content as any}
+          />
+        );
+
+      case 'tracker_quicklink':
+        return (
+          <TrackerQuickLinkApp
+            spaceId={spaceId || ''}
+            onCreateTrackerApp={async (trackerId) => {
+              // Create a tracker app widget when user selects a tracker
+              try {
+                const { createWidget } = await import('../../lib/fridgeCanvas');
+                const { getTracker } = await import('../../lib/trackerStudio/trackerService');
+                
+                // Fetch tracker to get icon and color
+                let widgetIcon = 'Activity';
+                let widgetColor = 'indigo';
+                let widgetTitle = 'Tracker';
+                
+                try {
+                  const tracker = await getTracker(trackerId);
+                  if (tracker) {
+                    widgetTitle = tracker.name;
+                    widgetIcon = tracker.icon || 'Activity';
+                    widgetColor = tracker.color || 'indigo';
+                  }
+                } catch (err) {
+                  console.error('Failed to fetch tracker:', err);
+                }
+                
+                const trackerAppContent = { tracker_id: trackerId };
+                await createWidget(spaceId || '', 'tracker_app', trackerAppContent, {
+                  icon: widgetIcon,
+                  color: widgetColor,
+                  title: widgetTitle,
+                });
+                // Navigate to the new widget
+                // Note: We'd need the widget ID, but for now just reload
+                window.location.reload();
+              } catch (err) {
+                console.error('Failed to create tracker app:', err);
+              }
+            }}
           />
         );
 

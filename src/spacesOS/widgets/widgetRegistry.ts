@@ -200,6 +200,24 @@ export const widgetRegistry: WidgetRegistryItem[] = [
     category: 'Tracking',
     description: 'View tracker data from Tracker Studio',
   },
+  {
+    id: 'tracker_app',
+    label: 'Tracker App',
+    icon: Activity,
+    color: 'bg-indigo-50',
+    iconColor: 'text-indigo-600',
+    category: 'Tracking',
+    description: 'Full-featured tracker app in Spaces',
+  },
+  {
+    id: 'tracker_quicklink',
+    label: 'Tracker Quick Links',
+    icon: Activity,
+    color: 'bg-indigo-50',
+    iconColor: 'text-indigo-600',
+    category: 'Tracking',
+    description: 'Quick access to all your trackers',
+  },
 ];
 
 export const widgetCategories = ['All', 'Content', 'Planning', 'Tracking', 'Media', 'Organization'] as const;

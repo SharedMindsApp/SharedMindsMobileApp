@@ -160,6 +160,27 @@ export async function createTrackerReminder(
     }
   }
 
+  // Get tracker name for reminder title
+  const { getTracker } = await import('./trackerService');
+  const tracker = await getTracker(input.tracker_id);
+
+  // Calculate reminder_date from schedule (required by old reminders table structure)
+  // For tracker reminders, we use schedule JSONB, but reminder_date is still required
+  let reminderDate = new Date().toISOString().split('T')[0]; // Default to today
+  if (input.schedule?.time_of_day) {
+    // Parse time from schedule and calculate target date
+    const targetTime = new Date();
+    const [hours, minutes] = input.schedule.time_of_day.split(':').map(Number);
+    targetTime.setHours(hours, minutes || 0, 0, 0);
+    
+    // If the time has already passed today, set to tomorrow
+    if (targetTime < new Date()) {
+      targetTime.setDate(targetTime.getDate() + 1);
+    }
+    
+    reminderDate = targetTime.toISOString().split('T')[0];
+  }
+
   // Create reminder
   const { data, error } = await supabase
     .from('reminders')
@@ -169,6 +190,8 @@ export async function createTrackerReminder(
       reminder_kind: input.reminder_kind,
       owner_user_id: user.id,
       created_by: profileId, // For compatibility with old reminders table
+      title: tracker?.name || 'Tracker', // Use tracker name as reminder title
+      reminder_date: reminderDate, // Required by reminders table (from old structure)
       schedule: input.schedule || null,
       delivery_channels: input.delivery_channels || ['in_app'],
       is_active: input.is_active ?? true,

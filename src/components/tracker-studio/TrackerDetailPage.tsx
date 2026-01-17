@@ -1,7 +1,7 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, Suspense, lazy } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Calendar, Share2, Eye, Loader2, AlertCircle, Users, BarChart3, ChevronDown, ChevronUp, Clock } from 'lucide-react';
-import { getTracker } from '../../lib/trackerStudio/trackerService';
+import { ArrowLeft, Calendar, Share2, Eye, Loader2, AlertCircle, Users, BarChart3, ChevronDown, ChevronUp, Clock, LayoutGrid, Trash2 } from 'lucide-react';
+import { getTracker, archiveTracker } from '../../lib/trackerStudio/trackerService';
 import { getEntryByDate } from '../../lib/trackerStudio/trackerEntryService';
 import { resolveTrackerPermissions } from '../../lib/trackerStudio/trackerPermissionResolver';
 import type { Tracker, TrackerEntry } from '../../lib/trackerStudio/types';
@@ -12,9 +12,21 @@ import { TrackerReminderSettings } from './TrackerReminderSettings';
 import { InterpretationTimelinePanel } from './InterpretationTimelinePanel';
 import { ShareTrackerToProjectModal } from './ShareTrackerToProjectModal';
 import { TrackerObservationList } from './TrackerObservationList';
-import { TrackerAnalyticsPanel } from './analytics/TrackerAnalyticsPanel';
+
+// Lazy load analytics panel for code splitting (only loads when shown)
+const TrackerAnalyticsPanel = lazy(() => 
+  import('./analytics/TrackerAnalyticsPanel').then(module => ({
+    default: module.TrackerAnalyticsPanel
+  }))
+);
 import { getTrackerTheme } from '../../lib/trackerStudio/trackerThemeUtils';
 import { isMoodTracker, shouldUseLowFrictionUX } from '../../lib/trackerStudio/emotionWords';
+import { AddTrackerToSpaceModal } from './AddTrackerToSpaceModal';
+import { isScreenTimeTracker } from '../../lib/trackerStudio/screenTimeUtils';
+import { ScreenTimeAppView } from './ScreenTimeAppView';
+import { ReminderSuggestionModal } from './ReminderSuggestionModal';
+import { getTrackerReminders } from '../../lib/trackerStudio/trackerReminderService';
+import { ConfirmDialog } from '../ConfirmDialog';
 
 export function TrackerDetailPage() {
   const { trackerId } = useParams<{ trackerId: string }>();
@@ -34,6 +46,11 @@ export function TrackerDetailPage() {
   const [observationRefreshKey, setObservationRefreshKey] = useState(0);
   const [showAnalytics, setShowAnalytics] = useState(false);
   const [showDatePicker, setShowDatePicker] = useState(false);
+  const [showAddToSpaceModal, setShowAddToSpaceModal] = useState(false);
+  const [showReminderSuggestion, setShowReminderSuggestion] = useState(false);
+  const [hasCheckedReminders, setHasCheckedReminders] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   const loadTracker = useCallback(async () => {
     if (!trackerId) return;
@@ -41,15 +58,19 @@ export function TrackerDetailPage() {
     try {
       setLoading(true);
       setError(null);
-      const data = await getTracker(trackerId);
+      
+      // Parallelize tracker and permissions loading for faster initial render
+      const [data, perms] = await Promise.all([
+        getTracker(trackerId),
+        resolveTrackerPermissions(trackerId),
+      ]);
+      
       if (!data) {
         setError('Tracker not found or you do not have access');
         return;
       }
+      
       setTracker(data);
-
-      // Load permissions
-      const perms = await resolveTrackerPermissions(trackerId);
       setPermissions(perms);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load tracker');
@@ -85,13 +106,43 @@ export function TrackerDetailPage() {
     }
   }, [tracker, selectedDate, loadEntryForDate]);
 
-  const handleEntrySaved = () => {
+  const handleEntrySaved = async () => {
     setRefreshKey(prev => prev + 1);
     loadEntryForDate();
+    
+    // Check if we should show reminder suggestion (only once per session)
+    if (!hasCheckedReminders && tracker && permissions?.canEdit) {
+      try {
+        const reminders = await getTrackerReminders(tracker.id);
+        if (reminders.length === 0) {
+          // No reminders exist, show suggestion
+          setShowReminderSuggestion(true);
+        }
+        setHasCheckedReminders(true);
+      } catch (err) {
+        console.error('Failed to check reminders:', err);
+        // Don't show suggestion if we can't check
+      }
+    }
   };
 
   const handleDateChange = (newDate: string) => {
     setSelectedDate(newDate);
+  };
+
+  const handleDeleteTracker = async () => {
+    if (!tracker) return;
+
+    try {
+      setIsDeleting(true);
+      await archiveTracker(tracker.id);
+      // Navigate back to trackers list after successful deletion
+      navigate('/tracker-studio/my-trackers');
+    } catch (err) {
+      console.error('Failed to delete tracker:', err);
+      alert(err instanceof Error ? err.message : 'Failed to delete tracker');
+      setIsDeleting(false);
+    }
   };
 
   if (loading) {
@@ -165,24 +216,52 @@ export function TrackerDetailPage() {
                   )}
                 </div>
               </div>
-              {permissions && !permissions.isOwner && (
-                <span className={`inline-flex items-center gap-1.5 px-4 py-2 rounded-full text-sm font-medium flex-shrink-0 backdrop-blur-sm ${
-                  permissions.role === 'viewer'
-                    ? 'bg-white/20 text-white'
-                    : 'bg-white/20 text-white'
-                }`}>
-                  <Eye size={16} />
-                  {permissions.role === 'viewer' ? 'Read-only' : 'Editor'}
-                </span>
-              )}
+              <div className="flex items-center gap-2 flex-shrink-0">
+                {permissions && !permissions.isOwner && (
+                  <span className={`inline-flex items-center gap-1.5 px-4 py-2 rounded-full text-sm font-medium backdrop-blur-sm ${
+                    permissions.role === 'viewer'
+                      ? 'bg-white/20 text-white'
+                      : 'bg-white/20 text-white'
+                  }`}>
+                    <Eye size={16} />
+                    {permissions.role === 'viewer' ? 'Read-only' : 'Editor'}
+                  </span>
+                )}
+                {permissions?.canView && (
+                  <button
+                    onClick={() => setShowAddToSpaceModal(true)}
+                    className="inline-flex items-center gap-1.5 px-4 py-2 rounded-full text-sm font-medium backdrop-blur-sm bg-white/20 text-white hover:bg-white/30 transition-colors"
+                    title="Add to Spaces"
+                  >
+                    <LayoutGrid size={16} />
+                    <span className="hidden sm:inline">Add to Spaces</span>
+                    <span className="sm:hidden">Add</span>
+                  </button>
+                )}
+                {permissions?.isOwner && (
+                  <button
+                    onClick={() => setShowDeleteConfirm(true)}
+                    className="inline-flex items-center gap-1.5 px-4 py-2 rounded-full text-sm font-medium backdrop-blur-sm bg-white/20 text-white hover:bg-red-500/50 transition-colors"
+                    title="Delete Tracker"
+                  >
+                    <Trash2 size={16} />
+                    <span className="hidden sm:inline">Delete</span>
+                  </button>
+                )}
+              </div>
             </div>
           </div>
         </div>
       )}
 
       <div className="max-w-4xl mx-auto px-4 sm:px-6 md:px-8 -mt-8 sm:-mt-12 relative z-10">
-        {/* Entry Form Section - Elevated Card */}
-        <div className={`bg-white rounded-2xl shadow-xl border-2 ${theme?.borderColor || 'border-gray-200'} p-6 sm:p-8 mb-6 transition-all hover:shadow-2xl`}>
+        {/* Screen Time App View - Full screen app-like interface */}
+        {tracker && isScreenTimeTracker(tracker) ? (
+          <ScreenTimeAppView tracker={tracker} />
+        ) : (
+          <>
+            {/* Entry Form Section - Elevated Card */}
+            <div className={`bg-white rounded-2xl shadow-xl border-2 ${theme?.borderColor || 'border-gray-200'} p-6 sm:p-8 mb-6 transition-all hover:shadow-2xl`}>
           {/* Date Picker - Hidden for mood trackers, collapsible for low-friction trackers */}
           {!isMood && (
             <div className="mb-6">
@@ -280,8 +359,8 @@ export function TrackerDetailPage() {
           )}
         </div>
 
-        {/* Entry History Section */}
-        <div className={`bg-white rounded-2xl shadow-lg border-2 ${theme?.borderColor || 'border-gray-200'} p-6 sm:p-8 mb-6`}>
+            {/* Entry History Section */}
+            <div className={`bg-white rounded-2xl shadow-lg border-2 ${theme?.borderColor || 'border-gray-200'} p-6 sm:p-8 mb-6`}>
           <div className="flex items-center justify-between mb-6">
             <h2 className="text-xl sm:text-2xl font-bold text-gray-900 flex items-center gap-2">
               <Calendar size={24} className={theme?.iconColor || 'text-gray-600'} />
@@ -302,14 +381,21 @@ export function TrackerDetailPage() {
           <TrackerEntryList key={refreshKey} tracker={tracker!} theme={theme!} />
         </div>
 
-        {/* Analytics Section */}
+        {/* Analytics Section - Lazy Loaded */}
         {showAnalytics && (
           <div className={`bg-white rounded-2xl shadow-lg border-2 ${theme?.borderColor || 'border-gray-200'} p-6 sm:p-8 mb-6 animate-in fade-in slide-in-from-top-4 duration-300`}>
             <h2 className="text-xl sm:text-2xl font-bold text-gray-900 mb-6 flex items-center gap-2">
               <BarChart3 size={24} className={theme?.iconColor || 'text-gray-600'} />
               Analytics
             </h2>
-            <TrackerAnalyticsPanel tracker={tracker!} />
+            <Suspense fallback={
+              <div className="flex items-center justify-center py-12">
+                <Loader2 className="h-8 w-8 animate-spin text-blue-500" />
+                <span className="ml-3 text-gray-600">Loading analytics...</span>
+              </div>
+            }>
+              <TrackerAnalyticsPanel tracker={tracker!} />
+            </Suspense>
           </div>
         )}
 
@@ -361,8 +447,10 @@ export function TrackerDetailPage() {
                 <span className="hidden sm:inline">Share with Users</span>
                 <span className="sm:hidden">With Users</span>
               </button>
+              </div>
             </div>
-          </div>
+            )}
+          </>
         )}
       </div>
 
@@ -384,6 +472,47 @@ export function TrackerDetailPage() {
           onShared={() => {
             setObservationRefreshKey(prev => prev + 1);
           }}
+        />
+      )}
+
+      {/* Add to Spaces Modal */}
+      {tracker && (
+        <AddTrackerToSpaceModal
+          isOpen={showAddToSpaceModal}
+          onClose={() => setShowAddToSpaceModal(false)}
+          tracker={tracker}
+          onAdded={() => {
+            // Optionally refresh or show success message
+          }}
+        />
+      )}
+
+      {tracker && (
+        <ReminderSuggestionModal
+          isOpen={showReminderSuggestion}
+          onClose={() => setShowReminderSuggestion(false)}
+          tracker={tracker}
+          onReminderCreated={() => {
+            // Refresh to update reminder list
+            setRefreshKey(prev => prev + 1);
+          }}
+        />
+      )}
+
+      {/* Delete Tracker Confirmation Dialog */}
+      {tracker && (
+        <ConfirmDialog
+          isOpen={showDeleteConfirm}
+          onClose={() => {
+            setShowDeleteConfirm(false);
+            setIsDeleting(false);
+          }}
+          onConfirm={handleDeleteTracker}
+          title="Delete Tracker"
+          message={`Are you sure you want to delete "${tracker.name}"? This will archive the tracker and hide it from your list. You can restore it later if needed.`}
+          confirmText="Delete"
+          cancelText="Cancel"
+          variant="danger"
         />
       )}
     </div>

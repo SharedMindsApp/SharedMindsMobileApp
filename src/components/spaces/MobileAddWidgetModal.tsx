@@ -25,10 +25,13 @@ import {
   Folder,
   ImagePlus,
   Table,
+  Activity,
 } from 'lucide-react';
-import { WidgetType } from '../../lib/fridgeCanvasTypes';
+import { WidgetType, TrackerAppContent } from '../../lib/fridgeCanvasTypes';
 import { createWidget, getDefaultWidgetContent } from '../../lib/fridgeCanvas';
 import { showToast } from '../Toast';
+import { SelectTrackerModal } from '../fridge-canvas/widgets/SelectTrackerModal';
+import { getTracker } from '../../lib/trackerStudio/trackerService';
 
 interface MobileAddWidgetModalProps {
   isOpen: boolean;
@@ -193,6 +196,24 @@ const widgetOptions: WidgetOption[] = [
     description: 'Spreadsheet-style data tables',
   },
   {
+    type: 'tracker',
+    icon: Activity,
+    label: 'Tracker',
+    color: 'bg-indigo-50',
+    iconColor: 'text-indigo-600',
+    category: 'Tracking',
+    description: 'View tracker data from Tracker Studio',
+  },
+  {
+    type: 'tracker_app',
+    icon: Activity,
+    label: 'Tracker App',
+    color: 'bg-indigo-50',
+    iconColor: 'text-indigo-600',
+    category: 'Tracking',
+    description: 'Add a tracker as a standalone app with its own icon',
+  },
+  {
     type: 'graphics',
     icon: ImagePlus,
     label: 'Graphics',
@@ -209,6 +230,8 @@ export function MobileAddWidgetModal({ isOpen, onClose, householdId, onWidgetAdd
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('All');
   const [isCreating, setIsCreating] = useState(false);
+  const [showTrackerSelect, setShowTrackerSelect] = useState(false);
+  const [pendingWidgetType, setPendingWidgetType] = useState<WidgetType | null>(null);
 
   const filteredWidgets = useMemo(() => {
     let widgets = widgetOptions;
@@ -239,6 +262,13 @@ export function MobileAddWidgetModal({ isOpen, onClose, householdId, onWidgetAdd
       return;
     }
 
+    // Tracker widgets require selection
+    if (option.type === 'tracker' || option.type === 'tracker_app') {
+      setPendingWidgetType(option.type);
+      setShowTrackerSelect(true);
+      return;
+    }
+
     try {
       setIsCreating(true);
       const content = getDefaultWidgetContent(option.type as WidgetType);
@@ -254,7 +284,66 @@ export function MobileAddWidgetModal({ isOpen, onClose, householdId, onWidgetAdd
     }
   };
 
+  const handleTrackerSelected = async (trackerId: string) => {
+    if (!pendingWidgetType || isCreating) return;
+
+    try {
+      setIsCreating(true);
+      
+      // For tracker_app, fetch tracker to get icon and color
+      let widgetIcon = 'Activity';
+      let widgetColor = 'indigo';
+      let widgetTitle = 'Tracker';
+
+      if (pendingWidgetType === 'tracker_app') {
+        try {
+          const tracker = await getTracker(trackerId);
+          if (tracker) {
+            widgetTitle = tracker.name;
+            widgetIcon = tracker.icon || 'Activity';
+            widgetColor = tracker.color || 'indigo';
+          }
+        } catch (err) {
+          console.error('Failed to fetch tracker:', err);
+        }
+      }
+
+      const content: TrackerAppContent = { tracker_id: trackerId };
+      
+      await createWidget(householdId, pendingWidgetType, content, {
+        icon: widgetIcon,
+        color: widgetColor,
+        title: widgetTitle,
+      });
+
+      showToast('success', `${widgetTitle} added successfully`);
+      onWidgetAdded();
+      setShowTrackerSelect(false);
+      setPendingWidgetType(null);
+      onClose();
+    } catch (error) {
+      console.error('Failed to create tracker widget:', error);
+      showToast('error', 'Failed to add tracker widget');
+    } finally {
+      setIsCreating(false);
+    }
+  };
+
   if (!isOpen) return null;
+
+  // Show tracker select modal instead of main modal when selecting a tracker
+  if (showTrackerSelect) {
+    return (
+      <SelectTrackerModal
+        isOpen={showTrackerSelect}
+        onClose={() => {
+          setShowTrackerSelect(false);
+          setPendingWidgetType(null);
+        }}
+        onSelect={handleTrackerSelected}
+      />
+    );
+  }
 
   return (
     <div 

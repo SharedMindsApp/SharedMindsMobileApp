@@ -340,7 +340,7 @@ export function TrackerAnalyticsPanel({ tracker }: TrackerAnalyticsPanelProps) {
       />
 
       {/* Emotion Words Analytics - For Mood Trackers */}
-      {isMood && emotionWordsAnalytics && (
+      {isMoodTracker(tracker.name, tracker.field_schema_snapshot) && emotionWordsAnalytics && (
         <div className="bg-white rounded-lg border border-gray-200 p-4 sm:p-6">
           <h3 className="text-lg font-semibold text-gray-900 mb-4">Common Emotions</h3>
           <ChartErrorBoundary chartName="Emotion Words">

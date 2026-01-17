@@ -78,6 +78,7 @@ import {
   FilesContent,
   TablesContent,
   TrackerContent,
+  TrackerAppContent,
   GraphicsContent,
   FridgeGroup,
 } from "../../lib/fridgeCanvasTypes";
@@ -269,9 +270,9 @@ const handleAddWidget = async (type: WidgetType) => {
   }
 
   // --------------------------------------
-  // Tracker widget requires selection
+  // Tracker widgets require selection
   // --------------------------------------
-  if (type === 'tracker') {
+  if (type === 'tracker' || type === 'tracker_app') {
     setPendingTrackerWidgetType(type);
     setShowTrackerSelect(true);
     return;
@@ -391,7 +392,7 @@ const handleAddWidget = async (type: WidgetType) => {
   console.log("──────────────────────────────");
 };
 
-  // Handle tracker selection for tracker widget
+  // Handle tracker selection for tracker widgets
   const handleTrackerSelected = async (trackerId: string) => {
     if (!pendingTrackerWidgetType || !householdId || !canEdit) {
       return;
@@ -401,8 +402,31 @@ const handleAddWidget = async (type: WidgetType) => {
     setPendingTrackerWidgetType(null);
     setShowTrackerSelect(false);
 
+    // For tracker_app, fetch tracker to get icon and color
+    let widgetIcon = 'Activity'; // Default icon
+    let widgetColor = 'indigo'; // Default color
+    let widgetTitle = 'Tracker';
+
+    if (type === 'tracker_app') {
+      try {
+        const tracker = await getTracker(trackerId);
+        if (tracker) {
+          widgetTitle = tracker.name;
+          // Use tracker's icon/color if available, otherwise use template's
+          widgetIcon = tracker.icon || 'Activity';
+          widgetColor = tracker.color || 'indigo';
+        }
+      } catch (err) {
+        console.error('Failed to fetch tracker:', err);
+        // Continue with defaults
+      }
+    }
+
     // Create widget with selected tracker
-    const content: TrackerContent = { tracker_id: trackerId };
+    const content: TrackerContent | TrackerAppContent = 
+      type === 'tracker_app' 
+        ? { tracker_id: trackerId } as TrackerAppContent
+        : { tracker_id: trackerId };
     
     const widgetTypeNames: Record<WidgetType, string> = {
       note: 'Note',
@@ -424,6 +448,8 @@ const handleAddWidget = async (type: WidgetType) => {
       tables: 'Tables',
       todos: 'Todos',
       tracker: 'Tracker',
+      tracker_app: widgetTitle, // Use tracker name for tracker_app
+      tracker_quicklink: 'Tracker Quick Links',
       custom: 'Custom Widget',
     };
 
@@ -432,10 +458,10 @@ const handleAddWidget = async (type: WidgetType) => {
       space_id: householdId,
       created_by: '',
       widget_type: type,
-      title: widgetTypeNames[type] || 'Widget',
+      title: widgetTitle,
       content,
-      color: 'yellow',
-      icon: 'StickyNote',
+      color: widgetColor,
+      icon: widgetIcon,
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
       deleted_at: null,
@@ -462,7 +488,11 @@ const handleAddWidget = async (type: WidgetType) => {
       [...widgets, optimisticWidget],
       setWidgets,
       async () => {
-        const widget = await createWidget(householdId, type, content);
+        const widget = await createWidget(householdId, type, content, {
+          icon: widgetIcon,
+          color: widgetColor,
+          title: widgetTitle,
+        });
         setWidgets((prev) => {
           const filtered = prev.filter(w => w.id !== optimisticWidget.id);
           return [...filtered, widget];
