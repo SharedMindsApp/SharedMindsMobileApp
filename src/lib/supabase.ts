@@ -5,8 +5,19 @@ import { createClient } from '@supabase/supabase-js';
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
+// Validate environment variables in production
+if (import.meta.env.PROD && (!supabaseUrl || !supabaseAnonKey)) {
+  console.error('[supabase] Missing required environment variables:', {
+    hasUrl: !!supabaseUrl,
+    hasKey: !!supabaseAnonKey,
+  });
+}
+
 // 🔥 Create a fully configured Supabase client with connection resilience
-export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
+export const supabase = createClient(
+  supabaseUrl || 'https://placeholder.supabase.co',
+  supabaseAnonKey || 'placeholder-key',
+  {
   auth: {
     persistSession: true,        // Keep user logged in after refresh
     autoRefreshToken: true,      // Refresh JWT automatically

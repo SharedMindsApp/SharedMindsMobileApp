@@ -33,7 +33,12 @@ export default defineConfig({
   base: '/',
 
   plugins: [
-    react(),
+    react({
+      // Ensure React is properly transformed and available
+      jsxRuntime: 'automatic',
+      // Fast refresh for development
+      fastRefresh: true,
+    }),
     generateVersionPlugin(),
   ],
   
@@ -46,12 +51,20 @@ export default defineConfig({
     alias: {
       '@': path.resolve(__dirname, './src'),
     },
-    dedupe: ['react', 'react-dom'],
+    // Force deduplication of React to ensure single instance
+    dedupe: ['react', 'react-dom', 'react/jsx-runtime', 'react/jsx-dev-runtime'],
+    // Ensure proper module resolution
+    preserveSymlinks: false,
   },
 
   optimizeDeps: {
     exclude: ['lucide-react'],
-    include: ['react', 'react-dom', 'recharts'],
+    include: ['react', 'react-dom', 'react/jsx-runtime', 'react/jsx-dev-runtime'],
+    // Force pre-bundling of React dependencies
+    esbuildOptions: {
+      // Ensure React is treated as a single module
+      target: 'es2018',
+    },
   },
 
   server: {
@@ -70,19 +83,31 @@ export default defineConfig({
     minify: 'esbuild',
     cssCodeSplit: true,
     assetsInlineLimit: 0,
+    commonjsOptions: {
+      include: [/node_modules/],
+      transformMixedEsModules: true,
+    },
 
     rollupOptions: {
       output: {
-        manualChunks(id) {
+        manualChunks(id, { getModuleInfo }) {
+          // Don't split React - keep it in the main entry for guaranteed availability
+          // This prevents "React is undefined" errors from chunk loading order
           if (id.includes('node_modules')) {
-            if (id.includes('react') || id.includes('react-dom')) return 'react-vendor';
-            if (id.includes('recharts')) return 'react-vendor'; // Bundle recharts with React
+            // Keep recharts separate - it will import React as a dependency
+            if (id.includes('recharts')) {
+              return 'recharts-vendor';
+            }
             if (id.includes('@supabase')) return 'supabase-vendor';
             if (id.includes('@dnd-kit')) return 'dnd-vendor';
+            // Put everything else including React in vendor chunk
+            // React will be bundled with the main entry automatically if imported there
             return 'vendor';
           }
         },
       },
+      // Externalize nothing - bundle everything to ensure single React instance
+      external: [],
     },
   },
 });

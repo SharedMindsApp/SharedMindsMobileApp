@@ -5,6 +5,7 @@ import App from './App.tsx';
 import './index.css';
 import './lib/offlineInit'; // Phase 4B: Initialize offline action handlers
 import { initGlobalErrorHandlers } from './lib/globalErrorHandlers'; // Phase 11: Initialize global error handlers
+import { logInitError } from './lib/initDiagnostics';
 
 // 👉 Import Supabase and expose it for debugging
 import { supabase } from './lib/supabase';
@@ -145,8 +146,24 @@ if (!rootElement) {
 
 const root = createRoot(rootElement);
 
-root.render(
-  <StrictMode>
-    <App />
-  </StrictMode>
-);
+// Wrap render in try-catch to catch initialization errors
+try {
+  root.render(
+    <StrictMode>
+      <App />
+    </StrictMode>
+  );
+} catch (error) {
+  // If rendering fails, show error message
+  logInitError('render', error);
+  console.error('[main.tsx] Failed to render app:', error);
+  rootElement.innerHTML = `
+    <div style="padding: 20px; font-family: system-ui, sans-serif; max-width: 600px; margin: 40px auto;">
+      <h1 style="color: #dc2626; margin-bottom: 10px;">Application Error</h1>
+      <p style="color: #4b5563; margin-bottom: 10px;">Failed to initialize the application.</p>
+      <pre style="background: #f3f4f6; padding: 10px; border-radius: 4px; overflow: auto; font-size: 12px; max-width: 100%;">${error instanceof Error ? error.message : String(error)}</pre>
+      <button onclick="window.location.reload()" style="margin-top: 15px; padding: 8px 16px; background: #2563eb; color: white; border: none; border-radius: 4px; cursor: pointer;">Reload Page</button>
+      <p style="margin-top: 15px; font-size: 12px; color: #6b7280;">Check browser console (F12) for more details. Errors are also logged to localStorage under 'app-init-errors'.</p>
+    </div>
+  `;
+}
