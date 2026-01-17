@@ -83,10 +83,15 @@ export default defineConfig({
     minify: 'esbuild',
     cssCodeSplit: true,
     assetsInlineLimit: 0,
+    // Better handling of circular dependencies and mixed modules
     commonjsOptions: {
       include: [/node_modules/],
       transformMixedEsModules: true,
+      // Resolve circular dependencies properly
+      defaultIsModuleExports: 'auto',
     },
+    // Chunk size warning limit (can be adjusted)
+    chunkSizeWarningLimit: 1000,
 
     rollupOptions: {
       output: {
@@ -98,13 +103,19 @@ export default defineConfig({
             if (id.includes('recharts')) {
               return 'recharts-vendor';
             }
-            if (id.includes('@supabase')) return 'supabase-vendor';
+            // Don't manually chunk Supabase - let it bundle naturally to avoid circular dependencies
+            // The supabase-vendor chunk was causing "Cannot access 'ce' before initialization" errors
+            // By putting it in vendor, it will be bundled with proper dependency resolution
             if (id.includes('@dnd-kit')) return 'dnd-vendor';
-            // Put everything else including React in vendor chunk
-            // React will be bundled with the main entry automatically if imported there
+            // Put everything else including React and Supabase in vendor chunk
+            // This ensures proper initialization order and prevents circular dependency issues
             return 'vendor';
           }
         },
+        // Ensure proper handling of circular dependencies
+        interop: 'auto',
+        // Use ES modules for better tree-shaking and dependency resolution
+        format: 'es',
       },
       // Externalize nothing - bundle everything to ensure single React instance
       external: [],
