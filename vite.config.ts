@@ -46,10 +46,12 @@ export default defineConfig({
     alias: {
       '@': path.resolve(__dirname, './src'),
     },
+    dedupe: ['react', 'react-dom'],
   },
 
   optimizeDeps: {
     exclude: ['lucide-react'],
+    include: ['react', 'react-dom', 'recharts'],
   },
 
   server: {
@@ -73,7 +75,8 @@ export default defineConfig({
       output: {
         manualChunks(id) {
           if (id.includes('node_modules')) {
-            if (id.includes('react')) return 'react-vendor';
+            if (id.includes('react') || id.includes('react-dom')) return 'react-vendor';
+            if (id.includes('recharts')) return 'react-vendor'; // Bundle recharts with React
             if (id.includes('@supabase')) return 'supabase-vendor';
             if (id.includes('@dnd-kit')) return 'dnd-vendor';
             return 'vendor';
