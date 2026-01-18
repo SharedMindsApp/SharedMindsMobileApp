@@ -34,14 +34,8 @@ export function AppRouteGuard({ children }: AppRouteGuardProps) {
     
     // Redirect based on auth state from AuthContext
     if (isAuthenticated) {
-      // Phase 8C: Check for last planner view (mobile-first)
-      if (typeof window !== 'undefined' && window.innerWidth < 1024) {
-        const lastView = localStorage.getItem('last_planner_view');
-        if (lastView && lastView.startsWith('/planner')) {
-          return <Navigate to={lastView} replace />;
-        }
-      }
-      return <Navigate to="/planner/calendar?view=month" replace />;
+      // Always redirect authenticated users to dashboard
+      return <Navigate to="/dashboard" replace />;
     } else {
       // Phase 8C: Always redirect unauthenticated users to /login
       return <Navigate to="/auth/login" replace />;

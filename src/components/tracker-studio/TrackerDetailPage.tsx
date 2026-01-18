@@ -27,6 +27,7 @@ import { ScreenTimeAppView } from './ScreenTimeAppView';
 import { ReminderSuggestionModal } from './ReminderSuggestionModal';
 import { getTrackerReminders } from '../../lib/trackerStudio/trackerReminderService';
 import { ConfirmDialog } from '../ConfirmDialog';
+import { isFitnessTrackerByName } from '../../lib/fitnessTracker/fitnessTrackerUtils';
 
 export function TrackerDetailPage() {
   const { trackerId } = useParams<{ trackerId: string }>();
@@ -67,6 +68,12 @@ export function TrackerDetailPage() {
       
       if (!data) {
         setError('Tracker not found or you do not have access');
+        return;
+      }
+      
+      // Redirect Fitness Tracker to its dedicated page
+      if (isFitnessTrackerByName(data)) {
+        navigate('/fitness-tracker', { replace: true });
         return;
       }
       

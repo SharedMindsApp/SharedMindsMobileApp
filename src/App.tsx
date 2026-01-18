@@ -214,6 +214,11 @@ import { TrackerTemplatesPage } from './components/tracker-studio/TrackerTemplat
 import { MyTrackersPage } from './components/tracker-studio/MyTrackersPage';
 import { TrackerDetailPage } from './components/tracker-studio/TrackerDetailPage';
 import { CreateTrackerFromScratchPage } from './components/tracker-studio/CreateTrackerFromScratchPage';
+import { DiscoveryWizard } from './components/fitness-tracker/DiscoveryWizard';
+import { FitnessTrackerPage } from './components/fitness-tracker/FitnessTrackerPage';
+import { FitnessTrackerHomePage } from './components/fitness-tracker/FitnessTrackerHomePage';
+import { ActivitySpacePage } from './components/fitness-tracker/ActivitySpacePage';
+import { FitnessSessionsCalendarPage } from './components/fitness-tracker/FitnessSessionsCalendarPage';
 import { TemplateImportPage } from './components/tracker-studio/TemplateImportPage';
 import { CreateGlobalTemplatePage } from './components/tracker-studio/CreateGlobalTemplatePage';
 import { ContextEventsPage } from './components/tracker-studio/ContextEventsPage';
@@ -2062,6 +2067,45 @@ function AppContent() {
               <AuthGuard>
                 <Layout>
                   <TrackerDetailPage />
+                </Layout>
+              </AuthGuard>
+            }
+          />
+          {/* Fitness Tracker Routes */}
+          <Route
+            path="/fitness-tracker"
+            element={
+              <AuthGuard>
+                <Layout>
+                  <FitnessTrackerHomePage />
+                </Layout>
+              </AuthGuard>
+            }
+          />
+          <Route
+            path="/fitness-tracker/activity/:activityId"
+            element={
+              <AuthGuard>
+                <Layout>
+                  <ActivitySpacePage />
+                </Layout>
+              </AuthGuard>
+            }
+          />
+          <Route
+            path="/fitness-tracker/calendar"
+            element={
+              <AuthGuard>
+                <FitnessSessionsCalendarPage />
+              </AuthGuard>
+            }
+          />
+          <Route
+            path="/fitness-tracker/discovery"
+            element={
+              <AuthGuard>
+                <Layout>
+                  <DiscoveryWizard />
                 </Layout>
               </AuthGuard>
             }

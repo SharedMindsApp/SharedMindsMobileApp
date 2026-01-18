@@ -3,8 +3,9 @@ import { useNavigate } from 'react-router-dom';
 import { 
   Plus, Sparkles, FileText, Share2, Lock, Copy, Crown, ArrowUp, Loader2, AlertCircle, ArrowLeft,
   Moon, Activity, UtensilsCrossed, Brain, Bed, TrendingUp, Heart, BookOpen, DollarSign,
-  Smile, Zap, Droplet, Pill, AlertCircle as SymptomIcon, Wind, Users, Sun, CheckSquare, Search, X
+  Smile, Zap, Droplet, Pill, Wind, Users, Sun, CheckSquare, Search, X, Smartphone, Target
 } from 'lucide-react';
+import * as LucideIcons from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { 
   listTemplates, 
@@ -425,8 +426,48 @@ type TemplateTheme = {
   buttonHover: string;
 };
 
-function getTemplateTheme(templateName: string): TemplateTheme {
+function getTemplateTheme(template: TrackerTemplate | string): TemplateTheme {
+  // If template object is passed, check for icon and color first
+  let templateName: string;
+  let templateIcon: string | null = null;
+  let templateColor: string | null = null;
+  
+  if (typeof template === 'string') {
+    templateName = template;
+  } else {
+    templateName = template.name;
+    templateIcon = template.icon || null;
+    templateColor = template.color || null;
+  }
+  
   const name = templateName.toLowerCase();
+  
+  // If template has explicit icon and color, use them
+  if (templateIcon && typeof template !== 'string') {
+    const IconComponent = (LucideIcons as any)[templateIcon];
+    if (IconComponent) {
+      // Get color theme based on color name
+      const colorTheme = getColorTheme(templateColor || 'blue');
+      return {
+        icon: IconComponent,
+        ...colorTheme,
+      };
+    }
+  }
+  
+  // Fitness Tracker - specific check
+  if (name.includes('fitness')) {
+    return {
+      icon: Activity,
+      gradient: 'from-blue-500 via-cyan-500 to-blue-600',
+      iconBg: 'bg-blue-100',
+      iconColor: 'text-blue-600',
+      borderColor: 'border-blue-200',
+      hoverBorderColor: 'hover:border-blue-400',
+      buttonBg: 'bg-blue-600',
+      buttonHover: 'hover:bg-blue-700',
+    };
+  }
   
   // Sleep & Rest
   if (name.includes('sleep')) {
@@ -620,7 +661,7 @@ function getTemplateTheme(templateName: string): TemplateTheme {
   
   if (name.includes('symptom')) {
     return {
-      icon: SymptomIcon,
+      icon: AlertCircle,
       gradient: 'from-red-400 via-rose-400 to-pink-400',
       iconBg: 'bg-red-100',
       iconColor: 'text-red-600',
@@ -671,7 +712,7 @@ function getTemplateTheme(templateName: string): TemplateTheme {
       buttonHover: 'hover:bg-blue-700',
     };
   }
-  
+
   if (name.includes('habit')) {
     return {
       icon: CheckSquare,
@@ -684,7 +725,35 @@ function getTemplateTheme(templateName: string): TemplateTheme {
       buttonHover: 'hover:bg-green-700',
     };
   }
-  
+
+  // Screen Time & Digital Wellness
+  if (name.includes('screen time') || name.includes('screen-time') || name.includes('phone usage') || name.includes('app usage')) {
+    return {
+      icon: Smartphone,
+      gradient: 'from-violet-500 via-purple-500 to-fuchsia-500',
+      iconBg: 'bg-violet-100',
+      iconColor: 'text-violet-600',
+      borderColor: 'border-violet-200',
+      hoverBorderColor: 'hover:border-violet-400',
+      buttonBg: 'bg-violet-600',
+      buttonHover: 'hover:bg-violet-700',
+    };
+  }
+
+  // Goals & Targets
+  if (name.includes('goal') || name.includes('target') || name.includes('objective')) {
+    return {
+      icon: Target,
+      gradient: 'from-emerald-500 via-teal-500 to-cyan-500',
+      iconBg: 'bg-emerald-100',
+      iconColor: 'text-emerald-600',
+      borderColor: 'border-emerald-200',
+      hoverBorderColor: 'hover:border-emerald-400',
+      buttonBg: 'bg-emerald-600',
+      buttonHover: 'hover:bg-emerald-700',
+    };
+  }
+
   // Default theme
   return {
     icon: FileText,
@@ -696,6 +765,61 @@ function getTemplateTheme(templateName: string): TemplateTheme {
     buttonBg: 'bg-gray-600',
     buttonHover: 'hover:bg-gray-700',
   };
+}
+
+/**
+ * Get color theme based on color name
+ */
+function getColorTheme(colorName: string): Omit<TemplateTheme, 'icon'> {
+  const colorMap: Record<string, Omit<TemplateTheme, 'icon'>> = {
+    blue: {
+      gradient: 'from-blue-500 via-cyan-500 to-blue-600',
+      iconBg: 'bg-blue-100',
+      iconColor: 'text-blue-600',
+      borderColor: 'border-blue-200',
+      hoverBorderColor: 'hover:border-blue-400',
+      buttonBg: 'bg-blue-600',
+      buttonHover: 'hover:bg-blue-700',
+    },
+    green: {
+      gradient: 'from-green-400 via-emerald-400 to-teal-400',
+      iconBg: 'bg-green-100',
+      iconColor: 'text-green-600',
+      borderColor: 'border-green-200',
+      hoverBorderColor: 'hover:border-green-400',
+      buttonBg: 'bg-green-600',
+      buttonHover: 'hover:bg-green-700',
+    },
+    purple: {
+      gradient: 'from-purple-500 via-pink-500 to-rose-500',
+      iconBg: 'bg-purple-100',
+      iconColor: 'text-purple-600',
+      borderColor: 'border-purple-200',
+      hoverBorderColor: 'hover:border-purple-400',
+      buttonBg: 'bg-purple-600',
+      buttonHover: 'hover:bg-purple-700',
+    },
+    red: {
+      gradient: 'from-red-500 via-orange-500 to-yellow-500',
+      iconBg: 'bg-red-100',
+      iconColor: 'text-red-600',
+      borderColor: 'border-red-200',
+      hoverBorderColor: 'hover:border-red-400',
+      buttonBg: 'bg-red-600',
+      buttonHover: 'hover:bg-red-700',
+    },
+    indigo: {
+      gradient: 'from-indigo-500 via-purple-500 to-pink-500',
+      iconBg: 'bg-indigo-100',
+      iconColor: 'text-indigo-600',
+      borderColor: 'border-indigo-200',
+      hoverBorderColor: 'hover:border-indigo-400',
+      buttonBg: 'bg-indigo-600',
+      buttonHover: 'hover:bg-indigo-700',
+    },
+  };
+  
+  return colorMap[colorName.toLowerCase()] || colorMap.blue;
 }
 
 type TemplateCardProps = {
@@ -721,7 +845,7 @@ function TemplateCard({
   isGlobal = false,
   isAdmin = false,
 }: TemplateCardProps) {
-  const theme = getTemplateTheme(template.name);
+  const theme = getTemplateTheme(template);
   const Icon = theme.icon;
   const tags = template.tags || [];
 

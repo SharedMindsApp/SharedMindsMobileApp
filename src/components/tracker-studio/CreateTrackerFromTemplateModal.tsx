@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { X } from 'lucide-react';
 import { createTrackerFromTemplate } from '../../lib/trackerStudio/trackerService';
 import type { TrackerTemplate } from '../../lib/trackerStudio/types';
@@ -16,10 +17,14 @@ export function CreateTrackerFromTemplateModal({
   onClose,
   onTrackerCreated,
 }: CreateTrackerFromTemplateModalProps) {
+  const navigate = useNavigate();
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  
+  // Check if this is the Fitness Tracker template
+  const isFitnessTracker = template.name === 'Fitness Tracker';
 
   // Auto-populate tracker name from template when modal opens
   useEffect(() => {
@@ -37,6 +42,13 @@ export function CreateTrackerFromTemplateModal({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    
+    // If Fitness Tracker, redirect to discovery flow
+    if (isFitnessTracker) {
+      onClose();
+      navigate('/fitness-tracker/discovery');
+      return;
+    }
     
     if (!name.trim()) {
       setError('Tracker name is required');

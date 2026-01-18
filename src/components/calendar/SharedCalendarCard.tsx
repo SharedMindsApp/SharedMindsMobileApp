@@ -66,24 +66,22 @@ export function SharedCalendarCard() {
     <button
       onClick={handleClick}
       disabled={loading}
-      className="w-full bg-white rounded-xl shadow-sm border-2 border-gray-200 hover:border-purple-300 hover:shadow-md transition-all text-left p-4 md:p-6 group disabled:opacity-50 disabled:cursor-not-allowed"
+      className="w-full bg-white rounded-lg shadow-sm border border-gray-200 hover:border-gray-300 hover:shadow transition-all text-left p-4 group disabled:opacity-50 disabled:cursor-not-allowed"
     >
-      <div className="flex items-start justify-between gap-4">
-        <div className="flex items-start gap-3 flex-1 min-w-0">
-          <div className="p-2 bg-purple-100 rounded-lg flex-shrink-0 group-hover:bg-purple-200 transition-colors">
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center gap-3 flex-1 min-w-0">
+          <div className="w-10 h-10 bg-purple-50 rounded-lg flex items-center justify-center flex-shrink-0 group-hover:bg-purple-100 transition-colors">
             <Users className="w-5 h-5 text-purple-600" />
           </div>
           <div className="flex-1 min-w-0">
-            <h3 className="text-lg font-bold text-gray-900 mb-1">Shared Calendar</h3>
-            <p className="text-sm text-gray-600">
+            <h3 className="text-base font-semibold text-gray-900 mb-0.5">Shared Calendar</h3>
+            <p className="text-xs text-gray-600">
               Household and shared events
             </p>
           </div>
         </div>
         <div className="flex-shrink-0">
-          <div className="p-2 bg-purple-50 rounded-lg group-hover:bg-purple-100 transition-colors">
-            <ArrowRight className="w-5 h-5 text-purple-600 group-hover:translate-x-1 transition-transform" />
-          </div>
+          <ArrowRight className="w-4 h-4 text-gray-400 group-hover:text-gray-600 group-hover:translate-x-0.5 transition-all" />
         </div>
       </div>
     </button>

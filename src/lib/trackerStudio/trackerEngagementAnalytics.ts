@@ -144,29 +144,37 @@ export async function calculateDashboardInsights(
   sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
   const sevenDaysAgoStr = sevenDaysAgo.toISOString().split('T')[0];
 
-  // Load entries for all trackers
+  // Load entries for all trackers in parallel for much faster performance
   const trackerEngagements: TrackerEngagement[] = [];
   let totalEntriesToday = 0;
   let totalEntriesThisWeek = 0;
 
-  for (const tracker of trackers) {
+  // Load all entries in parallel instead of sequentially (much faster!)
+  const entryPromises = trackers.map(async (tracker) => {
     try {
       const entries = await listEntriesByDateRange({
         tracker_id: tracker.id,
         start_date: sevenDaysAgoStr,
         end_date: today,
       });
-
-      const engagement = await calculateTrackerEngagement(tracker, entries);
-      trackerEngagements.push(engagement);
-
-      // Count today's entries
-      const todayEntries = entries.filter(e => e.entry_date === today);
-      totalEntriesToday += todayEntries.length;
-      totalEntriesThisWeek += entries.length;
+      return { tracker, entries };
     } catch (err) {
       console.error(`Failed to load entries for tracker ${tracker.id}:`, err);
+      return { tracker, entries: [] };
     }
+  });
+
+  const trackerEntriesResults = await Promise.all(entryPromises);
+
+  // Process all trackers (engagement calculation is synchronous, so no need for Promise.all here)
+  for (const { tracker, entries } of trackerEntriesResults) {
+    const engagement = await calculateTrackerEngagement(tracker, entries);
+    trackerEngagements.push(engagement);
+    
+    // Count today's entries
+    const todayEntries = entries.filter(e => e.entry_date === today);
+    totalEntriesToday += todayEntries.length;
+    totalEntriesThisWeek += entries.length;
   }
 
   // Find trackers needing attention

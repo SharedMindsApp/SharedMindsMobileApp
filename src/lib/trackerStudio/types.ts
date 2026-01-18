@@ -218,4 +218,6 @@ export interface ListTrackerEntriesOptions {
   user_id?: string; // If not provided, uses current user
   start_date?: string; // ISO date string
   end_date?: string; // ISO date string
+  limit?: number;
+  offset?: number;
 }

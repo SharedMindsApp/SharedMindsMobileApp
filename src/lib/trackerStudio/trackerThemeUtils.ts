@@ -7,7 +7,8 @@
 
 import {
   Moon, Activity, UtensilsCrossed, Brain, Bed, TrendingUp, Heart, BookOpen, DollarSign,
-  Smile, Zap, Droplet, Pill, AlertCircle, Wind, Users, Sun, CheckSquare, FileText
+  Smile, Zap, Droplet, Pill, AlertCircle, Wind, Users, Sun, CheckSquare, FileText,
+  Smartphone, Target, Flag, Monitor
 } from 'lucide-react';
 
 export type TrackerTheme = {
@@ -46,6 +47,22 @@ export function getTrackerTheme(trackerName: string): TrackerTheme {
     return {
       icon: Bed,
       gradient: 'from-blue-400 via-cyan-400 to-teal-400',
+      iconBg: 'bg-blue-100',
+      iconColor: 'text-blue-600',
+      borderColor: 'border-blue-200',
+      hoverBorderColor: 'hover:border-blue-400',
+      buttonBg: 'bg-blue-600',
+      buttonHover: 'hover:bg-blue-700',
+      accentBg: 'bg-blue-50',
+      accentText: 'text-blue-700',
+    };
+  }
+  
+  // Fitness Tracker (specific check first)
+  if (name.includes('fitness')) {
+    return {
+      icon: Activity,
+      gradient: 'from-blue-500 via-cyan-500 to-blue-600',
       iconBg: 'bg-blue-100',
       iconColor: 'text-blue-600',
       borderColor: 'border-blue-200',
@@ -305,7 +322,7 @@ export function getTrackerTheme(trackerName: string): TrackerTheme {
       accentText: 'text-blue-700',
     };
   }
-  
+
   if (name.includes('habit')) {
     return {
       icon: CheckSquare,
@@ -320,7 +337,39 @@ export function getTrackerTheme(trackerName: string): TrackerTheme {
       accentText: 'text-green-700',
     };
   }
-  
+
+  // Screen Time & Digital Wellness
+  if (name.includes('screen time') || name.includes('screen-time') || name.includes('phone usage') || name.includes('app usage')) {
+    return {
+      icon: Smartphone,
+      gradient: 'from-violet-500 via-purple-500 to-fuchsia-500',
+      iconBg: 'bg-violet-100',
+      iconColor: 'text-violet-600',
+      borderColor: 'border-violet-200',
+      hoverBorderColor: 'hover:border-violet-400',
+      buttonBg: 'bg-violet-600',
+      buttonHover: 'hover:bg-violet-700',
+      accentBg: 'bg-violet-50',
+      accentText: 'text-violet-700',
+    };
+  }
+
+  // Goals & Targets
+  if (name.includes('goal') || name.includes('target') || name.includes('objective')) {
+    return {
+      icon: Target,
+      gradient: 'from-emerald-500 via-teal-500 to-cyan-500',
+      iconBg: 'bg-emerald-100',
+      iconColor: 'text-emerald-600',
+      borderColor: 'border-emerald-200',
+      hoverBorderColor: 'hover:border-emerald-400',
+      buttonBg: 'bg-emerald-600',
+      buttonHover: 'hover:bg-emerald-700',
+      accentBg: 'bg-emerald-50',
+      accentText: 'text-emerald-700',
+    };
+  }
+
   // Default theme
   return {
     icon: FileText,

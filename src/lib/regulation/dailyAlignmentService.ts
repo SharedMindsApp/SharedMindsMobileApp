@@ -95,6 +95,7 @@ export async function createTodaysAlignment(userId: string): Promise<DailyAlignm
   try {
     const today = new Date().toISOString().split('T')[0];
 
+    // First check if alignment already exists
     const { data: existing } = await supabase
       .from('daily_alignments')
       .select('*')
@@ -106,6 +107,7 @@ export async function createTodaysAlignment(userId: string): Promise<DailyAlignm
       return existing;
     }
 
+    // Try to create new alignment
     const { data, error } = await supabase
       .from('daily_alignments')
       .insert({
@@ -116,11 +118,39 @@ export async function createTodaysAlignment(userId: string): Promise<DailyAlignm
       .select()
       .single();
 
-    if (error) throw error;
+    if (error) {
+      // Handle unique constraint violation (409 conflict) - alignment was created by another request
+      if (error.code === '23505' || error.message?.includes('duplicate key')) {
+        // Fetch the existing alignment that was just created
+        const { data: existingAfterConflict } = await supabase
+          .from('daily_alignments')
+          .select('*')
+          .eq('user_id', userId)
+          .eq('date', today)
+          .maybeSingle();
+        
+        if (existingAfterConflict) {
+          return existingAfterConflict;
+        }
+      }
+      throw error;
+    }
     return data;
   } catch (error) {
     console.error('[DailyAlignment] Error creating alignment:', error);
-    return null;
+    // Last resort: try to fetch existing alignment
+    try {
+      const today = new Date().toISOString().split('T')[0];
+      const { data: existing } = await supabase
+        .from('daily_alignments')
+        .select('*')
+        .eq('user_id', userId)
+        .eq('date', today)
+        .maybeSingle();
+      return existing || null;
+    } catch {
+      return null;
+    }
   }
 }
 

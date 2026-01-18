@@ -308,7 +308,18 @@ export async function listEntriesByDateRange(
     query = query.lte('entry_date', options.end_date);
   }
 
-  const { data, error } = await query.order('entry_date', { ascending: false });
+  query = query.order('entry_date', { ascending: false });
+
+  if (options.limit !== undefined) {
+    const start = Math.max(0, options.offset ?? 0);
+    const end = start + Math.max(0, options.limit - 1);
+    query = query.range(start, end);
+  } else if (options.offset !== undefined) {
+    const start = Math.max(0, options.offset);
+    query = query.range(start, start + 99);
+  }
+
+  const { data, error } = await query;
 
   if (error) {
     throw new Error(`Failed to list entries: ${error.message}`);

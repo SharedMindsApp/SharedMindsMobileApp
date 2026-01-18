@@ -37,8 +37,10 @@ import { listTrackers, reorderTrackers, archiveTracker } from '../../lib/tracker
 import { useTrackerEntries } from '../../hooks/trackerStudio/useTrackerEntries';
 import { calculateAggregatedStats, getNumericFields } from '../../lib/trackerStudio/trackerAnalyticsService';
 import { getDateRangePreset } from '../../lib/trackerStudio/analyticsUtils';
-import { getTrackerTheme } from '../../lib/trackerStudio/trackerThemeUtils';
+import { getTrackerThemeWithCustoms } from '../../lib/trackerStudio/trackerIconResolver';
 import { calculateDashboardInsights } from '../../lib/trackerStudio/trackerEngagementAnalytics';
+import { getCachedInsights, setCachedInsights, invalidateInsightsCache } from '../../lib/trackerStudio/insightsCache';
+import { isFitnessTrackerByName } from '../../lib/fitnessTracker/fitnessTrackerUtils';
 import type { Tracker } from '../../lib/trackerStudio/types';
 import type { DateRange } from '../../lib/trackerStudio/analyticsTypes';
 
@@ -57,17 +59,19 @@ export function MyTrackersPage() {
 
   // Drag and drop sensors
   // PointerSensor for mouse, TouchSensor for touch devices
-  // Use distance-based activation to allow clicks while enabling drags
+  // Require press/hold before drag to prevent accidental reordering
   const sensors = useSensors(
     useSensor(PointerSensor, {
       activationConstraint: {
-        distance: 8, // 8px movement starts drag (allows clicks to work)
+        delay: 250, // 250ms hold required on mouse/pointer before drag can start
+        tolerance: 5, // Allow 5px of movement during delay (prevents accidental drags)
+        distance: 10, // After delay, require 10px movement to start drag
       },
     }),
     useSensor(TouchSensor, {
       activationConstraint: {
-        delay: 200, // 200ms hold on touch devices before drag starts
-        tolerance: 5, // Allow 5px of movement during delay
+        delay: 500, // 500ms hold required on touch devices before drag starts
+        tolerance: 8, // Allow 8px of movement during delay (prevents accidental drags)
       },
     }),
     useSensor(KeyboardSensor, {
@@ -102,8 +106,33 @@ export function MyTrackersPage() {
   const loadInsights = async (trackersToAnalyze: Tracker[]) => {
     try {
       setLoadingInsights(true);
+      
+      const trackerIds = trackersToAnalyze.map(t => t.id);
+      
+      // Check cache first - if cached data exists and is fresh, use it immediately
+      const cachedInsights = getCachedInsights(trackerIds);
+      if (cachedInsights) {
+        setInsights(cachedInsights);
+        setLoadingInsights(false);
+        
+        // Calculate in background to update cache (non-blocking)
+        calculateDashboardInsights(trackersToAnalyze)
+          .then(calculatedInsights => {
+            setCachedInsights(trackerIds, calculatedInsights);
+            setInsights(calculatedInsights);
+          })
+          .catch(err => {
+            console.error('Failed to update insights cache:', err);
+          });
+        return;
+      }
+      
+      // No cache or expired - calculate insights
       const calculatedInsights = await calculateDashboardInsights(trackersToAnalyze);
       setInsights(calculatedInsights);
+      
+      // Cache the results
+      setCachedInsights(trackerIds, calculatedInsights);
     } catch (err) {
       console.error('Failed to calculate insights:', err);
     } finally {
@@ -130,7 +159,9 @@ export function MyTrackersPage() {
       setIsDeleting(true);
       await archiveTracker(trackerToDelete.id);
       
-      // Remove from local state and reload insights
+      // Invalidate cache and remove from local state
+      invalidateInsightsCache();
+      
       setTrackers(prev => {
         const remainingTrackers = prev.filter(t => t.id !== trackerToDelete.id);
         
@@ -261,7 +292,16 @@ export function MyTrackersPage() {
                 {/* Trackers Needing Attention */}
                 {insights.trackersNeedingAttention.length > 0 && (
                   <div 
-                    onClick={() => insights.trackersNeedingAttention[0] && navigate(`/tracker-studio/tracker/${insights.trackersNeedingAttention[0].tracker.id}`)}
+                    onClick={() => {
+                      if (insights.trackersNeedingAttention[0]) {
+                        const tracker = insights.trackersNeedingAttention[0].tracker;
+                        if (isFitnessTrackerByName(tracker)) {
+                          navigate('/fitness-tracker');
+                        } else {
+                          navigate(`/tracker-studio/tracker/${tracker.id}`);
+                        }
+                      }
+                    }}
                     className="bg-gradient-to-br from-orange-50 to-amber-50 rounded-2xl border-2 border-orange-300 p-4 sm:p-5 shadow-lg hover:shadow-xl hover:border-orange-400 transition-all cursor-pointer group"
                   >
                     <div className="flex items-start gap-3 mb-3">
@@ -295,7 +335,14 @@ export function MyTrackersPage() {
                 {/* Most Active Tracker */}
                 {insights.mostActiveTracker && (
                   <div 
-                    onClick={() => navigate(`/tracker-studio/tracker/${insights.mostActiveTracker!.tracker.id}`)}
+                    onClick={() => {
+                      const tracker = insights.mostActiveTracker!.tracker;
+                      if (isFitnessTrackerByName(tracker)) {
+                        navigate('/fitness-tracker');
+                      } else {
+                        navigate(`/tracker-studio/tracker/${tracker.id}`);
+                      }
+                    }}
                     className="bg-gradient-to-br from-green-50 to-emerald-50 rounded-2xl border-2 border-green-300 p-4 sm:p-5 shadow-lg hover:shadow-xl hover:border-green-400 transition-all cursor-pointer group"
                   >
                     <div className="flex items-start gap-3 mb-3">
@@ -333,7 +380,14 @@ export function MyTrackersPage() {
                           {insights.consistentTrackers.slice(0, 2).map((item, idx) => (
                             <div 
                               key={idx}
-                              onClick={() => navigate(`/tracker-studio/tracker/${item.tracker.id}`)}
+                              onClick={() => {
+                                const tracker = item.tracker;
+                                if (isFitnessTrackerByName(tracker)) {
+                                  navigate('/fitness-tracker');
+                                } else {
+                                  navigate(`/tracker-studio/tracker/${tracker.id}`);
+                                }
+                              }}
                               className="flex items-center justify-between p-2 bg-white/60 rounded-lg hover:bg-white/80 transition-colors cursor-pointer group"
                             >
                               <span className="text-xs sm:text-sm font-medium text-gray-700 line-clamp-1 flex-1">
@@ -406,7 +460,14 @@ export function MyTrackersPage() {
                 <SortableTrackerCard
                   key={tracker.id}
                   tracker={tracker}
-                  onOpen={() => navigate(`/tracker-studio/tracker/${tracker.id}`)}
+                  onOpen={() => {
+                    // Redirect Fitness Tracker to its dedicated page
+                    if (isFitnessTrackerByName(tracker)) {
+                      navigate('/fitness-tracker');
+                    } else {
+                      navigate(`/tracker-studio/tracker/${tracker.id}`);
+                    }
+                  }}
                   onAddToSpace={() => setTrackerForSpace(tracker)}
                   getGranularityLabel={getGranularityLabel}
                   formatDate={formatDate}
@@ -492,6 +553,7 @@ type TrackerDashboardCardProps = {
 
 type TrackerDashboardCardInternalProps = Omit<TrackerDashboardCardProps, 'disabled'> & {
   isDragging?: boolean;
+  isHolding?: boolean;
 };
 
 function SortableTrackerCard({
@@ -502,6 +564,10 @@ function SortableTrackerCard({
   formatDate,
   disabled = false,
 }: TrackerDashboardCardProps) {
+  const [isHolding, setIsHolding] = useState(false);
+  const holdTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const touchStartRef = useRef<{ x: number; y: number } | null>(null);
+
   const {
     attributes,
     listeners,
@@ -514,12 +580,95 @@ function SortableTrackerCard({
     disabled,
   });
 
+  // Combine dnd-kit transform with scale for holding state
+  // Only apply scale when holding but not yet dragging
+  const scaleValue = isHolding && !isDragging ? ' scale(1.02)' : '';
+  const combinedTransform = transform 
+    ? `${CSS.Transform.toString(transform)}${scaleValue}`.trim()
+    : scaleValue.trim() || undefined;
+
   const style = {
-    transform: CSS.Transform.toString(transform),
-    transition,
+    transform: combinedTransform,
+    transition: isDragging ? transition : isHolding ? 'all 0.2s ease-out' : undefined,
     opacity: isDragging ? 0.5 : 1,
-    zIndex: isDragging ? 50 : 1,
+    zIndex: isDragging ? 50 : isHolding ? 10 : 1,
   };
+
+  // Handle touch start to detect long press (for visual feedback)
+  // This runs in parallel with dnd-kit's TouchSensor
+  const handleTouchStart = useCallback((e: React.TouchEvent) => {
+    // Only handle if not already dragging
+    if (isDragging) return;
+    
+    const touch = e.touches[0];
+    if (touch) {
+      touchStartRef.current = { x: touch.clientX, y: touch.clientY };
+      
+      // Start hold timer to show visual feedback
+      holdTimerRef.current = setTimeout(() => {
+        if (!isDragging) {
+          setIsHolding(true);
+        }
+      }, 400); // Show animation 100ms before drag activates (at 500ms)
+    }
+  }, [isDragging]);
+
+  // Handle touch move - cancel hold if moved too much
+  const handleTouchMove = useCallback((e: React.TouchEvent) => {
+    if (!touchStartRef.current || isHolding || isDragging) return;
+    
+    const touch = e.touches[0];
+    if (touch) {
+      const deltaX = Math.abs(touch.clientX - touchStartRef.current.x);
+      const deltaY = Math.abs(touch.clientY - touchStartRef.current.y);
+      const distance = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
+      
+      // If moved more than 8px (matching tolerance), cancel the hold
+      if (distance > 8) {
+        if (holdTimerRef.current) {
+          clearTimeout(holdTimerRef.current);
+          holdTimerRef.current = null;
+        }
+        setIsHolding(false);
+        touchStartRef.current = null;
+      }
+    }
+  }, [isHolding, isDragging]);
+
+  // Handle touch end - cancel hold
+  const handleTouchEnd = useCallback(() => {
+    if (holdTimerRef.current) {
+      clearTimeout(holdTimerRef.current);
+      holdTimerRef.current = null;
+    }
+    // Delay reset slightly to allow drag to start if it was activated
+    setTimeout(() => {
+      if (!isDragging) {
+        setIsHolding(false);
+        touchStartRef.current = null;
+      }
+    }, 50);
+  }, [isDragging]);
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      if (holdTimerRef.current) {
+        clearTimeout(holdTimerRef.current);
+      }
+    };
+  }, []);
+
+  // Reset hold state when dragging starts
+  useEffect(() => {
+    if (isDragging) {
+      setIsHolding(false);
+      if (holdTimerRef.current) {
+        clearTimeout(holdTimerRef.current);
+        holdTimerRef.current = null;
+      }
+    }
+  }, [isDragging]);
 
   // Debug logging
   useEffect(() => {
@@ -537,6 +686,18 @@ function SortableTrackerCard({
       }}
       {...attributes}
       {...listeners}
+      onTouchStart={(e) => {
+        handleTouchStart(e);
+        // Let dnd-kit handle the event too
+      }}
+      onTouchMove={(e) => {
+        handleTouchMove(e);
+        // Let dnd-kit handle the event too
+      }}
+      onTouchEnd={(e) => {
+        handleTouchEnd();
+        // Let dnd-kit handle the event too
+      }}
       className="cursor-grab active:cursor-grabbing select-none"
     >
       <TrackerDashboardCard
@@ -546,6 +707,7 @@ function SortableTrackerCard({
         getGranularityLabel={getGranularityLabel}
         formatDate={formatDate}
         isDragging={isDragging}
+        isHolding={isHolding}
       />
     </div>
   );
@@ -558,8 +720,9 @@ const TrackerDashboardCard = memo(function TrackerDashboardCard({
   getGranularityLabel, 
   formatDate,
   isDragging = false,
+  isHolding = false,
 }: TrackerDashboardCardInternalProps) {
-  const theme = getTrackerTheme(tracker.name);
+  const theme = getTrackerThemeWithCustoms(tracker);
   const Icon = theme.icon;
   
   // Get date range for analytics (last 7 days for performance - reduced from 30)
@@ -725,29 +888,42 @@ const TrackerDashboardCard = memo(function TrackerDashboardCard({
   return (
     <div 
       onClick={handleCardClick}
-      className={`bg-white/90 backdrop-blur-sm rounded-2xl border-2 border-gray-200 hover:border-gray-300 hover:shadow-2xl transition-all duration-300 group overflow-hidden relative ${isDragging ? 'ring-2 ring-blue-500 ring-offset-2 shadow-2xl' : 'cursor-pointer'}`}
+      className={`bg-white/90 backdrop-blur-sm rounded-2xl border-2 transition-all duration-300 group overflow-hidden relative ${
+        isDragging 
+          ? 'ring-2 ring-blue-500 ring-offset-2 shadow-2xl' 
+          : isHolding 
+          ? 'ring-2 ring-blue-400 ring-offset-2 shadow-xl border-blue-300' 
+          : 'border-gray-200 hover:border-gray-300 hover:shadow-2xl cursor-pointer'
+      }`}
     >
       {/* Drag Handle Indicator (visual only, entire card is draggable) */}
       <div
-        className="absolute top-3 right-3 p-2 rounded-lg text-gray-400 z-10 pointer-events-none"
+        className={`absolute top-3 right-3 p-2 rounded-lg z-10 pointer-events-none transition-colors ${
+          isHolding || isDragging ? 'text-blue-500' : 'text-gray-400'
+        }`}
         title="Hold and drag to reorder"
       >
-        <GripVertical size={18} />
+        <GripVertical size={18} className={isHolding ? 'animate-pulse' : ''} />
       </div>
       
+      {/* Hold indicator overlay */}
+      {isHolding && !isDragging && (
+        <div className="absolute inset-0 bg-blue-50/30 rounded-2xl pointer-events-none animate-pulse" />
+      )}
+      
       {/* Themed Header Section */}
-      <div className={`bg-gradient-to-br ${theme.gradient} relative overflow-hidden p-5 sm:p-6`}>
-        <div className="relative z-10 flex items-start justify-between">
-          <div className="flex items-center gap-4 flex-1 min-w-0">
-            <div className={`${theme.iconBg} ${theme.iconColor} rounded-2xl p-3 sm:p-4 shadow-lg flex-shrink-0`}>
-              <Icon size={28} className={theme.iconColor} />
+      <div className={`bg-gradient-to-br ${theme.gradient} relative overflow-hidden p-4 sm:p-5 md:p-6`}>
+        <div className="relative z-10 flex items-start justify-between gap-2 sm:gap-3">
+          <div className="flex items-start gap-3 sm:gap-4 flex-1 min-w-0">
+            <div className={`${theme.iconBg} ${theme.iconColor} rounded-xl sm:rounded-2xl p-2.5 sm:p-3 md:p-4 shadow-lg flex-shrink-0`}>
+              <Icon size={22} className={`${theme.iconColor} sm:w-7 sm:h-7`} />
             </div>
-            <div className="flex-1 min-w-0">
-              <h3 className="text-lg sm:text-xl font-bold text-white mb-1 line-clamp-1 group-hover:underline">
+            <div className="flex-1 min-w-0 pr-1 sm:pr-2">
+              <h3 className="text-sm sm:text-base md:text-lg lg:text-xl font-bold text-white mb-0.5 sm:mb-1 break-words leading-tight group-hover:underline">
                 {tracker.name}
               </h3>
               {tracker.description && (
-                <p className="text-sm text-white/90 line-clamp-2">
+                <p className="text-xs sm:text-sm text-white/90 line-clamp-2 break-words leading-snug">
                   {tracker.description}
                 </p>
               )}
@@ -759,10 +935,10 @@ const TrackerDashboardCard = memo(function TrackerDashboardCard({
                 e.stopPropagation();
                 onAddToSpace();
               }}
-              className="ml-2 p-2 rounded-lg bg-white/20 hover:bg-white/30 text-white transition-colors flex-shrink-0 z-10"
+              className="ml-1 sm:ml-2 p-1.5 sm:p-2 rounded-lg bg-white/20 hover:bg-white/30 text-white transition-colors flex-shrink-0 z-10"
               title="Add to Spaces"
             >
-              <LayoutGrid size={18} />
+              <LayoutGrid size={16} className="sm:w-[18px] sm:h-[18px]" />
             </button>
           )}
         </div>
@@ -937,6 +1113,7 @@ const TrackerDashboardCard = memo(function TrackerDashboardCard({
     prevProps.tracker.created_at === nextProps.tracker.created_at &&
     prevProps.tracker.entry_granularity === nextProps.tracker.entry_granularity &&
     prevProps.tracker.field_schema_snapshot.length === nextProps.tracker.field_schema_snapshot.length &&
-    prevProps.isDragging === nextProps.isDragging
+    prevProps.isDragging === nextProps.isDragging &&
+    prevProps.isHolding === nextProps.isHolding
   );
 });
