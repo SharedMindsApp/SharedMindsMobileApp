@@ -620,6 +620,12 @@ function SortableTrackerCard({
   const handleTouchMove = useCallback((e: React.TouchEvent) => {
     if (!touchStartRef.current) return;
     
+    // If holding or dragging, prevent default to stop scroll
+    if (isHolding || isDragging) {
+      e.preventDefault();
+      return;
+    }
+    
     const touch = e.touches[0];
     if (touch) {
       const deltaX = Math.abs(touch.clientX - touchStartRef.current.x);
@@ -627,7 +633,7 @@ function SortableTrackerCard({
       const distance = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
       
       // If moved more than 8px (matching tolerance), cancel the hold and allow scroll
-      if (distance > 8 && !isDragging) {
+      if (distance > 8) {
         if (holdTimerRef.current) {
           clearTimeout(holdTimerRef.current);
           holdTimerRef.current = null;
@@ -637,7 +643,7 @@ function SortableTrackerCard({
         touchStartRef.current = null;
       }
     }
-  }, [isDragging]);
+  }, [isDragging, isHolding]);
 
   // Handle touch end - cancel hold
   const handleTouchEnd = useCallback(() => {
