@@ -682,7 +682,7 @@ function SortableTrackerCard({
       ref={setNodeRef} 
       style={{
         ...style,
-        touchAction: 'none', // Prevent scrolling on mobile while dragging
+        touchAction: isDragging ? 'none' : 'auto', // Prevent scrolling on mobile only while dragging
       }}
       {...attributes}
       {...listeners}
