@@ -565,6 +565,7 @@ function SortableTrackerCard({
   disabled = false,
 }: TrackerDashboardCardProps) {
   const [isHolding, setIsHolding] = useState(false);
+  const [isPotentialDrag, setIsPotentialDrag] = useState(false);
   const holdTimerRef = useRef<NodeJS.Timeout | null>(null);
   const touchStartRef = useRef<{ x: number; y: number } | null>(null);
 
@@ -603,11 +604,13 @@ function SortableTrackerCard({
     const touch = e.touches[0];
     if (touch) {
       touchStartRef.current = { x: touch.clientX, y: touch.clientY };
+      setIsPotentialDrag(true); // Mark potential drag - will be cleared if moved too much
       
       // Start hold timer to show visual feedback
       holdTimerRef.current = setTimeout(() => {
         if (!isDragging) {
           setIsHolding(true);
+          // At this point, we're in the hold phase, so block scrolling
         }
       }, 400); // Show animation 100ms before drag activates (at 500ms)
     }
@@ -615,7 +618,7 @@ function SortableTrackerCard({
 
   // Handle touch move - cancel hold if moved too much
   const handleTouchMove = useCallback((e: React.TouchEvent) => {
-    if (!touchStartRef.current || isHolding || isDragging) return;
+    if (!touchStartRef.current) return;
     
     const touch = e.touches[0];
     if (touch) {
@@ -623,17 +626,18 @@ function SortableTrackerCard({
       const deltaY = Math.abs(touch.clientY - touchStartRef.current.y);
       const distance = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
       
-      // If moved more than 8px (matching tolerance), cancel the hold
-      if (distance > 8) {
+      // If moved more than 8px (matching tolerance), cancel the hold and allow scroll
+      if (distance > 8 && !isDragging) {
         if (holdTimerRef.current) {
           clearTimeout(holdTimerRef.current);
           holdTimerRef.current = null;
         }
         setIsHolding(false);
+        setIsPotentialDrag(false); // Not a drag gesture, allow scrolling
         touchStartRef.current = null;
       }
     }
-  }, [isHolding, isDragging]);
+  }, [isDragging]);
 
   // Handle touch end - cancel hold
   const handleTouchEnd = useCallback(() => {
@@ -645,6 +649,7 @@ function SortableTrackerCard({
     setTimeout(() => {
       if (!isDragging) {
         setIsHolding(false);
+        setIsPotentialDrag(false); // Reset potential drag state
         touchStartRef.current = null;
       }
     }, 50);
@@ -663,10 +668,17 @@ function SortableTrackerCard({
   useEffect(() => {
     if (isDragging) {
       setIsHolding(false);
+      setIsPotentialDrag(true); // Keep as true during drag
       if (holdTimerRef.current) {
         clearTimeout(holdTimerRef.current);
         holdTimerRef.current = null;
       }
+    } else {
+      // When drag ends, reset after a short delay
+      const timeout = setTimeout(() => {
+        setIsPotentialDrag(false);
+      }, 100);
+      return () => clearTimeout(timeout);
     }
   }, [isDragging]);
 
@@ -682,7 +694,10 @@ function SortableTrackerCard({
       ref={setNodeRef} 
       style={{
         ...style,
-        touchAction: isDragging ? 'none' : 'auto', // Prevent scrolling on mobile only while dragging
+        // Only prevent scrolling when actively dragging or holding (after hold timer fires)
+        // This allows normal scrolling until the drag gesture is confirmed (hold for 400ms)
+        // If user moves quickly, scrolling works normally
+        touchAction: (isDragging || isHolding) ? 'none' : 'auto',
       }}
       {...attributes}
       {...listeners}
