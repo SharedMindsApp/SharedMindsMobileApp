@@ -568,6 +568,7 @@ function SortableTrackerCard({
   const [isPotentialDrag, setIsPotentialDrag] = useState(false);
   const holdTimerRef = useRef<NodeJS.Timeout | null>(null);
   const touchStartRef = useRef<{ x: number; y: number } | null>(null);
+  const scrollPositionRef = useRef<number>(0);
 
   const {
     attributes,
@@ -669,6 +670,48 @@ function SortableTrackerCard({
       }
     };
   }, []);
+
+  // Prevent page scroll when dragging or holding (document-level touch handlers)
+  useEffect(() => {
+    if (isDragging || isHolding) {
+      // Lock scroll position when drag starts
+      scrollPositionRef.current = window.pageYOffset || document.documentElement.scrollTop;
+      
+      const handleTouchMove = (e: TouchEvent) => {
+        // Prevent scrolling during drag/hold
+        e.preventDefault();
+      };
+
+      const handleTouchEnd = () => {
+        // Don't do anything here, let the drag end handler reset state
+      };
+
+      // Lock scroll by preventing touchmove on document
+      document.addEventListener('touchmove', handleTouchMove, { passive: false });
+      document.addEventListener('touchend', handleTouchEnd, { passive: false });
+      
+      // Lock body scroll
+      const originalOverflow = document.body.style.overflow;
+      const originalPosition = document.body.style.position;
+      const originalTop = document.body.style.top;
+      document.body.style.overflow = 'hidden';
+      document.body.style.position = 'fixed';
+      document.body.style.top = `-${scrollPositionRef.current}px`;
+      document.body.style.width = '100%';
+
+      return () => {
+        document.removeEventListener('touchmove', handleTouchMove);
+        document.removeEventListener('touchend', handleTouchEnd);
+        // Restore scroll
+        document.body.style.overflow = originalOverflow;
+        document.body.style.position = originalPosition;
+        document.body.style.top = originalTop;
+        document.body.style.width = '';
+        // Restore scroll position
+        window.scrollTo(0, scrollPositionRef.current);
+      };
+    }
+  }, [isDragging, isHolding]);
 
   // Reset hold state when dragging starts
   useEffect(() => {

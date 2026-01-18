@@ -6,6 +6,8 @@
  * - Authenticated users → /dashboard
  * - Unauthenticated users → /auth/login
  * 
+ * Mobile devices: Ensures authenticated mobile users always go to /dashboard on initial load
+ * 
  * No UI is rendered at / - it's purely a routing decision.
  */
 
@@ -29,8 +31,8 @@ export function RootRedirect() {
   }
 
   // Phase 8C: Redirect based on auth state from AuthContext
+  // Mobile and desktop: Always redirect authenticated users to dashboard
   if (isAuthenticated) {
-    // Always redirect authenticated users to dashboard
     return <Navigate to="/dashboard" replace />;
   }
 
