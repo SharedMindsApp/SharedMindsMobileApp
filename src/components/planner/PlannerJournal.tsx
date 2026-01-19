@@ -1,5 +1,5 @@
 import { useNavigate } from 'react-router-dom';
-import { BookOpen, PenLine, Sparkles, Lightbulb, TrendingUp } from 'lucide-react';
+import { BookOpen, PenLine, Lightbulb } from 'lucide-react';
 import { PlannerShell } from './PlannerShell';
 import { LifeAreaMobileMenu, type LifeAreaFeature } from './LifeAreaMobileMenu';
 
@@ -11,7 +11,7 @@ export function PlannerJournal() {
       id: 'entries',
       icon: BookOpen,
       label: 'Journal Entries',
-      description: 'Daily journaling for reflection, gratitude, and self-awareness',
+      description: 'Daily journaling for reflection and self-awareness',
       route: '/planner/journal/entries',
     },
     {
@@ -27,20 +27,6 @@ export function PlannerJournal() {
       label: 'Reflections',
       description: 'Weekly and monthly reflections on your journey',
       route: '/planner/journal/reflections',
-    },
-    {
-      id: 'gratitude',
-      icon: Sparkles,
-      label: 'Gratitude Log',
-      description: "Track what you're grateful for each day",
-      route: '/planner/journal/gratitude',
-    },
-    {
-      id: 'insights',
-      icon: TrendingUp,
-      label: 'Insights & Patterns',
-      description: 'Discover patterns and insights from your journal entries',
-      route: '/planner/journal/insights',
     },
   ];
 

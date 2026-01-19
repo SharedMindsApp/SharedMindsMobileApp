@@ -32,6 +32,8 @@ import { QuickAddPopover } from '../calendar/QuickAddPopover';
 import { QuickAddBottomSheet } from './mobile/QuickAddBottomSheet';
 import { MonthlyPlannerMobile } from './mobile/MonthlyPlannerMobile';
 import { EventDetailModal } from '../calendar/EventDetailModal';
+import { IntentionsPanel } from './temporal/IntentionsPanel';
+import { ReflectionsPanel } from './temporal/ReflectionsPanel';
 import { useCalendarNavigation } from '../../hooks/useCalendarNavigation';
 import { splitEventsForMonthView, getEventsForDate, getContainerSegmentsForWeek } from '../../lib/calendar/eventSegmentation';
 import { getPersonalEventsForDateRangeWithExtras } from '../../lib/personalSpaces/calendarService';
@@ -512,6 +514,7 @@ export function PlannerMonthly() {
 
   // Mobile-first layout
   if (isMobile) {
+    const monthStart = new Date(selectedDate.getFullYear(), selectedDate.getMonth(), 1);
     return (
       <PlannerShell>
         <div 
@@ -542,6 +545,17 @@ export function PlannerMonthly() {
                   <X size={14} />
                 </button>
               </div>
+            </div>
+          )}
+
+          {/* Intentions Panel - Top (Mobile) */}
+          {user && (
+            <div className="px-4 pt-4 pb-2">
+              <IntentionsPanel 
+                userId={user.id} 
+                scope="month" 
+                scopeDate={monthStart} 
+              />
             </div>
           )}
 
@@ -606,12 +620,24 @@ export function PlannerMonthly() {
               }}
             />
           )}
+
+          {/* Reflections Panel - Bottom (Mobile) */}
+          {user && (
+            <div className="px-4 pb-4 pt-2">
+              <ReflectionsPanel 
+                userId={user.id} 
+                scope="month" 
+                scopeDate={monthStart} 
+              />
+            </div>
+          )}
         </div>
       </PlannerShell>
     );
   }
 
   // Desktop layout (unchanged)
+  const monthStart = new Date(selectedDate.getFullYear(), selectedDate.getMonth(), 1);
   return (
     <PlannerShell>
       <div 
@@ -624,6 +650,16 @@ export function PlannerMonthly() {
           transition: swipeOffset === 0 ? 'transform 0.2s ease-out' : 'none',
         }}
       >
+        {/* Intentions Panel - Top */}
+        {user && (
+          <div className="px-6 pt-6 pb-4">
+            <IntentionsPanel 
+              userId={user.id} 
+              scope="month" 
+              scopeDate={monthStart} 
+            />
+          </div>
+        )}
 
         {/* Premium Sticky Header */}
         <div className="sticky top-0 z-30 bg-gradient-to-b from-white to-gray-50/50 backdrop-blur-sm border-b border-gray-200 shadow-sm mb-6">
@@ -1162,6 +1198,17 @@ export function PlannerMonthly() {
               setSelectedEvent(null);
             }}
           />
+        )}
+
+        {/* Reflections Panel - Bottom */}
+        {user && (
+          <div className="px-6 pb-6 pt-4">
+            <ReflectionsPanel 
+              userId={user.id} 
+              scope="month" 
+              scopeDate={monthStart} 
+            />
+          </div>
         )}
 
         {/* Day Peek Panel */}

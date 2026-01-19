@@ -1,49 +1,23 @@
 /**
- * Planner Habit Tracker Widget (Thin Wrapper)
+ * Planner Habit Tracker Widget - DEPRECATED
  * 
- * Shell component for Planner context. Contains ZERO business logic.
- * Only resolves permissions and passes props to HabitTrackerCore.
+ * Tracking has been moved to Tracker Studio.
+ * This component now shows a placeholder directing users to Tracker Studio.
  */
 
-import { useAuth } from '../../../contexts/AuthContext';
-import { HabitTrackerCore, type HabitTrackerContext } from '../../activities/habits/HabitTrackerCore';
-import type { PermissionFlags } from '../../../lib/permissions/types';
+import { PlannerTrackerPlaceholder } from '../PlannerTrackerPlaceholder';
 
 export interface HabitTrackerWidgetProps {
   layout?: 'full' | 'compact';
 }
 
+/**
+ * @deprecated Habit tracking has been moved to Tracker Studio.
+ * This component now shows a placeholder instead of the actual tracker.
+ */
 export function HabitTrackerWidget({ layout = 'full' }: HabitTrackerWidgetProps) {
-  const { user } = useAuth();
-
-  if (!user) {
-    return <div className="p-6 text-gray-500">Please sign in to view habits.</div>;
-  }
-
-  // Planner context: user owns their own habits
-  const context: HabitTrackerContext = {
-    mode: 'planner',
-    scope: 'self',
-  };
-
-  // Full permissions for own habits in planner
-  const permissions: PermissionFlags = {
-    can_view: true,
-    can_comment: false,
-    can_edit: true,
-    can_manage: true,
-    detail_level: 'detailed',
-    scope: 'this_only',
-  };
-
-  return (
-    <HabitTrackerCore
-      ownerUserId={user.id}
-      context={context}
-      permissions={permissions}
-      layout={layout}
-    />
-  );
+  // Show placeholder instead of actual habit tracker
+  return <PlannerTrackerPlaceholder trackerName="Habit Tracking" trackerType="habit" />;
 }
 
 

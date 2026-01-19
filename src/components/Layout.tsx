@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { Home, FileText, LogOut, Shield, Eye, X, MessageCircle, Brain, Users, Target, User, ChevronDown, Zap, Sun, Moon, Check, Calendar, Menu, MoreHorizontal, Home as HomeIcon, Settings, Activity } from 'lucide-react';
 import { ToastContainer, useToasts } from './Toast';
@@ -55,6 +55,13 @@ export function Layout({ children }: LayoutProps) {
   const { clearViewAs } = useViewAs();
   const { config, updatePreferences } = useUIPreferences();
   const { toasts, dismissToast } = useToasts();
+  
+  const spacesMenuButtonRef = useRef<HTMLButtonElement>(null);
+  const moreMenuButtonRef = useRef<HTMLButtonElement>(null);
+  const spacesMenuRef = useRef<HTMLDivElement>(null);
+  const moreMenuRef = useRef<HTMLDivElement>(null);
+  const [spacesMenuPosition, setSpacesMenuPosition] = useState({ top: 0, left: 0 });
+  const [moreMenuPosition, setMoreMenuPosition] = useState({ top: 0, right: 0 });
 
   // Mobile detection for hiding AI chat widget
   useEffect(() => {
@@ -63,6 +70,27 @@ export function Layout({ children }: LayoutProps) {
     window.addEventListener('resize', checkMobile);
     return () => window.removeEventListener('resize', checkMobile);
   }, []);
+
+  // Calculate dropdown positions
+  useEffect(() => {
+    if (showSpacesMenu && spacesMenuButtonRef.current) {
+      const rect = spacesMenuButtonRef.current.getBoundingClientRect();
+      setSpacesMenuPosition({
+        top: rect.bottom + 8,
+        left: rect.left,
+      });
+    }
+  }, [showSpacesMenu]);
+
+  useEffect(() => {
+    if (showMoreMenu && moreMenuButtonRef.current) {
+      const rect = moreMenuButtonRef.current.getBoundingClientRect();
+      setMoreMenuPosition({
+        top: rect.bottom + 8,
+        right: window.innerWidth - rect.right,
+      });
+    }
+  }, [showMoreMenu]);
 
   useEffect(() => {
     loadHousehold();
@@ -190,6 +218,7 @@ export function Layout({ children }: LayoutProps) {
       return (
         <div key={tab.id} className="relative">
           <button
+            ref={spacesMenuButtonRef}
             onClick={() => setShowSpacesMenu(!showSpacesMenu)}
             className={`flex items-center gap-1.5 lg:gap-2 px-2 lg:px-3 py-2 rounded-lg text-xs lg:text-sm font-medium transition-colors ${
               isSpacesActive()
@@ -205,16 +234,33 @@ export function Layout({ children }: LayoutProps) {
           {showSpacesMenu && (
             <>
               <div
-                className="fixed inset-0 z-10"
+                className="fixed inset-0 z-40"
                 onClick={() => setShowSpacesMenu(false)}
               ></div>
-              <div className="absolute left-0 mt-2 w-56 bg-white rounded-lg shadow-lg border border-gray-200 py-2 z-20">
+              <div
+                ref={spacesMenuRef}
+                className={`fixed w-56 rounded-lg shadow-xl border py-2 z-[60] ${
+                  config.appTheme === 'dark'
+                    ? 'bg-gray-800 border-gray-700'
+                    : config.appTheme === 'neon-dark'
+                    ? 'bg-gray-900 border-gray-800'
+                    : 'bg-white border-gray-200'
+                }`}
+                style={{
+                  top: `${spacesMenuPosition.top}px`,
+                  left: `${spacesMenuPosition.left}px`,
+                }}
+              >
                 <button
                   onClick={() => {
                     setShowSpacesMenu(false);
                     navigate('/planner');
                   }}
-                  className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2 font-semibold border-b border-gray-100"
+                  className={`w-full text-left px-4 py-2 text-sm flex items-center gap-2 font-semibold border-b transition-colors ${
+                    config.appTheme === 'dark' || config.appTheme === 'neon-dark'
+                      ? 'text-gray-200 hover:bg-gray-700 border-gray-700'
+                      : 'text-gray-700 hover:bg-gray-50 border-gray-100'
+                  }`}
                 >
                   <HomeIcon size={16} className="text-amber-600" />
                   Household Hub
@@ -224,7 +270,11 @@ export function Layout({ children }: LayoutProps) {
                     setShowSpacesMenu(false);
                     navigate('/spaces/personal');
                   }}
-                  className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2"
+                  className={`w-full text-left px-4 py-2 text-sm flex items-center gap-2 transition-colors ${
+                    config.appTheme === 'dark' || config.appTheme === 'neon-dark'
+                      ? 'text-gray-200 hover:bg-gray-700'
+                      : 'text-gray-700 hover:bg-gray-50'
+                  }`}
                 >
                   <User size={16} />
                   Personal Space
@@ -234,7 +284,11 @@ export function Layout({ children }: LayoutProps) {
                     setShowSpacesMenu(false);
                     navigate('/spaces/shared');
                   }}
-                  className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2"
+                  className={`w-full text-left px-4 py-2 text-sm flex items-center gap-2 transition-colors ${
+                    config.appTheme === 'dark' || config.appTheme === 'neon-dark'
+                      ? 'text-gray-200 hover:bg-gray-700'
+                      : 'text-gray-700 hover:bg-gray-50'
+                  }`}
                 >
                   <Users size={16} />
                   Shared Spaces
@@ -262,15 +316,22 @@ export function Layout({ children }: LayoutProps) {
     );
   };
 
+  // Hide header on Spaces pages (they have their own headers)
+  const isSpacesPage = location.pathname.startsWith('/spaces/personal') || 
+                       (location.pathname.startsWith('/spaces/') && 
+                        location.pathname !== '/spaces/shared' && 
+                        !location.pathname.endsWith('/shared'));
+
   return (
     <div className="min-h-screen-safe bg-[#f7f7f9]">
-      <nav className={`border-b shadow-sm overflow-x-hidden ${
-        config.appTheme === 'dark'
-          ? 'bg-gray-900 border-gray-700'
-          : config.appTheme === 'neon-dark'
-          ? 'bg-gray-950 border-gray-800'
-          : 'bg-white border-gray-200'
-      }`}>
+      {!isSpacesPage && (
+        <nav className={`border-b shadow-sm overflow-x-hidden overflow-y-visible relative z-50 ${
+          config.appTheme === 'dark'
+            ? 'bg-gray-900 border-gray-700'
+            : config.appTheme === 'neon-dark'
+            ? 'bg-gray-950 border-gray-800'
+            : 'bg-white border-gray-200'
+        }`}>
         <div className="max-w-6xl mx-auto px-2 sm:px-4 lg:px-8">
           <div className="flex items-center justify-between h-14 sm:h-16 min-h-[56px]">
             <div className="flex items-center gap-2 sm:gap-4 md:gap-8 flex-1 min-w-0">
@@ -315,6 +376,7 @@ export function Layout({ children }: LayoutProps) {
                 {moreTabs.length > 0 && (
                   <div className="relative">
                     <button
+                      ref={moreMenuButtonRef}
                       onClick={() => setShowMoreMenu(!showMoreMenu)}
                       className="flex items-center gap-1.5 lg:gap-2 px-2 lg:px-3 py-2 rounded-lg text-xs lg:text-sm font-medium transition-colors text-gray-600 hover:bg-gray-50"
                     >
@@ -326,10 +388,23 @@ export function Layout({ children }: LayoutProps) {
                     {showMoreMenu && (
                       <>
                         <div
-                          className="fixed inset-0 z-10"
+                          className="fixed inset-0 z-40"
                           onClick={() => setShowMoreMenu(false)}
                         ></div>
-                        <div className="absolute left-0 mt-2 w-56 bg-white rounded-lg shadow-lg border border-gray-200 py-2 z-20">
+                        <div
+                          ref={moreMenuRef}
+                          className={`fixed w-56 rounded-lg shadow-xl border py-2 z-[60] ${
+                            config.appTheme === 'dark'
+                              ? 'bg-gray-800 border-gray-700'
+                              : config.appTheme === 'neon-dark'
+                              ? 'bg-gray-900 border-gray-800'
+                              : 'bg-white border-gray-200'
+                          }`}
+                          style={{
+                            top: `${moreMenuPosition.top}px`,
+                            right: `${moreMenuPosition.right}px`,
+                          }}
+                        >
                           {moreTabs.map((tab) => {
                             const Icon = ICON_MAP[tab.icon];
                             return (
@@ -339,8 +414,14 @@ export function Layout({ children }: LayoutProps) {
                                   setShowMoreMenu(false);
                                   navigate(tab.path);
                                 }}
-                                className={`w-full text-left px-4 py-2 text-sm hover:bg-gray-50 flex items-center gap-2 ${
-                                  isTabActive(tab.path) ? 'text-blue-700 bg-blue-50' : 'text-gray-700'
+                                className={`w-full text-left px-4 py-2 text-sm flex items-center gap-2 transition-colors ${
+                                  isTabActive(tab.path)
+                                    ? config.appTheme === 'dark' || config.appTheme === 'neon-dark'
+                                      ? 'text-blue-400 bg-blue-900/30'
+                                      : 'text-blue-700 bg-blue-50'
+                                    : config.appTheme === 'dark' || config.appTheme === 'neon-dark'
+                                    ? 'text-gray-200 hover:bg-gray-700'
+                                    : 'text-gray-700 hover:bg-gray-50'
                                 }`}
                               >
                                 <Icon size={16} />
@@ -362,6 +443,7 @@ export function Layout({ children }: LayoutProps) {
           </div>
         </div>
       </nav>
+      )}
 
       {/* Mobile Navigation Drawer */}
       {showMobileMenu && (
@@ -473,16 +555,10 @@ export function Layout({ children }: LayoutProps) {
                   )}
                 </div>
 
-                {/* Phase 2D: On mobile, navigate directly to daily view (most actionable) instead of index */}
                 <button
                   onClick={() => {
                     setShowMobileMenu(false);
-                    // Mobile-first: go to daily view directly for faster access
-                    if (window.innerWidth < 1024) {
-                      navigate('/planner/calendar?view=month');
-                    } else {
-                      navigate('/planner');
-                    }
+                    navigate('/planner');
                   }}
                   className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-colors ${
                     location.pathname.startsWith('/planner')

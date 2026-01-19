@@ -109,6 +109,7 @@ import { SharedSpacesListPage } from './components/SharedSpacesListPage';
 import { SpaceViewPage } from './components/SpaceViewPage';
 import { SpacesIndexPage } from './components/SpacesIndexPage';
 import { WidgetAppView } from './components/spaces/WidgetAppView';
+import { PageView } from './components/pages/PageView';
 import { FocusModeStart } from './components/guardrails/focus/FocusModeStart';
 import { FocusModeLive } from './components/guardrails/focus/FocusModeLive';
 import { SessionSummaryPage } from './components/guardrails/focus/SessionSummaryPage';
@@ -133,6 +134,11 @@ import { TestingModePage } from './components/regulation/TestingModePage';
 import { BehavioralInsightsDashboard } from './components/behavioral-insights/BehavioralInsightsDashboard';
 import { PlannerIndex } from './components/planner/PlannerIndex';
 import { PlannerCalendar } from './components/planner/PlannerCalendar';
+import { PlannerToday } from './components/planner/PlannerToday';
+import { PlannerWeek } from './components/planner/PlannerWeek';
+import { PlannerMonth } from './components/planner/PlannerMonth';
+import { PlannerQuarter } from './components/planner/PlannerQuarter';
+import { PlannerYear } from './components/planner/PlannerYear';
 import { ActiveCalendarContextProvider } from './contexts/ActiveCalendarContext';
 import { ActiveTaskContextProvider } from './contexts/ActiveTaskContext';
 import { PlannerReview } from './components/planner/PlannerReview';
@@ -195,18 +201,12 @@ import { HouseholdGroceries } from './components/planner/household/HouseholdGroc
 import { PlannerShell } from './components/planner/PlannerShell';
 import { PlannerSelfCare } from './components/planner/PlannerSelfCare';
 import { WellnessGoals } from './components/planner/selfcare/WellnessGoals';
-import { ExerciseTrackerView } from './components/planner/selfcare/ExerciseTrackerView';
-import { MentalHealthCheckinsView } from './components/planner/selfcare/MentalHealthCheckinsView';
-import { NutritionLogView } from './components/planner/selfcare/NutritionLogView';
-import { SleepTrackerView } from './components/planner/selfcare/SleepTrackerView';
 import { MindfulnessMeditationView } from './components/planner/selfcare/MindfulnessMeditationView';
 import { SelfCareRoutines } from './components/planner/selfcare/SelfCareRoutines';
-import { GratitudeJournalView } from './components/planner/selfcare/GratitudeJournalView';
-import { BeautyRoutines } from './components/planner/selfcare/BeautyRoutines';
-import { RestRecoveryView } from './components/planner/selfcare/RestRecoveryView';
 import { PlannerTravel } from './components/planner/PlannerTravel';
 import { CreateTripPage } from './components/planner/travel/CreateTripPage';
 import { TripDetailPage } from './components/planner/travel/TripDetailPage';
+import { TripListPage } from './components/planner/travel/TripListPage';
 import { PlannerSocial } from './components/planner/PlannerSocial';
 import { PlannerJournal } from './components/planner/PlannerJournal';
 import { DailyAlignmentPage } from './components/regulation/DailyAlignmentPage';
@@ -451,6 +451,14 @@ function AppContent() {
             element={
               <AuthGuard>
                 <WidgetAppView />
+              </AuthGuard>
+            }
+          />
+          <Route
+            path="/spaces/:spaceId/pages/:pageId"
+            element={
+              <AuthGuard>
+                <PageView />
               </AuthGuard>
             }
           />
@@ -1193,13 +1201,63 @@ function AppContent() {
           />
 
           {/* Personal Planner Routes */}
+          {/* Planner: Temporal-first routes */}
+          <Route
+            path="/planner/today"
+            element={
+              <AuthGuard>
+                <Layout>
+                  <PlannerToday />
+                </Layout>
+              </AuthGuard>
+            }
+          />
+          <Route
+            path="/planner/week"
+            element={
+              <AuthGuard>
+                <Layout>
+                  <PlannerWeek />
+                </Layout>
+              </AuthGuard>
+            }
+          />
+          <Route
+            path="/planner/month"
+            element={
+              <AuthGuard>
+                <Layout>
+                  <PlannerMonth />
+                </Layout>
+              </AuthGuard>
+            }
+          />
+          <Route
+            path="/planner/quarter"
+            element={
+              <AuthGuard>
+                <Layout>
+                  <PlannerQuarter />
+                </Layout>
+              </AuthGuard>
+            }
+          />
+          <Route
+            path="/planner/year"
+            element={
+              <AuthGuard>
+                <Layout>
+                  <PlannerYear />
+                </Layout>
+              </AuthGuard>
+            }
+          />
+          {/* Default /planner route redirects to /planner/today */}
           <Route
             path="/planner"
             element={
               <AuthGuard>
-                <Layout>
-                  <PlannerIndex />
-                </Layout>
+                <Navigate to="/planner/today" replace />
               </AuthGuard>
             }
           />
@@ -1207,9 +1265,7 @@ function AppContent() {
             path="/planner/index"
             element={
               <AuthGuard>
-                <Layout>
-                  <PlannerIndex />
-                </Layout>
+                <Navigate to="/planner/today" replace />
               </AuthGuard>
             }
           />
@@ -1249,13 +1305,12 @@ function AppContent() {
               </AuthGuard>
             }
           />
+          {/* Redirect old life area routes to temporal-first navigation */}
           <Route
             path="/planner/personal"
             element={
               <AuthGuard>
-                <Layout>
-                  <PlannerPersonal />
-                </Layout>
+                <Navigate to="/planner/today?area=personal" replace />
               </AuthGuard>
             }
           />
@@ -1343,9 +1398,7 @@ function AppContent() {
             path="/planner/education"
             element={
               <AuthGuard>
-                <Layout>
-                  <PlannerEducation />
-                </Layout>
+                <Navigate to="/planner/today?area=personal" replace />
               </AuthGuard>
             }
           />
@@ -1533,9 +1586,7 @@ function AppContent() {
             path="/planner/budget"
             element={
               <AuthGuard>
-                <Layout>
-                  <PlannerBudget />
-                </Layout>
+                <Navigate to="/planner/today?area=financial" replace />
               </AuthGuard>
             }
           />
@@ -1848,9 +1899,7 @@ function AppContent() {
             path="/planner/selfcare"
             element={
               <AuthGuard>
-                <Layout>
-                  <PlannerSelfCare />
-                </Layout>
+                <Navigate to="/planner/today?area=personal" replace />
               </AuthGuard>
             }
           />
@@ -1860,46 +1909,6 @@ function AppContent() {
               <AuthGuard>
                 <Layout>
                   <WellnessGoals />
-                </Layout>
-              </AuthGuard>
-            }
-          />
-          <Route
-            path="/planner/selfcare/exercise"
-            element={
-              <AuthGuard>
-                <Layout>
-                  <ExerciseTrackerView />
-                </Layout>
-              </AuthGuard>
-            }
-          />
-          <Route
-            path="/planner/selfcare/mental"
-            element={
-              <AuthGuard>
-                <Layout>
-                  <MentalHealthCheckinsView />
-                </Layout>
-              </AuthGuard>
-            }
-          />
-          <Route
-            path="/planner/selfcare/nutrition"
-            element={
-              <AuthGuard>
-                <Layout>
-                  <NutritionLogView />
-                </Layout>
-              </AuthGuard>
-            }
-          />
-          <Route
-            path="/planner/selfcare/sleep"
-            element={
-              <AuthGuard>
-                <Layout>
-                  <SleepTrackerView />
                 </Layout>
               </AuthGuard>
             }
@@ -1925,40 +1934,20 @@ function AppContent() {
             }
           />
           <Route
-            path="/planner/selfcare/gratitude"
-            element={
-              <AuthGuard>
-                <Layout>
-                  <GratitudeJournalView />
-                </Layout>
-              </AuthGuard>
-            }
-          />
-          <Route
-            path="/planner/selfcare/beauty"
-            element={
-              <AuthGuard>
-                <Layout>
-                  <BeautyRoutines />
-                </Layout>
-              </AuthGuard>
-            }
-          />
-          <Route
-            path="/planner/selfcare/rest"
-            element={
-              <AuthGuard>
-                <Layout>
-                  <RestRecoveryView />
-                </Layout>
-              </AuthGuard>
-            }
-          />
-          <Route
             path="/planner/travel/new"
             element={
               <AuthGuard>
                 <CreateTripPage />
+              </AuthGuard>
+            }
+          />
+          <Route
+            path="/planner/travel/trips"
+            element={
+              <AuthGuard>
+                <Layout>
+                  <TripListPage />
+                </Layout>
               </AuthGuard>
             }
           />
@@ -1974,9 +1963,7 @@ function AppContent() {
             path="/planner/travel"
             element={
               <AuthGuard>
-                <Layout>
-                  <PlannerTravel />
-                </Layout>
+                <Navigate to="/planner/today?area=travel" replace />
               </AuthGuard>
             }
           />
@@ -2014,9 +2001,7 @@ function AppContent() {
             path="/planner/journal"
             element={
               <AuthGuard>
-                <Layout>
-                  <PlannerJournal />
-                </Layout>
+                <Navigate to="/planner/today" replace />
               </AuthGuard>
             }
           />

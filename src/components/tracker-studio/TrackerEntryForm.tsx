@@ -7,6 +7,8 @@ import { isMoodTracker, shouldUseLowFrictionUX } from '../../lib/trackerStudio/e
 import { MoodTrackerEntryForm } from './MoodTrackerEntryForm';
 import { isHabitTracker } from '../../lib/trackerStudio/habitTrackerUtils';
 import { IntelligentHabitTrackerEntryForm } from './IntelligentHabitTrackerEntryForm';
+import { isSkillsTracker } from '../../lib/trackerStudio/skillsTrackerUtils';
+import { SkillsTrackerEntryForm } from './SkillsTrackerEntryForm';
 
 type TrackerEntryFormProps = {
   tracker: Tracker;
@@ -75,7 +77,26 @@ export function TrackerEntryForm({
   };
 
   const handleFieldChange = (fieldId: string, value: string | number | boolean | null) => {
-    setFieldValues(prev => ({ ...prev, [fieldId]: value }));
+    setFieldValues(prev => {
+      const next = { ...prev, [fieldId]: value };
+      
+      // If entry_type changes, clear conditional fields that are no longer relevant
+      if (fieldId === 'entry_type') {
+        // Find all fields that have conditional requirements
+        const conditionalFields = tracker.field_schema_snapshot.filter(f => f.conditional);
+        conditionalFields.forEach(field => {
+          // If this conditional field's condition is no longer met, clear its value
+          if (field.conditional && field.conditional.field === 'entry_type') {
+            if (value !== field.conditional.value) {
+              next[field.id] = getDefaultValueForType(field.type);
+            }
+          }
+        });
+      }
+      
+      return next;
+    });
+    
     // Clear validation error for this field
     if (validationErrors[fieldId]) {
       setValidationErrors(prev => {
@@ -140,6 +161,14 @@ export function TrackerEntryForm({
       // Skip entry_date - it's not part of field_values, it's a separate parameter
       if (field.id === 'entry_date') {
         continue;
+      }
+      
+      // Skip conditional fields that aren't currently shown
+      if (field.conditional) {
+        const conditionalFieldValue = finalFieldValues[field.conditional.field];
+        if (conditionalFieldValue !== field.conditional.value) {
+          continue; // Skip validation for fields that aren't shown
+        }
       }
       
       const value = finalFieldValues[field.id];
@@ -258,6 +287,20 @@ export function TrackerEntryForm({
     );
   }
 
+  // Use specialized form for Skills Tracker
+  if (isSkillsTracker(tracker)) {
+    return (
+      <SkillsTrackerEntryForm
+        tracker={tracker}
+        entryDate={entryDate}
+        existingEntry={existingEntry}
+        onEntrySaved={onEntrySaved}
+        readOnly={readOnly}
+        theme={theme}
+      />
+    );
+  }
+
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
       {saved && (
@@ -276,18 +319,35 @@ export function TrackerEntryForm({
 
       {/* Schema-driven fields */}
       <div className="space-y-6">
-        {tracker.field_schema_snapshot.map(field => (
-          <FieldInput
-            key={field.id}
-            field={field}
-            value={fieldValues[field.id]}
-            onChange={(value) => handleFieldChange(field.id, value)}
-            error={validationErrors[field.id]}
-            readOnly={readOnly}
-            theme={theme}
-            trackerName={tracker.name}
-          />
-        ))}
+        {tracker.field_schema_snapshot
+          .filter(field => {
+            // Show field if it has no conditional requirement, or if condition is met
+            if (!field.conditional) {
+              return true;
+            }
+            const conditionalFieldValue = fieldValues[field.conditional.field];
+            return conditionalFieldValue === field.conditional.value;
+          })
+          .sort((a, b) => {
+            // Sort fields: entry_type first, then date, then others
+            if (a.id === 'entry_type') return -1;
+            if (b.id === 'entry_type') return 1;
+            if (a.id === 'entry_date' || a.id === 'date') return -1;
+            if (b.id === 'entry_date' || b.id === 'date') return 1;
+            return 0;
+          })
+          .map(field => (
+            <FieldInput
+              key={field.id}
+              field={field}
+              value={fieldValues[field.id]}
+              onChange={(value) => handleFieldChange(field.id, value)}
+              error={validationErrors[field.id]}
+              readOnly={readOnly}
+              theme={theme}
+              trackerName={tracker.name}
+            />
+          ))}
       </div>
 
       {/* Notes - Collapsible for low-friction trackers */}
@@ -425,10 +485,47 @@ function FieldInput({ field, value, onChange, error, readOnly = false, theme, tr
 
   switch (field.type) {
     case 'text':
+      // If field has options, render as select dropdown
+      if (field.options && field.options.length > 0) {
+        return (
+          <div className={`${theme.accentBg} rounded-xl p-5 border-2 ${error ? 'border-red-300' : theme.borderColor} transition-all hover:shadow-md`}>
+            <label htmlFor={field.id} className="block text-sm font-semibold text-gray-900 mb-3">
+              {field.label} {isRequired && <span className="text-red-500">*</span>}
+              {field.description && (
+                <span className="block text-xs text-gray-500 font-normal mt-1">{field.description}</span>
+              )}
+            </label>
+            <select
+              id={field.id}
+              value={value as string || ''}
+              onChange={(e) => onChange(e.target.value)}
+              disabled={readOnly}
+              className={`w-full px-4 py-3 border-2 rounded-lg focus:outline-none focus:ring-2 focus:ring-offset-2 text-base font-medium min-h-[52px] transition-all ${
+                error ? 'border-red-300 focus:border-red-500 focus:ring-red-500' : 'border-gray-300 focus:border-blue-500 focus:ring-blue-500'
+              } ${readOnly ? 'bg-gray-50 cursor-not-allowed' : 'bg-white cursor-pointer'}`}
+            >
+              <option value="">Select {field.label.toLowerCase()}...</option>
+              {field.options.map(option => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+            {error && <p className="mt-2 text-sm text-red-600 font-medium flex items-center gap-1">
+              <AlertCircle size={14} />
+              {error}
+            </p>}
+          </div>
+        );
+      }
+      // Otherwise render as textarea
       return (
         <div className={`${theme.accentBg} rounded-xl p-5 border-2 ${error ? 'border-red-300' : theme.borderColor} transition-all hover:shadow-md`}>
           <label htmlFor={field.id} className="block text-sm font-semibold text-gray-900 mb-3">
             {field.label} {isRequired && <span className="text-red-500">*</span>}
+            {field.description && (
+              <span className="block text-xs text-gray-500 font-normal mt-1">{field.description}</span>
+            )}
           </label>
           <textarea
             id={field.id}

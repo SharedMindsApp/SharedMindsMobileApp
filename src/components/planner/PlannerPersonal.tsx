@@ -1,29 +1,26 @@
 import { useState, useEffect } from 'react';
-import { Target, Heart, Sparkles, Trophy, BookOpen, TrendingUp, Star, Lightbulb, Award, Calendar, ArrowLeft } from 'lucide-react';
+import { Heart, Sparkles, Trophy, BookOpen, Star, Lightbulb, Award, ArrowLeft } from 'lucide-react';
 import { PlannerShell } from './PlannerShell';
 import { LifeAreaFeatureCard } from './LifeAreaFeatureCard';
 import { LifeAreaMobileMenu, type LifeAreaFeature } from './LifeAreaMobileMenu';
-import { GoalTrackerView } from './personal/GoalTrackerView';
 import { MotivationBoardView } from './personal/MotivationBoardView';
 import { PersonalJournalView } from './personal/PersonalJournalView';
 import { LifeMilestonesView } from './personal/LifeMilestonesView';
-import { GrowthTrackingView } from './personal/GrowthTrackingView';
 import { SkillsDevelopmentView } from './personal/SkillsDevelopmentView';
 import {
   HobbiesView,
   ValuesView,
-  IdeasView,
-  HabitsView
+  IdeasView
 } from './personal/PersonalDevelopmentFeatures';
 
-type View = 'dashboard' | 'goals' | 'motivation' | 'hobbies' | 'milestones' | 'journal' | 'growth' | 'values' | 'habits' | 'ideas' | 'skills';
+type View = 'dashboard' | 'motivation' | 'hobbies' | 'milestones' | 'journal' | 'values' | 'ideas' | 'skills';
 
 export function PlannerPersonal() {
   // Phase 4A: Remember last used section for faster access
   const [currentView, setCurrentView] = useState<View>(() => {
     if (typeof window !== 'undefined') {
       const lastSection = localStorage.getItem('last_personal_section');
-      if (lastSection && ['dashboard', 'goals', 'motivation', 'hobbies', 'milestones', 'journal', 'growth', 'values', 'habits', 'ideas', 'skills'].includes(lastSection)) {
+      if (lastSection && ['dashboard', 'motivation', 'hobbies', 'milestones', 'journal', 'values', 'ideas', 'skills'].includes(lastSection)) {
         return lastSection as View;
       }
     }
@@ -39,8 +36,6 @@ export function PlannerPersonal() {
 
   const renderView = () => {
     switch (currentView) {
-      case 'goals':
-        return <GoalTrackerView />;
       case 'motivation':
         return <MotivationBoardView />;
       case 'hobbies':
@@ -49,16 +44,12 @@ export function PlannerPersonal() {
         return <LifeMilestonesView />;
       case 'journal':
         return <PersonalJournalView />;
-      case 'growth':
-        return <GrowthTrackingView />;
       case 'values':
         return <ValuesView />;
       case 'ideas':
         return <IdeasView />;
       case 'skills':
         return <SkillsDevelopmentView />;
-      case 'habits':
-        return <HabitsView />;
       default:
         return null;
     }
@@ -81,13 +72,6 @@ export function PlannerPersonal() {
 
   const features: LifeAreaFeature[] = [
     {
-      id: 'goals',
-      icon: Target,
-      label: 'Goal Tracker',
-      description: 'Set and track personal development goals with progress monitoring',
-      onClick: () => setCurrentView('goals'),
-    },
-    {
       id: 'motivation',
       icon: Heart,
       label: 'Motivation Board',
@@ -99,7 +83,7 @@ export function PlannerPersonal() {
       id: 'hobbies',
       icon: Sparkles,
       label: 'Hobbies & Interests',
-      description: 'Track hobbies, interests, and time spent on personal activities',
+      description: 'Document hobbies, interests, and personal activities',
       onClick: () => setCurrentView('hobbies'),
     },
     {
@@ -113,15 +97,8 @@ export function PlannerPersonal() {
       id: 'journal',
       icon: BookOpen,
       label: 'Personal Journal',
-      description: 'Daily journaling for reflection, gratitude, and self-awareness',
+      description: 'Daily journaling for reflection and self-awareness',
       onClick: () => setCurrentView('journal'),
-    },
-    {
-      id: 'growth',
-      icon: TrendingUp,
-      label: 'Growth Tracking',
-      description: 'Measure personal growth across different life dimensions',
-      onClick: () => setCurrentView('growth'),
     },
     {
       id: 'values',
@@ -141,15 +118,8 @@ export function PlannerPersonal() {
       id: 'skills',
       icon: Award,
       label: 'Skills Development',
-      description: 'Track skills you want to develop and progress made',
+      description: 'Document skills you want to develop and planning',
       onClick: () => setCurrentView('skills'),
-    },
-    {
-      id: 'habits',
-      icon: Calendar,
-      label: 'Habit Tracker',
-      description: 'Build positive habits and break negative ones with daily tracking',
-      onClick: () => setCurrentView('habits'),
     },
   ];
 
@@ -168,14 +138,6 @@ export function PlannerPersonal() {
         {/* Desktop Grid - Hidden on mobile */}
         <div className="hidden md:grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           <LifeAreaFeatureCard
-            icon={Target}
-            title="Goal Tracker"
-            description="Set and track personal development goals with progress monitoring"
-            color="bg-blue-500"
-            onClick={() => setCurrentView('goals')}
-          />
-
-          <LifeAreaFeatureCard
             icon={Heart}
             title="Motivation Board"
             description="Visual inspiration board with quotes, images, and affirmations"
@@ -187,7 +149,7 @@ export function PlannerPersonal() {
           <LifeAreaFeatureCard
             icon={Sparkles}
             title="Hobbies & Interests"
-            description="Track hobbies, interests, and time spent on personal activities"
+            description="Document hobbies, interests, and personal activities"
             color="bg-purple-500"
             onClick={() => setCurrentView('hobbies')}
           />
@@ -203,17 +165,9 @@ export function PlannerPersonal() {
           <LifeAreaFeatureCard
             icon={BookOpen}
             title="Personal Journal"
-            description="Daily journaling for reflection, gratitude, and self-awareness"
+            description="Daily journaling for reflection and self-awareness"
             color="bg-teal-500"
             onClick={() => setCurrentView('journal')}
-          />
-
-          <LifeAreaFeatureCard
-            icon={TrendingUp}
-            title="Growth Tracking"
-            description="Measure personal growth across different life dimensions"
-            color="bg-green-500"
-            onClick={() => setCurrentView('growth')}
           />
 
           <LifeAreaFeatureCard
@@ -235,17 +189,9 @@ export function PlannerPersonal() {
           <LifeAreaFeatureCard
             icon={Award}
             title="Skills Development"
-            description="Track skills you want to develop and progress made"
+            description="Document skills you want to develop and planning"
             color="bg-cyan-500"
             onClick={() => setCurrentView('skills')}
-          />
-
-          <LifeAreaFeatureCard
-            icon={Calendar}
-            title="Habit Tracker"
-            description="Build positive habits and break negative ones with daily tracking"
-            color="bg-emerald-500"
-            onClick={() => setCurrentView('habits')}
           />
         </div>
       </div>

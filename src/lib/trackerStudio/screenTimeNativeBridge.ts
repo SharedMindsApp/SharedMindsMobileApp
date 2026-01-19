@@ -15,17 +15,50 @@ import type { InstalledApp } from '../../components/tracker-studio/ScreenTimeApp
  * Check if native bridge is available
  */
 export async function checkNativeBridgeAvailable(): Promise<boolean> {
-  // Check if running in native app (Capacitor)
-  if (typeof window !== 'undefined' && (window as any).Capacitor) {
-    return true;
+  try {
+    if (typeof window === 'undefined') {
+      return false;
+    }
+    
+    const win = window as any;
+    
+    // Check for Capacitor
+    if (win.Capacitor) {
+      // Check if Capacitor has isNativePlatform method (available without import)
+      if (typeof win.Capacitor.isNativePlatform === 'function' && win.Capacitor.isNativePlatform()) {
+        return true;
+      }
+      
+      // Check if it has Plugins object (indicates native bridge)
+      if (win.Capacitor.Plugins) {
+        return true;
+      }
+      
+      // If window.Capacitor exists, assume we're in a Capacitor environment
+      // (even if @capacitor/core package isn't installed in the web project)
+      return true;
+    }
+    
+    // Check if running in React Native WebView
+    if (win.ReactNativeWebView && typeof win.ReactNativeWebView.postMessage === 'function') {
+      return true;
+    }
+    
+    // Check for custom native bridge
+    if (win.SharedMindsNative && typeof win.SharedMindsNative.getInstalledApps === 'function') {
+      return true;
+    }
+    
+    // Check for Capacitor Plugins directly (alternative detection)
+    if (win.Capacitor?.Plugins?.ScreenTime) {
+      return true;
+    }
+    
+    return false;
+  } catch (err) {
+    console.error('Error checking native bridge:', err);
+    return false;
   }
-  
-  // Check if running in React Native
-  if (typeof window !== 'undefined' && (window as any).ReactNativeWebView) {
-    return true;
-  }
-  
-  return false;
 }
 
 /**
@@ -33,20 +66,116 @@ export async function checkNativeBridgeAvailable(): Promise<boolean> {
  */
 export async function requestAppUsagePermission(): Promise<boolean> {
   try {
-    // TODO: Implement via Capacitor plugin
-    // const { ScreenTime } = await import('@capacitor/screen-time');
-    // const result = await ScreenTime.requestPermission();
-    // return result.granted;
+    const isAvailable = await checkNativeBridgeAvailable();
     
-    // For web, return false (permission not available)
-    if (!(await checkNativeBridgeAvailable())) {
+    if (!isAvailable) {
+      console.warn('[ScreenTime] Native bridge not available - permission request will fail');
       return false;
     }
+
+    console.log('[ScreenTime] Requesting app usage permission...');
+
+    // Try native bridge methods (checking runtime availability, not static imports)
+    if (typeof window !== 'undefined') {
+      const win = window as any;
+      
+      // Try Capacitor Plugins object directly (available at runtime in native apps)
+      if (win.Capacitor?.Plugins?.ScreenTime) {
+        console.log('[ScreenTime] Using Capacitor.Plugins.ScreenTime');
+        try {
+          const result = await win.Capacitor.Plugins.ScreenTime.requestPermission();
+          console.log('[ScreenTime] Permission result from Capacitor.Plugins:', result);
+          return result?.granted === true;
+        } catch (pluginError) {
+          console.error('[ScreenTime] Capacitor.Plugins error:', pluginError);
+        }
+      }
+      
+      // Try custom SharedMindsNative bridge
+      if (win.SharedMindsNative && typeof win.SharedMindsNative.requestPermission === 'function') {
+        console.log('[ScreenTime] Using SharedMindsNative bridge');
+        try {
+          const result = await win.SharedMindsNative.requestPermission();
+          console.log('[ScreenTime] Permission result from SharedMindsNative:', result);
+          return result === true || result?.granted === true;
+        } catch (bridgeError) {
+          console.error('[ScreenTime] SharedMindsNative bridge error:', bridgeError);
+        }
+      }
+      
+      // Try React Native bridge
+      if (win.ReactNativeWebView && typeof win.ReactNativeWebView.postMessage === 'function') {
+        console.log('[ScreenTime] Using ReactNativeWebView bridge');
+        return new Promise((resolve) => {
+          const messageId = `permission_${Date.now()}_${Math.random()}`;
+          let resolved = false;
+          
+          const handler = (event: MessageEvent) => {
+            try {
+              const data = typeof event.data === 'string' ? JSON.parse(event.data) : event.data;
+              if (data?.type === 'permission_result' && data?.id === messageId) {
+                window.removeEventListener('message', handler);
+                resolved = true;
+                console.log('[ScreenTime] Permission result from ReactNative:', data);
+                resolve(data.granted === true);
+              }
+            } catch (parseError) {
+              // Ignore parse errors for other messages
+            }
+          };
+          
+          window.addEventListener('message', handler);
+          
+          try {
+            win.ReactNativeWebView.postMessage(JSON.stringify({
+              type: 'request_permission',
+              id: messageId,
+              permission: 'app_usage'
+            }));
+          } catch (postError) {
+            window.removeEventListener('message', handler);
+            console.error('[ScreenTime] Failed to post message:', postError);
+            resolve(false);
+            return;
+          }
+          
+          // Timeout after 5 seconds
+          setTimeout(() => {
+            if (!resolved) {
+              window.removeEventListener('message', handler);
+              console.warn('[ScreenTime] Permission request timeout');
+              resolve(false);
+            }
+          }, 5000);
+        });
+      }
+      
+      // Try dynamic import only if we're in a native environment and plugin might be available
+      // Use a runtime-evaluated import to prevent Vite from analyzing it statically
+      if (win.Capacitor && win.Capacitor.isNativePlatform?.()) {
+        try {
+          // Use Function constructor to create a dynamic import that Vite won't analyze
+          const dynamicImport = new Function('specifier', 'return import(specifier)');
+          const screenTimeModule = await dynamicImport('@capacitor/screen-time').catch(() => null);
+          if (screenTimeModule?.ScreenTime) {
+            console.log('[ScreenTime] Using Capacitor ScreenTime plugin');
+            const result = await screenTimeModule.ScreenTime.requestPermission();
+            console.log('[ScreenTime] Permission result:', result);
+            return result.granted === true;
+          }
+        } catch (capacitorError) {
+          // Capacitor plugin not installed or not available - that's okay
+          console.log('[ScreenTime] Capacitor plugin not available');
+        }
+      }
+    }
     
-    // Mock for now - will be replaced with actual native call
+    // If we get here, native bridge is available but permission API not found
+    // In native apps, permission might already be granted, so return true to allow testing
+    console.warn('[ScreenTime] Native bridge available but permission API not found - assuming granted');
     return true;
   } catch (err) {
-    console.error('Failed to request permission:', err);
+    console.error('[ScreenTime] Failed to request permission:', err);
     return false;
   }
 }
@@ -56,39 +185,176 @@ export async function requestAppUsagePermission(): Promise<boolean> {
  */
 export async function getInstalledApps(): Promise<InstalledApp[]> {
   try {
-    if (!(await checkNativeBridgeAvailable())) {
-      throw new Error('Native bridge not available. Please use the Shared Minds mobile app.');
+    // Try native bridge methods (checking runtime availability, not static imports)
+    if (typeof window !== 'undefined') {
+      const win = window as any;
+      
+      // Try custom SharedMindsNative bridge
+      if (win.SharedMindsNative && typeof win.SharedMindsNative.getInstalledApps === 'function') {
+        console.log('[ScreenTime] Using SharedMindsNative bridge to get installed apps');
+        try {
+          const apps = await win.SharedMindsNative.getInstalledApps();
+          console.log('[ScreenTime] Received apps from SharedMindsNative:', apps);
+          if (Array.isArray(apps) && apps.length > 0) {
+            const mappedApps = apps.map((app: any) => ({
+              id: app.id || app.packageName || app.bundleId || `app_${Date.now()}_${Math.random()}`,
+              name: app.name || 'Unknown App',
+              packageName: app.packageName || app.bundleId,
+              category: app.category || 'other',
+              icon: app.icon,
+            }));
+            console.log('[ScreenTime] Successfully loaded', mappedApps.length, 'apps from SharedMindsNative');
+            return mappedApps;
+          } else {
+            console.warn('[ScreenTime] SharedMindsNative returned empty apps array');
+          }
+        } catch (bridgeError) {
+          console.error('[ScreenTime] SharedMindsNative bridge error:', bridgeError);
+        }
+      }
+      
+      // Try React Native bridge via postMessage
+      if (win.ReactNativeWebView && typeof win.ReactNativeWebView.postMessage === 'function') {
+        console.log('[ScreenTime] Using ReactNativeWebView bridge to get installed apps');
+        return new Promise((resolve, reject) => {
+          const messageId = `apps_${Date.now()}_${Math.random()}`;
+          let resolved = false;
+          
+          const handler = (event: MessageEvent) => {
+            try {
+              const data = typeof event.data === 'string' ? JSON.parse(event.data) : event.data;
+              if (data?.type === 'installed_apps' && data?.id === messageId) {
+                window.removeEventListener('message', handler);
+                resolved = true;
+                console.log('[ScreenTime] Received apps from ReactNative:', data);
+                if (data.error) {
+                  reject(new Error(data.error));
+                } else {
+                  const apps = data.apps || [];
+                  if (apps.length > 0) {
+                    const mappedApps = apps.map((app: any) => ({
+                      id: app.id || app.packageName || app.bundleId || `app_${Date.now()}_${Math.random()}`,
+                      name: app.name || 'Unknown App',
+                      packageName: app.packageName || app.bundleId,
+                      category: app.category || 'other',
+                      icon: app.icon,
+                    }));
+                    console.log('[ScreenTime] Successfully loaded', mappedApps.length, 'apps from ReactNative');
+                    resolve(mappedApps);
+                  } else {
+                    reject(new Error('No apps returned from native bridge'));
+                  }
+                }
+              }
+            } catch (parseError) {
+              // Ignore parse errors for other messages
+            }
+          };
+          
+          window.addEventListener('message', handler);
+          
+          try {
+            const message = JSON.stringify({
+              type: 'get_installed_apps',
+              id: messageId
+            });
+            console.log('[ScreenTime] Sending message to ReactNative:', message);
+            win.ReactNativeWebView.postMessage(message);
+          } catch (postError) {
+            window.removeEventListener('message', handler);
+            console.error('[ScreenTime] Failed to post message:', postError);
+            reject(new Error('Failed to send message to native app'));
+            return;
+          }
+          
+          // Timeout after 10 seconds
+          setTimeout(() => {
+            if (!resolved) {
+              window.removeEventListener('message', handler);
+              console.error('[ScreenTime] Timeout waiting for installed apps');
+              reject(new Error('Timeout waiting for installed apps from native app. Make sure the native app is listening for messages.'));
+            }
+          }, 10000);
+        });
+      }
+      
+      // Try Capacitor Plugins object (alternative detection)
+      if (win.Capacitor?.Plugins?.ScreenTime) {
+        const Plugins = win.Capacitor.Plugins;
+        if (typeof Plugins.ScreenTime.getInstalledApps === 'function') {
+          console.log('[ScreenTime] Using Capacitor.Plugins.ScreenTime to get installed apps');
+          try {
+            const result = await Plugins.ScreenTime.getInstalledApps();
+            console.log('[ScreenTime] Received apps from Capacitor.Plugins:', result);
+            if (result && result.apps && Array.isArray(result.apps) && result.apps.length > 0) {
+              const mappedApps = result.apps.map((app: any) => ({
+                id: app.packageName || app.bundleId || app.id || `app_${Date.now()}_${Math.random()}`,
+                name: app.name || 'Unknown App',
+                packageName: app.packageName || app.bundleId,
+                category: app.category || 'other',
+                icon: app.icon,
+              }));
+              console.log('[ScreenTime] Successfully loaded', mappedApps.length, 'apps from Capacitor.Plugins');
+              return mappedApps;
+            } else {
+              console.warn('[ScreenTime] Capacitor.Plugins returned empty or invalid apps array');
+            }
+          } catch (pluginError) {
+            console.error('[ScreenTime] Capacitor.Plugins error:', pluginError);
+          }
+        }
+      }
+      
+      // Try dynamic import only if we're in a native environment and plugin might be available
+      // Use a runtime-evaluated import to prevent Vite from analyzing it statically
+      if (win.Capacitor && win.Capacitor.isNativePlatform?.()) {
+        try {
+          // Use Function constructor to create a dynamic import that Vite won't analyze
+          const dynamicImport = new Function('specifier', 'return import(specifier)');
+          const screenTimeModule = await dynamicImport('@capacitor/screen-time').catch(() => null);
+          if (screenTimeModule?.ScreenTime) {
+            console.log('[ScreenTime] Using Capacitor ScreenTime plugin to get installed apps');
+            const result = await screenTimeModule.ScreenTime.getInstalledApps();
+            console.log('[ScreenTime] Received apps from Capacitor:', result);
+            if (result && result.apps && Array.isArray(result.apps) && result.apps.length > 0) {
+              const mappedApps = result.apps.map((app: any) => ({
+                id: app.packageName || app.bundleId || app.id || `app_${Date.now()}_${Math.random()}`,
+                name: app.name || 'Unknown App',
+                packageName: app.packageName || app.bundleId,
+                category: app.category || 'other',
+                icon: app.icon, // Base64 encoded icon or URL
+              }));
+              console.log('[ScreenTime] Successfully loaded', mappedApps.length, 'apps from Capacitor');
+              return mappedApps;
+            } else {
+              console.warn('[ScreenTime] Capacitor returned empty or invalid apps array');
+            }
+          }
+        } catch (capacitorError) {
+          // Capacitor plugin not installed or not available - that's okay
+          console.log('[ScreenTime] Capacitor plugin not available');
+        }
+      }
     }
-
-    // TODO: Implement via Capacitor plugin
-    // const { ScreenTime } = await import('@capacitor/screen-time');
-    // const result = await ScreenTime.getInstalledApps();
-    // return result.apps.map(app => ({
-    //   id: app.packageName || app.bundleId,
-    //   name: app.name,
-    //   packageName: app.packageName,
-    //   category: app.category || 'other',
-    //   icon: app.icon, // Base64 encoded icon
-    // }));
-
-    // Mock data for development
-    return [
-      { id: '1', name: 'Instagram', packageName: 'com.instagram.android', category: 'social' },
-      { id: '2', name: 'TikTok', packageName: 'com.zhiliaoapp.musically', category: 'entertainment' },
-      { id: '3', name: 'Facebook', packageName: 'com.facebook.katana', category: 'social' },
-      { id: '4', name: 'Twitter', packageName: 'com.twitter.android', category: 'social' },
-      { id: '5', name: 'YouTube', packageName: 'com.google.android.youtube', category: 'entertainment' },
-      { id: '6', name: 'Netflix', packageName: 'com.netflix.mediaclient', category: 'entertainment' },
-      { id: '7', name: 'WhatsApp', packageName: 'com.whatsapp', category: 'social' },
-      { id: '8', name: 'Gmail', packageName: 'com.google.android.gm', category: 'productivity' },
-      { id: '9', name: 'Chrome', packageName: 'com.android.chrome', category: 'productivity' },
-      { id: '10', name: 'Spotify', packageName: 'com.spotify.music', category: 'entertainment' },
-      { id: '11', name: 'Candy Crush', packageName: 'com.king.candycrushsaga', category: 'games' },
-      { id: '12', name: 'Amazon Shopping', packageName: 'com.amazon.mShop.android.shopping', category: 'shopping' },
-    ];
+    
+    // If we get here, no native bridge found - provide helpful error
+    throw new Error(
+      'Native bridge not available. ' +
+      'To track app usage, please use the Shared Minds mobile app. ' +
+      'The web version cannot access installed apps on your device for security reasons.'
+    );
   } catch (err) {
     console.error('Failed to get installed apps:', err);
-    throw new Error('Failed to load installed apps. Make sure you\'re using the native Shared Minds app.');
+    
+    // Re-throw with helpful message
+    if (err instanceof Error) {
+      throw err;
+    }
+    
+    throw new Error(
+      'Failed to load installed apps. ' +
+      'Make sure you\'re using the native Shared Minds mobile app and have granted app usage permissions in your device settings.'
+    );
   }
 }
 

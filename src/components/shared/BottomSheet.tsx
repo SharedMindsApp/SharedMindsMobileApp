@@ -276,6 +276,9 @@ export function BottomSheet({
   }
 
   // Mobile: Render as bottom sheet
+  // PillActionNav height: 56px + 16px margin = 72px + safe area
+  const bottomNavHeight = 80; // Extra buffer for pill nav + safe area
+  
   return (
     <div className="fixed inset-0 z-50 safe-top safe-bottom">
       {/* Backdrop */}
@@ -290,7 +293,7 @@ export function BottomSheet({
         ref={sheetRef}
         className="absolute bottom-0 left-0 right-0 bg-white rounded-t-2xl shadow-2xl flex flex-col"
         style={{
-          maxHeight: `calc(${maxHeight} - ${keyboardHeight}px)`,
+          maxHeight: `calc(${maxHeight} - ${keyboardHeight}px - ${bottomNavHeight}px)`,
           transform: `translateY(${dragOffset}px)`,
           transition: isDragging ? 'none' : 'transform 0.3s ease-out',
         }}
@@ -329,8 +332,9 @@ export function BottomSheet({
           ref={contentRef}
           className="flex-1 overflow-y-auto px-4 py-3"
           style={{
-            // Ensure content area accounts for keyboard
-            maxHeight: `calc(${maxHeight} - ${keyboardHeight}px - ${title || header || showCloseButton ? '120px' : '60px'} - ${footer ? '80px' : '0px'})`,
+            // Ensure content area accounts for keyboard, header, and footer
+            maxHeight: `calc(${maxHeight} - ${keyboardHeight}px - ${bottomNavHeight}px - ${title || header || showCloseButton ? '120px' : '60px'} - ${footer ? '80px' : '0px'})`,
+            paddingBottom: '1rem', // Small bottom padding for content
           }}
         >
           {children}

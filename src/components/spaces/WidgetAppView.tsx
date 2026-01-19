@@ -17,11 +17,8 @@ import { Loader2 } from 'lucide-react';
 import { NoteWidget } from '../fridge-canvas/widgets/NoteWidget';
 import { ReminderWidget } from '../fridge-canvas/widgets/ReminderWidget';
 import { CalendarCanvasWidget } from '../fridge-canvas/widgets/CalendarCanvasWidget';
-import { GoalCanvasWidget } from '../fridge-canvas/widgets/GoalCanvasWidget';
-import { HabitCanvasWidget } from '../fridge-canvas/widgets/HabitCanvasWidget';
 import { PhotoCanvasWidget } from '../fridge-canvas/widgets/PhotoCanvasWidget';
 import { InsightCanvasWidget } from '../fridge-canvas/widgets/InsightCanvasWidget';
-import { HabitTrackerWidget } from '../fridge-canvas/widgets/HabitTrackerWidget';
 import { AchievementsWidget } from '../fridge-canvas/widgets/AchievementsWidget';
 import { MealPlannerWidget } from '../fridge-canvas/widgets/MealPlannerWidget';
 import { GroceryListWidget } from '../fridge-canvas/widgets/GroceryListWidget';
@@ -32,6 +29,8 @@ import { CollectionsCanvasWidget } from '../fridge-canvas/widgets/CollectionsCan
 import { TablesCanvasWidget } from '../fridge-canvas/widgets/TablesCanvasWidget';
 import { TrackerAppWidget } from '../fridge-canvas/widgets/TrackerAppWidget';
 import { TrackerQuickLinkApp } from '../fridge-canvas/widgets/TrackerQuickLinkApp';
+import { JournalAppWidget } from '../fridge-canvas/widgets/JournalAppWidget';
+import { WorkspaceWidget } from '../fridge-canvas/widgets/WorkspaceWidget';
 import { useHouseholdPermissions } from '../../lib/useHouseholdPermissions';
 
 export function WidgetAppView() {
@@ -145,24 +144,6 @@ export function WidgetAppView() {
           />
         );
 
-      case 'goal':
-        return (
-          <GoalCanvasWidget
-            content={widget.content as any}
-            viewMode={viewMode}
-            onContentChange={canEdit ? handleContentChange : undefined}
-          />
-        );
-
-      case 'habit':
-        return (
-          <HabitCanvasWidget
-            content={widget.content as any}
-            viewMode={viewMode}
-            onContentChange={canEdit ? handleContentChange : undefined}
-          />
-        );
-
       case 'photo':
         return (
           <PhotoCanvasWidget
@@ -177,13 +158,6 @@ export function WidgetAppView() {
           <InsightCanvasWidget
             content={widget.content as any}
             viewMode={viewMode}
-          />
-        );
-
-      case 'habit_tracker':
-        return (
-          <HabitTrackerWidget
-            householdId={spaceId || ''}
           />
         );
 
@@ -311,6 +285,24 @@ export function WidgetAppView() {
           />
         );
 
+      case 'journal':
+        return (
+          <JournalAppWidget
+            householdId={spaceId || ''}
+            viewMode={viewMode}
+          />
+        );
+
+      case 'workspace':
+        return (
+          <WorkspaceWidget
+            content={widget.content as any}
+            householdId={spaceId || ''}
+            viewMode={viewMode}
+            onContentChange={canEdit ? handleContentChange : undefined}
+          />
+        );
+
       default:
         return (
           <div className="flex items-center justify-center h-full p-8">
@@ -361,9 +353,9 @@ export function WidgetAppView() {
     : widget.widget_type.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
 
   return (
-    <div className="min-h-screen-safe bg-white safe-top safe-bottom flex flex-col">
+    <div className="h-screen bg-white safe-top safe-bottom flex flex-col" style={{ minHeight: '100vh' }}>
       {/* Mobile App Header */}
-      <div className="sticky top-0 z-50 bg-white border-b border-gray-200 shadow-sm safe-top">
+      <div className="sticky top-0 z-50 bg-white border-b border-gray-200 shadow-sm safe-top flex-shrink-0">
         <div className="px-4 h-14 flex items-center justify-between">
           <div className="flex items-center gap-3 flex-1 min-w-0">
             <button
@@ -382,10 +374,8 @@ export function WidgetAppView() {
       </div>
 
       {/* Widget Content - Full Screen App View */}
-      <div className="flex-1 overflow-auto">
-        <div className="min-h-full">
-          {renderWidget()}
-        </div>
+      <div className="flex-1 min-h-0 flex flex-col">
+        {renderWidget()}
       </div>
     </div>
   );

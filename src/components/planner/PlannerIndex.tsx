@@ -1,17 +1,13 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Calendar, Clock, CalendarDays, ChevronRight } from 'lucide-react';
+import { Calendar, ChevronRight } from 'lucide-react';
 import { PlannerShell } from './PlannerShell';
 import { BottomSheet } from '../shared/BottomSheet';
-import { useAuth } from '../../contexts/AuthContext';
-import { QuickAddBottomSheet } from './mobile/QuickAddBottomSheet';
 
 export function PlannerIndex() {
   const navigate = useNavigate();
-  const { user } = useAuth();
   const [isMobile, setIsMobile] = useState(false);
   const [selectedArea, setSelectedArea] = useState<string | null>(null);
-  const [showQuickAdd, setShowQuickAdd] = useState(false);
   const [recentLinks, setRecentLinks] = useState<Array<{ label: string; route: string }>>([]);
 
   // Mobile detection
@@ -64,11 +60,9 @@ export function PlannerIndex() {
       route: '/planner/personal',
       color: 'bg-yellow-50 border-yellow-200',
       items: [
-        { label: 'Goal Tracker', route: '/planner/personal' },
         { label: 'Self-Discovery Journal', route: '/planner/personal' },
         { label: 'Motivation Board', route: '/planner/personal' },
-        { label: 'Hobbies & Interests Tracker', route: '/planner/personal' },
-        { label: 'Life Milestones Tracker', route: '/planner/personal' },
+        { label: 'Life Milestones', route: '/planner/personal' },
         { label: 'Personal Values List', route: '/planner/personal' },
         { label: 'Personal SWOT Analysis', route: '/planner/personal' },
         { label: 'Personal Manifesto', route: '/planner/personal' },
@@ -97,9 +91,9 @@ export function PlannerIndex() {
         { label: 'Study Schedule', route: '/planner/education' },
         { label: 'Assignment Planner', route: '/planner/education' },
         { label: 'Class Information', route: '/planner/education' },
-        { label: 'Revision Tracker', route: '/planner/education' },
+        { label: 'Revision Planner', route: '/planner/education' },
         { label: 'Research Projects', route: '/planner/education' },
-        { label: 'Grade Tracker', route: '/planner/education' },
+        { label: 'Grade Planner', route: '/planner/education' },
         { label: 'Reading List', route: '/planner/education' },
         { label: 'Lesson Planner', route: '/planner/education' },
       ],
@@ -170,7 +164,7 @@ export function PlannerIndex() {
         { label: 'Household Overview', route: '/planner/household' },
         { label: 'Meal Planner', route: '/planner/household/meals' },
         { label: 'Chore Chart', route: '/planner/household' },
-        { label: 'Cleaning Tracker', route: '/planner/household' },
+        { label: 'Cleaning Schedule', route: '/planner/household' },
         { label: 'Family Calendar', route: '/planner/household' },
         { label: 'Appointments', route: '/planner/household' },
         { label: 'Grocery List', route: '/planner/household' },
@@ -183,13 +177,8 @@ export function PlannerIndex() {
       color: 'bg-orange-50 border-orange-200',
       items: [
         { label: 'Wellness Goals', route: '/planner/selfcare/goals' },
-        { label: 'Exercise Tracker', route: '/planner/selfcare/exercise' },
-        { label: 'Mental Health Check-ins', route: '/planner/selfcare/mental' },
-        { label: 'Nutrition Log', route: '/planner/selfcare/nutrition' },
-        { label: 'Sleep Tracker', route: '/planner/selfcare/sleep' },
         { label: 'Mindfulness & Meditation', route: '/planner/selfcare/mindfulness' },
         { label: 'Self-Care Routines', route: '/planner/selfcare/routines' },
-        { label: 'Gratitude Journal', route: '/planner/selfcare/gratitude' },
       ],
     },
     travel: {
@@ -229,8 +218,6 @@ export function PlannerIndex() {
         { label: 'Daily Journal', route: '/planner/journal' },
         { label: 'Weekly Reflection', route: '/planner/journal' },
         { label: 'Monthly Review', route: '/planner/journal' },
-        { label: 'Mood & Energy Log', route: '/planner/journal' },
-        { label: 'Gratitude', route: '/planner/journal' },
         { label: 'Free Writing', route: '/planner/journal' },
         { label: 'Past Entries', route: '/planner/journal' },
       ],
@@ -247,59 +234,59 @@ export function PlannerIndex() {
     return (
       <PlannerShell>
         {/* Mobile: Single Column, Quick Launch Hub */}
-        <div className="space-y-4 pb-6">
+        <div className="space-y-3 sm:space-y-4 pb-4 sm:pb-6">
           {/* Header */}
-          <div className="text-center mb-6">
-            <h1 className="text-2xl font-bold text-gray-900">Planner</h1>
-            <p className="text-sm text-gray-600 mt-1">Quick navigation</p>
+          <div className="text-center mb-4 sm:mb-6">
+            <h1 className="text-xl sm:text-2xl font-bold text-gray-900">Planner</h1>
+            <p className="text-xs sm:text-sm text-gray-600 mt-0.5 sm:mt-1">Quick navigation</p>
           </div>
 
           {/* Calendar Navigation - Direct access */}
-          <div className="px-1 -mt-2">
+          <div className="px-1 -mt-1 sm:-mt-2">
             <button
               onClick={() => navigate('/planner/calendar?view=month')}
-              className="w-full px-4 py-3 rounded-xl text-sm font-medium bg-blue-600 text-white hover:bg-blue-700 active:bg-blue-800 transition-colors min-h-[44px] flex items-center justify-center gap-2"
+              className="w-full px-3 sm:px-4 py-2.5 sm:py-3 rounded-xl text-xs sm:text-sm font-medium bg-blue-600 text-white hover:bg-blue-700 active:bg-blue-800 transition-colors min-h-[44px] flex items-center justify-center gap-2"
             >
-              <Calendar className="w-5 h-5" />
+              <Calendar className="w-4 h-4 sm:w-5 sm:h-5" />
               Open Calendar
             </button>
           </div>
 
           {/* Calendar Navigation - Compact */}
-          <div className="space-y-3">
-            <h2 className="text-sm font-semibold text-gray-700 uppercase tracking-wide px-1">
+          <div className="space-y-2 sm:space-y-3">
+            <h2 className="text-xs sm:text-sm font-semibold text-gray-700 uppercase tracking-wide px-1">
               Calendar
             </h2>
-            <div className="bg-white rounded-xl border border-gray-200 p-4 space-y-3">
+            <div className="bg-white rounded-xl border border-gray-200 p-3 sm:p-4 space-y-2 sm:space-y-3">
               <button
                 onClick={() => navigate('/planner/monthly')}
-                className="w-full text-left px-4 py-3 bg-pink-50 border border-pink-200 rounded-lg hover:bg-pink-100 active:scale-[0.98] transition-all flex items-center justify-between min-h-[44px]"
+                className="w-full text-left px-3 sm:px-4 py-2.5 sm:py-3 bg-pink-50 border border-pink-200 rounded-lg hover:bg-pink-100 active:scale-[0.98] transition-all flex items-center justify-between min-h-[44px]"
               >
-                <span className="font-medium text-gray-900">Monthly Planner</span>
-                <ChevronRight size={20} className="text-gray-400" />
+                <span className="text-sm sm:text-base font-medium text-gray-900">Monthly Planner</span>
+                <ChevronRight size={18} className="sm:w-5 sm:h-5 text-gray-400" />
               </button>
               <button
                 onClick={() => navigate('/planner/quarterly')}
-                className="w-full text-left px-4 py-3 bg-red-50 border border-red-200 rounded-lg hover:bg-red-100 active:scale-[0.98] transition-all flex items-center justify-between min-h-[44px]"
+                className="w-full text-left px-3 sm:px-4 py-2.5 sm:py-3 bg-red-50 border border-red-200 rounded-lg hover:bg-red-100 active:scale-[0.98] transition-all flex items-center justify-between min-h-[44px]"
               >
-                <span className="font-medium text-gray-900">Year Calendar</span>
-                <ChevronRight size={20} className="text-gray-400" />
+                <span className="text-sm sm:text-base font-medium text-gray-900">Year Calendar</span>
+                <ChevronRight size={18} className="sm:w-5 sm:h-5 text-gray-400" />
               </button>
             </div>
           </div>
 
           {/* Recents (if available) */}
           {recentLinks.length > 0 && (
-            <div className="space-y-3">
-              <h2 className="text-sm font-semibold text-gray-700 uppercase tracking-wide px-1">
+            <div className="space-y-2 sm:space-y-3">
+              <h2 className="text-xs sm:text-sm font-semibold text-gray-700 uppercase tracking-wide px-1">
                 Recent
               </h2>
-              <div className="bg-white rounded-xl border border-gray-200 p-2 space-y-2">
+              <div className="bg-white rounded-xl border border-gray-200 p-2 sm:p-3 space-y-1.5 sm:space-y-2">
                 {recentLinks.map((link) => (
                   <button
                     key={`${link.route}-${link.label}`}
                     onClick={() => navigate(link.route)}
-                    className="w-full text-left px-4 py-3 bg-gray-50 hover:bg-gray-100 rounded-lg border border-gray-200 active:scale-[0.98] transition-all min-h-[44px] text-sm font-medium text-gray-900"
+                    className="w-full text-left px-3 sm:px-4 py-2.5 sm:py-3 bg-gray-50 hover:bg-gray-100 rounded-lg border border-gray-200 active:scale-[0.98] transition-all min-h-[44px] text-xs sm:text-sm font-medium text-gray-900"
                   >
                     {link.label}
                   </button>
@@ -309,11 +296,11 @@ export function PlannerIndex() {
           )}
 
           {/* Life Areas - Collapsible Sections */}
-          <div className="space-y-3">
-            <h2 className="text-sm font-semibold text-gray-700 uppercase tracking-wide px-1">
+          <div className="space-y-2 sm:space-y-3">
+            <h2 className="text-xs sm:text-sm font-semibold text-gray-700 uppercase tracking-wide px-1">
               Life Areas
             </h2>
-            <div className="space-y-2">
+            <div className="space-y-1.5 sm:space-y-2">
               {Object.values(lifeAreas).map((area) => {
                 const displayItems = area.items.slice(0, 3); // Show first 3 items
                 const hasMore = area.items.length > 3;
@@ -332,21 +319,21 @@ export function PlannerIndex() {
                           navigate(area.route);
                         }
                       }}
-                      className="w-full px-4 py-3 flex items-center justify-between min-h-[44px] active:bg-white/20 transition-colors"
+                      className="w-full px-3 sm:px-4 py-2.5 sm:py-3 flex items-center justify-between min-h-[44px] active:bg-white/20 transition-colors"
                     >
-                      <span className="font-bold text-sm text-gray-900 uppercase tracking-wide">
+                      <span className="font-bold text-xs sm:text-sm text-gray-900 uppercase tracking-wide">
                         {area.title}
                       </span>
                       {hasMore ? (
-                        <ChevronRight size={20} className="text-gray-600" />
+                        <ChevronRight size={18} className="sm:w-5 sm:h-5 text-gray-600" />
                       ) : (
-                        <ChevronRight size={20} className="text-gray-400" />
+                        <ChevronRight size={18} className="sm:w-5 sm:h-5 text-gray-400" />
                       )}
                     </button>
 
                     {/* Quick Items - Always Visible (First 3) */}
                     {displayItems.length > 0 && (
-                      <div className="px-4 pb-3 space-y-1.5">
+                      <div className="px-3 sm:px-4 pb-2.5 sm:pb-3 space-y-1.5">
                         {displayItems.map((item) => {
                           const itemLabel = typeof item === 'string' ? item : item.label;
                           const itemRoute = typeof item === 'string' ? '/planner/areas' : item.route;
@@ -354,7 +341,7 @@ export function PlannerIndex() {
                             <button
                               key={itemLabel}
                               onClick={() => navigate(itemRoute)}
-                              className="w-full text-left px-3 py-2 text-sm font-medium text-gray-700 bg-white/60 hover:bg-white rounded-lg border border-gray-200/40 active:scale-[0.98] transition-all min-h-[44px]"
+                              className="w-full text-left px-2.5 sm:px-3 py-2 text-xs sm:text-sm font-medium text-gray-700 bg-white/60 hover:bg-white rounded-lg border border-gray-200/40 active:scale-[0.98] transition-all min-h-[44px]"
                             >
                               {itemLabel}
                             </button>
@@ -363,7 +350,7 @@ export function PlannerIndex() {
                         {hasMore && (
                           <button
                             onClick={() => openAreaBottomSheet(area.title)}
-                            className="w-full text-center px-3 py-2 text-xs font-medium text-gray-600 bg-white/40 hover:bg-white/60 rounded-lg border border-gray-200/30 active:scale-[0.98] transition-all min-h-[44px]"
+                            className="w-full text-center px-2.5 sm:px-3 py-2 text-xs font-medium text-gray-600 bg-white/40 hover:bg-white/60 rounded-lg border border-gray-200/30 active:scale-[0.98] transition-all min-h-[44px]"
                           >
                             View all {area.items.length} items
                           </button>
@@ -377,34 +364,15 @@ export function PlannerIndex() {
           </div>
         </div>
 
-        {/* Floating Quick Add Button */}
-        {user && (
-          <>
-            <button
-              onClick={() => setShowQuickAdd(true)}
-              className="fixed bottom-20 right-5 z-[60] w-14 h-14 rounded-full bg-blue-600 text-white shadow-lg hover:bg-blue-700 active:scale-95 transition-all flex items-center justify-center"
-              aria-label="Quick Add"
-            >
-              <span className="text-2xl leading-none">＋</span>
-            </button>
-            <QuickAddBottomSheet
-              isOpen={showQuickAdd}
-              onClose={() => setShowQuickAdd(false)}
-              userId={user.id}
-              date={new Date()}
-            />
-          </>
-        )}
-
         {/* Life Area Bottom Sheet - Full Item List */}
         {selectedAreaData && (
           <BottomSheet
             isOpen={!!selectedAreaData}
             onClose={closeAreaBottomSheet}
             title={selectedAreaData.title}
-            maxHeight="85vh"
+            maxHeight="70vh"
           >
-            <div className="space-y-2 p-4">
+            <div className="space-y-1.5 sm:space-y-2 p-3 sm:p-4 pb-24">
               {selectedAreaData.items.map((item) => {
                 const itemLabel = typeof item === 'string' ? item : item.label;
                 const itemRoute = typeof item === 'string' ? '/planner/areas' : item.route;
@@ -415,7 +383,7 @@ export function PlannerIndex() {
                       navigate(itemRoute);
                       closeAreaBottomSheet();
                     }}
-                    className="w-full text-left px-4 py-3 text-base font-medium text-gray-900 bg-gray-50 hover:bg-gray-100 rounded-lg border border-gray-200 active:scale-[0.98] transition-all min-h-[44px]"
+                    className="w-full text-left px-3 sm:px-4 py-2.5 sm:py-3 text-sm sm:text-base font-medium text-gray-900 bg-gray-50 hover:bg-gray-100 rounded-lg border border-gray-200 active:scale-[0.98] transition-all min-h-[44px]"
                   >
                     {itemLabel}
                   </button>
@@ -432,26 +400,26 @@ export function PlannerIndex() {
   return (
     <PlannerShell>
       {/* Index Title */}
-      <h1 className="text-xl sm:text-2xl font-bold text-center text-gray-900 mb-4 sm:mb-5 md:mb-6">
+      <h1 className="text-lg sm:text-xl md:text-2xl font-bold text-center text-gray-900 mb-3 sm:mb-4 md:mb-5 lg:mb-6">
         Index
       </h1>
 
       {/* Auto-Fill Grid Layout - Compact & Visually Appealing */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 3xl:grid-cols-6 4xl:grid-cols-7 5xl:grid-cols-8 gap-3 sm:gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 3xl:grid-cols-6 4xl:grid-cols-7 5xl:grid-cols-8 gap-2.5 sm:gap-3 md:gap-4">
         {/* Monthly Planner Card */}
-        <div className="bg-gradient-to-br from-pink-50 to-pink-100/50 border border-pink-200/60 rounded-lg p-3 shadow-sm hover:shadow-md hover:border-pink-300 transition-all duration-200 group">
+        <div className="bg-gradient-to-br from-pink-50 to-pink-100/50 border border-pink-200/60 rounded-lg p-2.5 sm:p-3 shadow-sm hover:shadow-md hover:border-pink-300 transition-all duration-200 group">
           <button
             onClick={() => navigate('/planner/monthly')}
-            className="w-full text-xs font-bold text-gray-700 mb-2.5 text-center uppercase tracking-wider hover:text-pink-700 transition-colors"
+            className="w-full text-[10px] sm:text-xs font-bold text-gray-700 mb-2 sm:mb-2.5 text-center uppercase tracking-wider hover:text-pink-700 transition-colors"
           >
             Monthly Planner
           </button>
-          <div className="grid grid-cols-3 sm:grid-cols-2 gap-1.5">
+          <div className="grid grid-cols-3 sm:grid-cols-2 gap-1 sm:gap-1.5">
             {months.map((month, index) => (
               <button
                 key={month}
                 onClick={() => navigateToMonth(index)}
-                className="text-center py-1.5 px-2 text-[10px] sm:text-xs font-medium text-gray-700 bg-white/70 hover:bg-white rounded-md border border-pink-200/50 transition-all hover:scale-105 hover:shadow-sm hover:border-pink-300"
+                className="text-center py-1 sm:py-1.5 px-1.5 sm:px-2 text-[9px] sm:text-[10px] md:text-xs font-medium text-gray-700 bg-white/70 hover:bg-white rounded-md border border-pink-200/50 transition-all hover:scale-105 hover:shadow-sm hover:border-pink-300"
               >
                 {month.substring(0, 3)}
               </button>
@@ -460,38 +428,38 @@ export function PlannerIndex() {
         </div>
 
         {/* Year Calendar Card */}
-        <div className="bg-gradient-to-br from-red-50 to-red-100/50 border border-red-200/60 rounded-lg p-3 shadow-sm hover:shadow-md hover:border-red-300 transition-all duration-200 group">
+        <div className="bg-gradient-to-br from-red-50 to-red-100/50 border border-red-200/60 rounded-lg p-2.5 sm:p-3 shadow-sm hover:shadow-md hover:border-red-300 transition-all duration-200 group">
           <button
             onClick={() => navigate('/planner/quarterly')}
-            className="w-full text-xs font-bold text-gray-700 mb-2.5 text-center uppercase tracking-wider hover:text-red-700 transition-colors"
+            className="w-full text-[10px] sm:text-xs font-bold text-gray-700 mb-2 sm:mb-2.5 text-center uppercase tracking-wider hover:text-red-700 transition-colors"
           >
             Year Calendar
           </button>
-          <div className="space-y-1">
+          <div className="space-y-0.5 sm:space-y-1">
             <button
               onClick={() => navigate('/planner/quarterly')}
-              className="w-full text-center py-1.5 px-2 text-[10px] sm:text-xs font-medium text-gray-700 bg-white/70 hover:bg-white rounded-md border border-red-200/50 transition-all hover:scale-105 hover:shadow-sm hover:border-red-300"
+              className="w-full text-center py-1 sm:py-1.5 px-1.5 sm:px-2 text-[9px] sm:text-[10px] md:text-xs font-medium text-gray-700 bg-white/70 hover:bg-white rounded-md border border-red-200/50 transition-all hover:scale-105 hover:shadow-sm hover:border-red-300"
             >
               Yearly
             </button>
             <button
               onClick={() => navigate('/planner/review')}
-              className="w-full text-center py-1.5 px-2 text-[10px] sm:text-xs font-medium text-gray-700 bg-white/70 hover:bg-white rounded-md border border-red-200/50 transition-all hover:scale-105 hover:shadow-sm hover:border-red-300"
+              className="w-full text-center py-1 sm:py-1.5 px-1.5 sm:px-2 text-[9px] sm:text-[10px] md:text-xs font-medium text-gray-700 bg-white/70 hover:bg-white rounded-md border border-red-200/50 transition-all hover:scale-105 hover:shadow-sm hover:border-red-300"
             >
               Review
             </button>
             <button
               onClick={() => navigate('/planner/quarterly')}
-              className="w-full text-center py-1.5 px-2 text-[10px] sm:text-xs font-medium text-gray-700 bg-white/70 hover:bg-white rounded-md border border-red-200/50 transition-all hover:scale-105 hover:shadow-sm hover:border-red-300"
+              className="w-full text-center py-1 sm:py-1.5 px-1.5 sm:px-2 text-[9px] sm:text-[10px] md:text-xs font-medium text-gray-700 bg-white/70 hover:bg-white rounded-md border border-red-200/50 transition-all hover:scale-105 hover:shadow-sm hover:border-red-300"
             >
               Quarterly
             </button>
-            <div className="grid grid-cols-2 gap-1">
+            <div className="grid grid-cols-2 gap-0.5 sm:gap-1">
               {['1Q', '2Q', '3Q', '4Q'].map((quarter, index) => (
                 <button
                   key={quarter}
                   onClick={() => navigateToQuarter(index)}
-                  className="text-center py-1.5 px-2 text-[10px] sm:text-xs font-medium text-gray-700 bg-white/70 hover:bg-white rounded-md border border-red-200/50 transition-all hover:scale-105 hover:shadow-sm hover:border-red-300"
+                  className="text-center py-1 sm:py-1.5 px-1.5 sm:px-2 text-[9px] sm:text-[10px] md:text-xs font-medium text-gray-700 bg-white/70 hover:bg-white rounded-md border border-red-200/50 transition-all hover:scale-105 hover:shadow-sm hover:border-red-300"
                 >
                   {quarter}
                 </button>
@@ -504,15 +472,15 @@ export function PlannerIndex() {
         {Object.values(lifeAreas).map((area) => (
           <div
             key={area.title}
-            className={`${area.color} border border-gray-200/60 rounded-lg p-3 shadow-sm hover:shadow-md transition-all duration-200 hover:-translate-y-0.5 group backdrop-blur-sm`}
+            className={`${area.color} border border-gray-200/60 rounded-lg p-2.5 sm:p-3 shadow-sm hover:shadow-md transition-all duration-200 hover:-translate-y-0.5 group backdrop-blur-sm`}
           >
             <button
               onClick={() => navigate(area.route)}
-              className="w-full text-xs font-bold text-gray-700 mb-2 text-center uppercase tracking-wider hover:text-gray-900 transition-colors"
+              className="w-full text-[10px] sm:text-xs font-bold text-gray-700 mb-1.5 sm:mb-2 text-center uppercase tracking-wider hover:text-gray-900 transition-colors"
             >
               {area.title}
             </button>
-            <div className="space-y-1">
+            <div className="space-y-0.5 sm:space-y-1">
               {area.items.slice(0, 6).map((item) => {
                 const itemLabel = typeof item === 'string' ? item : item.label;
                 const itemRoute = typeof item === 'string' ? '/planner/areas' : item.route;
@@ -520,7 +488,7 @@ export function PlannerIndex() {
                   <button
                     key={itemLabel}
                     onClick={() => navigate(itemRoute)}
-                    className="w-full text-left px-2.5 py-1.5 text-[11px] sm:text-xs font-medium text-gray-700 bg-white/60 hover:bg-white rounded-md border border-gray-200/40 transition-all hover:scale-[1.02] hover:shadow-sm hover:border-gray-300/60"
+                    className="w-full text-left px-2 sm:px-2.5 py-1 sm:py-1.5 text-[10px] sm:text-[11px] md:text-xs font-medium text-gray-700 bg-white/60 hover:bg-white rounded-md border border-gray-200/40 transition-all hover:scale-[1.02] hover:shadow-sm hover:border-gray-300/60"
                   >
                     {itemLabel}
                   </button>
@@ -529,7 +497,7 @@ export function PlannerIndex() {
               {area.items.length > 6 && (
                 <button
                   onClick={() => navigate(area.route)}
-                  className="w-full text-center px-2.5 py-1.5 text-[10px] font-medium text-gray-500 bg-white/40 hover:bg-white/60 rounded-md border border-gray-200/30 transition-all"
+                  className="w-full text-center px-2 sm:px-2.5 py-1 sm:py-1.5 text-[9px] sm:text-[10px] font-medium text-gray-500 bg-white/40 hover:bg-white/60 rounded-md border border-gray-200/30 transition-all"
                 >
                   +{area.items.length - 6} more
                 </button>

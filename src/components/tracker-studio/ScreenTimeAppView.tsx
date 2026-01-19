@@ -13,7 +13,7 @@ import { AppListBrowser } from './screen-time/AppListBrowser';
 import { AppSettingsModal } from './screen-time/AppSettingsModal';
 import { ScreenTimeStatsPanel } from './screen-time/ScreenTimeStatsPanel';
 import { LockoutSessionPanel } from './screen-time/LockoutSessionPanel';
-import { getInstalledApps, requestAppUsagePermission } from '../../lib/trackerStudio/screenTimeNativeBridge';
+import { getInstalledApps, requestAppUsagePermission, checkNativeBridgeAvailable } from '../../lib/trackerStudio/screenTimeNativeBridge';
 import { startTrackingApp, stopTrackingApp, getTrackedApps, initializeAppUsageMonitoring, type TrackedApp } from '../../lib/trackerStudio/screenTimeTrackingService';
 
 interface ScreenTimeAppViewProps {
@@ -88,8 +88,22 @@ export function ScreenTimeAppView({ tracker }: ScreenTimeAppViewProps) {
     try {
       // Check if native bridge is available
       const isAvailable = await checkNativeBridgeAvailable();
+      console.log('[ScreenTimeAppView] Native bridge available:', isAvailable);
+      
+      // Debug: Log what's available in window
+      if (typeof window !== 'undefined') {
+        const win = window as any;
+        console.log('[ScreenTimeAppView] Debug - Window objects:', {
+          hasCapacitor: !!win.Capacitor,
+          hasReactNativeWebView: !!win.ReactNativeWebView,
+          hasSharedMindsNative: !!win.SharedMindsNative,
+          capacitorPlugins: win.Capacitor?.Plugins ? Object.keys(win.Capacitor.Plugins) : null,
+        });
+      }
+      
       setState(prev => ({ ...prev, isConnected: isAvailable }));
     } catch (err) {
+      console.error('[ScreenTimeAppView] Error checking connection:', err);
       setState(prev => ({ ...prev, isConnected: false }));
     }
   };
@@ -99,15 +113,36 @@ export function ScreenTimeAppView({ tracker }: ScreenTimeAppViewProps) {
       setState(prev => ({ ...prev, isConnecting: true }));
       setError(null);
 
+      // First check if native bridge is available
+      const isAvailable = await checkNativeBridgeAvailable();
+      if (!isAvailable) {
+        setError(
+          'Native bridge not available. ' +
+          'To track app usage, please use the Shared Minds mobile app. ' +
+          'The web version cannot access installed apps on your device for security reasons.'
+        );
+        return;
+      }
+
       // Request permissions
       const hasPermission = await requestAppUsagePermission();
       if (!hasPermission) {
-        setError('App usage permission is required to track screen time. Please grant permission in your device settings.');
+        setError(
+          'App usage permission is required to track screen time. ' +
+          'Please grant permission in your device settings. ' +
+          'On Android: Settings > Apps > Shared Minds > App permissions > Usage access. ' +
+          'On iOS: Settings > Screen Time > App Limits.'
+        );
         return;
       }
 
       // Load installed apps from native bridge
       const apps = await getInstalledApps();
+      
+      if (!apps || apps.length === 0) {
+        setError('No apps found. Please ensure app usage permissions are granted and try again.');
+        return;
+      }
       
       setState(prev => ({
         ...prev,
@@ -115,8 +150,15 @@ export function ScreenTimeAppView({ tracker }: ScreenTimeAppViewProps) {
         isConnected: true,
         showAppSelector: true,
       }));
+      
+      // Clear any previous errors on success
+      setError(null);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to connect to phone. Make sure you\'re using the native Shared Minds app.');
+      const errorMessage = err instanceof Error 
+        ? err.message 
+        : 'Failed to connect to phone. Make sure you\'re using the native Shared Minds app.';
+      
+      setError(errorMessage);
       console.error('Failed to connect:', err);
     } finally {
       setState(prev => ({ ...prev, isConnecting: false }));
@@ -234,9 +276,19 @@ export function ScreenTimeAppView({ tracker }: ScreenTimeAppViewProps) {
             <AlertCircle className="text-amber-600 flex-shrink-0 mt-0.5" size={20} />
             <div className="flex-1">
               <p className="text-amber-900 font-medium">{error}</p>
-              <p className="text-amber-700 text-sm mt-1">
-                To enable full functionality, connect to the native Shared Minds app.
-              </p>
+              <div className="text-amber-700 text-sm mt-2 space-y-1">
+                <p><strong>Troubleshooting:</strong></p>
+                <ul className="list-disc list-inside space-y-1 ml-2">
+                  <li>Make sure you're using the Shared Minds mobile app (not web browser)</li>
+                  <li>Grant app usage permissions in your device settings</li>
+                  <li>On Android: Settings → Apps → Shared Minds → App permissions → Usage access</li>
+                  <li>On iOS: Settings → Screen Time → App Limits</li>
+                  <li>Restart the app after granting permissions</li>
+                </ul>
+                <p className="mt-2 text-xs text-amber-600">
+                  Check the browser console for detailed error messages.
+                </p>
+              </div>
             </div>
           </div>
         )}
@@ -252,7 +304,8 @@ export function ScreenTimeAppView({ tracker }: ScreenTimeAppViewProps) {
                   </div>
                   <h2 className="text-xl font-semibold text-gray-900 mb-2">Connect to Your Phone</h2>
                   <p className="text-gray-600 mb-6">
-                    Connect to your phone to automatically track app usage and screen time.
+                    Connect to your phone to automatically track app usage and screen time. 
+                    This feature requires the Shared Minds mobile app with app usage permissions.
                   </p>
                   <button
                     onClick={handleConnectToPhone}
@@ -271,6 +324,9 @@ export function ScreenTimeAppView({ tracker }: ScreenTimeAppViewProps) {
                       </>
                     )}
                   </button>
+                  <p className="text-sm text-gray-500 mt-4">
+                    Make sure you're using the Shared Minds mobile app and have granted app usage permissions.
+                  </p>
                 </div>
               </div>
             )}

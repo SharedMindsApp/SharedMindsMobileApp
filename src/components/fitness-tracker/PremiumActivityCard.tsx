@@ -10,7 +10,7 @@ import { useNavigate } from 'react-router-dom';
 import { TrendingUp, MoreVertical } from 'lucide-react';
 import type { MovementDomain, UserMovementProfile, MovementSession, ActivityStateMetadata } from '../../lib/fitnessTracker/types';
 import { getActivityMetadata } from '../../lib/fitnessTracker/activityMetadata';
-import { getIconComponent } from '../../lib/fitnessTracker/iconUtils';
+import { getSportEmoji } from '../../lib/fitnessTracker/sportEmojis';
 import { triggerHaptic } from '../../lib/fitnessTracker/motionUtils';
 
 type PremiumActivityCardProps = {
@@ -27,7 +27,8 @@ type PremiumActivityCardProps = {
   customMetadata?: {
     displayName: string;
     description: string;
-    icon: string;
+    icon?: string; // Deprecated - kept for backwards compatibility
+    emoji?: string;
     color: string;
     gradient?: string;
     lightGradient?: string;
@@ -54,7 +55,19 @@ export function PremiumActivityCard({
     : undefined;
   const baseMetadata = getActivityMetadata(domain, martialArtsDisciplines);
   const metadata = customMetadata || baseMetadata;
-  const Icon = getIconComponent(metadata.icon as any);
+  
+  // Get emoji - use custom emoji if provided, otherwise check if it's a sport and use sport emoji, otherwise use base metadata emoji
+  let emoji = metadata.emoji;
+  if (!emoji && customMetadata?.displayName) {
+    // For sport activities, try to get sport-specific emoji
+    emoji = getSportEmoji(customMetadata.displayName);
+    if (emoji === '⚪') {
+      // Fallback to base metadata emoji if sport emoji not found
+      emoji = baseMetadata.emoji;
+    }
+  } else if (!emoji) {
+    emoji = baseMetadata.emoji;
+  }
 
   const formatLastSessionTime = (session: MovementSession): string => {
     if (!session.timestamp) return '';
@@ -126,17 +139,19 @@ export function PremiumActivityCard({
         {/* Header: Icon + Stats + Menu */}
         <div className="flex items-start justify-between mb-3.5">
           <div
-            className="p-2.5 rounded-xl shadow-sm group-hover:shadow-md transition-shadow duration-300"
+            className="p-2.5 rounded-xl shadow-sm group-hover:shadow-md transition-shadow duration-300 flex items-center justify-center"
             style={{
               backgroundColor: `${metadata.color}12`,
               opacity: isPaused ? 0.7 : 1,
             }}
           >
-            <Icon
-              size={20}
-              style={{ color: metadata.color }}
-              className="transition-transform duration-300 group-hover:scale-110"
-            />
+            <span 
+              className="text-xl transition-transform duration-300 group-hover:scale-110"
+              role="img"
+              aria-label={metadata.displayName}
+            >
+              {emoji}
+            </span>
           </div>
 
           <div className="flex items-center gap-2">

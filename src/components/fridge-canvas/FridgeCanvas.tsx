@@ -18,9 +18,7 @@ import { UploadSVGModal } from "./UploadSVGModal";
 import { NoteWidget } from "./widgets/NoteWidget";
 import { ReminderWidget } from "./widgets/ReminderWidget";
 import { CalendarCanvasWidget } from "./widgets/CalendarCanvasWidget";
-import { GoalCanvasWidget } from "./widgets/GoalCanvasWidget";
-import { HabitCanvasWidget } from "./widgets/HabitCanvasWidget";
-import { HabitTrackerWidget } from "./widgets/HabitTrackerWidget";
+import { WorkspaceWidget } from "./widgets/WorkspaceWidget";
 import { AchievementsWidget } from "./widgets/AchievementsWidget";
 import { PhotoCanvasWidget } from "./widgets/PhotoCanvasWidget";
 import { InsightCanvasWidget } from "./widgets/InsightCanvasWidget";
@@ -31,7 +29,6 @@ import { FilesCanvasWidget } from "./widgets/FilesCanvasWidget";
 import { CollectionsCanvasWidget } from "./widgets/CollectionsCanvasWidget";
 import { TablesCanvasWidget } from "./widgets/TablesCanvasWidget";
 import { TodoCanvasWidget } from "./widgets/TodoCanvasWidget";
-import { TrackerCanvasWidget } from "./widgets/TrackerCanvasWidget";
 import { SelectTrackerModal } from "./widgets/SelectTrackerModal";
 import { CanvasSVGObject } from "./CanvasSVGObject";
 
@@ -68,8 +65,7 @@ import {
   NoteContent,
   ReminderContent,
   CalendarContent,
-  GoalContent,
-  HabitContent,
+  WorkspaceContent,
   PhotoContent,
   InsightContent,
   MealPlannerContent,
@@ -77,7 +73,6 @@ import {
   StackCardContent,
   FilesContent,
   TablesContent,
-  TrackerContent,
   TrackerAppContent,
   GraphicsContent,
   FridgeGroup,
@@ -272,7 +267,7 @@ const handleAddWidget = async (type: WidgetType) => {
   // --------------------------------------
   // Tracker widgets require selection
   // --------------------------------------
-  if (type === 'tracker' || type === 'tracker_app') {
+  if (type === 'tracker_app') {
     setPendingTrackerWidgetType(type);
     setShowTrackerSelect(true);
     return;
@@ -303,9 +298,6 @@ const handleAddWidget = async (type: WidgetType) => {
     task: 'Task',
     reminder: 'Reminder',
     calendar: 'Calendar',
-    goal: 'Goal',
-    habit: 'Habit',
-    habit_tracker: 'Habit Tracker',
     achievements: 'Achievements',
     photo: 'Photo',
     insight: 'Insight',
@@ -317,6 +309,10 @@ const handleAddWidget = async (type: WidgetType) => {
     collections: 'Collections',
     tables: 'Tables',
     todos: 'Todos',
+    tracker_app: 'Tracker App',
+    tracker_quicklink: 'Tracker Quick Links',
+    journal: 'Journal',
+    workspace: 'Workspace',
     custom: 'Custom Widget',
   };
   
@@ -423,19 +419,13 @@ const handleAddWidget = async (type: WidgetType) => {
     }
 
     // Create widget with selected tracker
-    const content: TrackerContent | TrackerAppContent = 
-      type === 'tracker_app' 
-        ? { tracker_id: trackerId } as TrackerAppContent
-        : { tracker_id: trackerId };
+    const content: TrackerAppContent = { tracker_id: trackerId };
     
     const widgetTypeNames: Record<WidgetType, string> = {
       note: 'Note',
       task: 'Task',
       reminder: 'Reminder',
       calendar: 'Calendar',
-      goal: 'Goal',
-      habit: 'Habit',
-      habit_tracker: 'Habit Tracker',
       achievements: 'Achievements',
       photo: 'Photo',
       insight: 'Insight',
@@ -447,9 +437,10 @@ const handleAddWidget = async (type: WidgetType) => {
       collections: 'Collections',
       tables: 'Tables',
       todos: 'Todos',
-      tracker: 'Tracker',
       tracker_app: widgetTitle, // Use tracker name for tracker_app
       tracker_quicklink: 'Tracker Quick Links',
+      journal: 'Journal',
+      workspace: 'Workspace',
       custom: 'Custom Widget',
     };
 
@@ -885,28 +876,6 @@ const handleAddWidget = async (type: WidgetType) => {
           />
         );
 
-      case "goal":
-        return (
-          <GoalCanvasWidget
-            content={widget.content as GoalContent}
-            viewMode={viewMode}
-            onContentChange={
-              canEdit ? (c) => handleContentChange(widget.id, c) : undefined
-            }
-          />
-        );
-
-      case "habit":
-        return (
-          <HabitCanvasWidget
-            content={widget.content as HabitContent}
-            viewMode={viewMode}
-            onContentChange={
-              canEdit ? (c) => handleContentChange(widget.id, c) : undefined
-            }
-          />
-        );
-
       case "photo":
         return (
           <PhotoCanvasWidget
@@ -923,13 +892,6 @@ const handleAddWidget = async (type: WidgetType) => {
           <InsightCanvasWidget
             content={widget.content as InsightContent}
             viewMode={viewMode}
-          />
-        );
-
-      case "habit_tracker":
-        return (
-          <HabitTrackerWidget
-            householdId={householdId}
           />
         );
 
@@ -1018,11 +980,15 @@ const handleAddWidget = async (type: WidgetType) => {
           />
         );
 
-      case "tracker":
+      case "workspace":
         return (
-          <TrackerCanvasWidget
-            content={widget.content as TrackerContent}
+          <WorkspaceWidget
+            householdId={householdId}
+            content={widget.content as WorkspaceContent}
             viewMode={viewMode}
+            onContentChange={
+              canEdit ? (c) => handleContentChange(widget.id, c) : undefined
+            }
           />
         );
 

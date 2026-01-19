@@ -1,19 +1,22 @@
 /**
- * Screen Time Tracker Utilities
+ * Screen Time / Digital Wellness Tracker Utilities
  * 
- * Helper functions for identifying and working with Screen Time trackers.
+ * Helper functions for identifying and working with Screen Time and Digital Wellness trackers.
+ * Note: Digital Wellness Tracker evolved from Screen Time Tracker and includes all screen time functionality.
  */
 
 import type { Tracker, TrackerFieldSchema } from './types';
 
 /**
- * Check if a tracker is a Screen Time tracker
+ * Check if a tracker is a Screen Time or Digital Wellness tracker
+ * (Digital Wellness Tracker includes all Screen Time functionality)
  */
 export function isScreenTimeTracker(tracker: Tracker | { name: string; field_schema_snapshot?: TrackerFieldSchema[] }): boolean {
   if (!tracker) return false;
   
   const name = tracker.name.toLowerCase();
-  if (name.includes('screen time') || name.includes('screen-time')) {
+  if (name.includes('screen time') || name.includes('screen-time') || 
+      name.includes('digital wellness') || name.includes('digital-wellness')) {
     return true;
   }
   
@@ -26,10 +29,11 @@ export function isScreenTimeTracker(tracker: Tracker | { name: string; field_sch
 }
 
 /**
- * Check if a template is a Screen Time template by field schema
+ * Check if a template is a Screen Time or Digital Wellness template by field schema
+ * (Digital Wellness Tracker includes all Screen Time fields)
  */
 export function isScreenTimeTemplate(fieldSchema: TrackerFieldSchema[]): boolean {
-  // Screen Time template should have app_name, usage_minutes, and session_type fields
+  // Screen Time / Digital Wellness template should have app_name, usage_minutes, and session_type fields
   const hasAppName = fieldSchema.some(f => f.id === 'app_name');
   const hasUsageMinutes = fieldSchema.some(f => f.id === 'usage_minutes');
   const hasSessionType = fieldSchema.some(f => f.id === 'session_type');

@@ -23,6 +23,7 @@ import {
   Table,
   ImagePlus,
   Activity,
+  BookOpen,
 } from 'lucide-react';
 import type { WidgetType } from '../../lib/fridgeCanvasTypes';
 
@@ -64,33 +65,6 @@ export const widgetRegistry: WidgetRegistryItem[] = [
     iconColor: 'text-blue-600',
     category: 'Planning',
     description: 'View upcoming events',
-  },
-  {
-    id: 'goal',
-    label: 'Goal',
-    icon: Target,
-    color: 'bg-emerald-50',
-    iconColor: 'text-emerald-600',
-    category: 'Tracking',
-    description: 'Track your goals',
-  },
-  {
-    id: 'habit',
-    label: 'Habit',
-    icon: Zap,
-    color: 'bg-amber-50',
-    iconColor: 'text-amber-600',
-    category: 'Tracking',
-    description: 'Build daily habits',
-  },
-  {
-    id: 'habit_tracker',
-    label: 'Habit Tracker',
-    icon: CheckCircle2,
-    color: 'bg-cyan-50',
-    iconColor: 'text-cyan-600',
-    category: 'Tracking',
-    description: 'Visualize habit streaks',
   },
   {
     id: 'achievements',
@@ -192,15 +166,6 @@ export const widgetRegistry: WidgetRegistryItem[] = [
     description: 'Upload and place SVG graphics',
   },
   {
-    id: 'tracker',
-    label: 'Tracker',
-    icon: Activity,
-    color: 'bg-indigo-50',
-    iconColor: 'text-indigo-600',
-    category: 'Tracking',
-    description: 'View tracker data from Tracker Studio',
-  },
-  {
     id: 'tracker_app',
     label: 'Tracker App',
     icon: Activity,
@@ -217,6 +182,24 @@ export const widgetRegistry: WidgetRegistryItem[] = [
     iconColor: 'text-indigo-600',
     category: 'Tracking',
     description: 'Quick access to all your trackers',
+  },
+  {
+    id: 'journal',
+    label: 'Journal',
+    icon: BookOpen,
+    color: 'bg-amber-50',
+    iconColor: 'text-amber-600',
+    category: 'Content',
+    description: 'Personal journal and gratitude entries',
+  },
+  {
+    id: 'workspace',
+    label: 'Workspace',
+    icon: FileText,
+    color: 'bg-slate-50',
+    iconColor: 'text-slate-600',
+    category: 'Content',
+    description: 'Structured thinking and reference surface',
   },
 ];
 

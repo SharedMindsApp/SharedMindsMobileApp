@@ -2,15 +2,8 @@ import { PlannerShell } from './PlannerShell';
 import { useNavigate } from 'react-router-dom';
 import {
   Heart,
-  Activity,
-  Utensils,
-  Moon,
-  Brain,
   Sparkles,
   ListChecks,
-  BookHeart,
-  Flower2,
-  CloudOff,
 } from 'lucide-react';
 import { LifeAreaMobileMenu, type LifeAreaFeature } from './LifeAreaMobileMenu';
 
@@ -33,38 +26,6 @@ const features: SelfCareFeature[] = [
     color: 'from-rose-400 to-pink-500',
   },
   {
-    id: 'exercise',
-    title: 'Exercise Tracker',
-    description: 'Support movement without obsession',
-    icon: Activity,
-    route: '/planner/selfcare/exercise',
-    color: 'from-orange-400 to-amber-500',
-  },
-  {
-    id: 'nutrition',
-    title: 'Nutrition Log',
-    description: 'Encourage awareness, not restriction',
-    icon: Utensils,
-    route: '/planner/selfcare/nutrition',
-    color: 'from-green-400 to-emerald-500',
-  },
-  {
-    id: 'sleep',
-    title: 'Sleep Tracker',
-    description: 'Track rest gently',
-    icon: Moon,
-    route: '/planner/selfcare/sleep',
-    color: 'from-blue-400 to-cyan-500',
-  },
-  {
-    id: 'mental',
-    title: 'Mental Health Check-Ins',
-    description: 'Emotional awareness, not diagnosis',
-    icon: Brain,
-    route: '/planner/selfcare/mental',
-    color: 'from-violet-400 to-purple-500',
-  },
-  {
     id: 'mindfulness',
     title: 'Mindfulness & Meditation',
     description: 'Presence, not performance',
@@ -79,30 +40,6 @@ const features: SelfCareFeature[] = [
     icon: ListChecks,
     route: '/planner/selfcare/routines',
     color: 'from-indigo-400 to-blue-500',
-  },
-  {
-    id: 'gratitude',
-    title: 'Gratitude Journal',
-    description: 'Cultivate positive awareness',
-    icon: BookHeart,
-    route: '/planner/selfcare/gratitude',
-    color: 'from-amber-400 to-yellow-500',
-  },
-  {
-    id: 'beauty',
-    title: 'Beauty & Skincare',
-    description: 'Practical self-maintenance tracking',
-    icon: Flower2,
-    route: '/planner/selfcare/beauty',
-    color: 'from-pink-400 to-rose-500',
-  },
-  {
-    id: 'rest',
-    title: 'Rest & Recovery',
-    description: 'Normalise rest as intentional',
-    icon: CloudOff,
-    route: '/planner/selfcare/rest',
-    color: 'from-slate-400 to-gray-500',
   },
 ];
 

@@ -4,14 +4,11 @@ import {
   StickyNote,
   Bell,
   Calendar,
-  Target,
-  Zap,
   Image,
   Sparkles,
   X,
   Trash2,
   Frame,
-  CheckCircle2,
   CheckSquare,
   Trophy,
   UtensilsCrossed,
@@ -24,6 +21,7 @@ import {
   Table,
   Check,
   Activity,
+  BookOpen,
 } from 'lucide-react';
 import { WidgetType } from '../../lib/fridgeCanvasTypes';
 import { TrashViewer } from './TrashViewer';
@@ -53,9 +51,8 @@ const widgetOptions: WidgetOption[] = [
   { type: 'note', icon: StickyNote, label: 'Note', category: 'Content', description: 'Quick notes and memos' },
   { type: 'reminder', icon: Bell, label: 'Reminder', category: 'Planning', description: 'Set reminders and alerts' },
   { type: 'calendar', icon: Calendar, label: 'Calendar', category: 'Planning', description: 'View upcoming events' },
-  { type: 'goal', icon: Target, label: 'Goal', category: 'Tracking', description: 'Track your goals' },
-  { type: 'habit', icon: Zap, label: 'Habit', category: 'Tracking', description: 'Build daily habits' },
-  { type: 'habit_tracker', icon: CheckCircle2, label: 'Habit Tracker', category: 'Tracking', description: 'Visualize habit streaks' },
+  { type: 'journal', icon: BookOpen, label: 'Journal', category: 'Content', description: 'Personal journal and gratitude entries' },
+  { type: 'workspace', icon: FileText, label: 'Workspace', category: 'Content', description: 'Structured thinking and reference surface' },
   { type: 'achievements', icon: Trophy, label: 'Achievements', category: 'Tracking', description: 'View milestones and wins' },
   { type: 'photo', icon: Image, label: 'Photo', category: 'Media', description: 'Add photos and images' },
   { type: 'insight', icon: Sparkles, label: 'Insight', category: 'Content', description: 'Important insights' },
@@ -66,7 +63,6 @@ const widgetOptions: WidgetOption[] = [
   { type: 'files', icon: FileText, label: 'Files', category: 'Organization', description: 'Manage your files' },
   { type: 'collections', icon: Folder, label: 'Collections', category: 'Organization', description: 'Curate and organize references' },
   { type: 'tables', icon: Table, label: 'Tables', category: 'Organization', description: 'Spreadsheet-style data tables' },
-  { type: 'tracker', icon: Activity, label: 'Tracker', category: 'Tracking', description: 'View tracker data from Tracker Studio' },
   { type: 'tracker_app', icon: Activity, label: 'Tracker App', category: 'Tracking', description: 'Add a tracker as a standalone app with its own icon' },
   { type: 'graphics', icon: ImagePlus, label: 'Graphics', category: 'Media', description: 'Upload and place SVG graphics' },
 ];

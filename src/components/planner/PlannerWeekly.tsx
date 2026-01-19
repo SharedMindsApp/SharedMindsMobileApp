@@ -39,6 +39,8 @@ import { FEATURE_CALENDAR_EXTRAS } from '../../lib/featureFlags';
 import { subscribeActivityChanged } from '../../lib/activities/activityEvents';
 import { QuickAddBottomSheet } from './mobile/QuickAddBottomSheet';
 import { WeeklyPlannerMobile } from './mobile/WeeklyPlannerMobile';
+import { IntentionsPanel } from './temporal/IntentionsPanel';
+import { ReflectionsPanel } from './temporal/ReflectionsPanel';
 
 interface DraggingState {
   eventId: string;
@@ -837,6 +839,17 @@ export function PlannerWeekly() {
               }}
             />
           )}
+
+          {/* Reflections Panel - Bottom (Mobile) */}
+          {user && (
+            <div className="px-4 pb-4 pt-2">
+              <ReflectionsPanel 
+                userId={user.id} 
+                scope="week" 
+                scopeDate={weekDays[0]} 
+              />
+            </div>
+          )}
         </div>
       </PlannerShell>
     );
@@ -855,6 +868,15 @@ export function PlannerWeekly() {
           transition: swipeOffset === 0 ? 'transform 0.2s ease-out' : 'none',
         }}
       >
+        {/* Intentions Panel - Top */}
+        {user && (
+          <IntentionsPanel 
+            userId={user.id} 
+            scope="week" 
+            scopeDate={weekDays[0]} 
+          />
+        )}
+
         {/* Header */}
         <div className="flex items-center justify-between mb-4 md:mb-6">
           <button onClick={() => navigateWeek('prev')} className="p-1 md:p-2 hover:bg-gray-100 rounded">
@@ -1211,6 +1233,15 @@ export function PlannerWeekly() {
             date={quickAddSlot.date}
             hour={quickAddSlot.hour}
             minute={quickAddSlot.minute}
+          />
+        )}
+
+        {/* Reflections Panel - Bottom */}
+        {user && (
+          <ReflectionsPanel 
+            userId={user.id} 
+            scope="week" 
+            scopeDate={weekDays[0]} 
           />
         )}
       </div>

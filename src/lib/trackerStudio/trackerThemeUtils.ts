@@ -8,7 +8,7 @@
 import {
   Moon, Activity, UtensilsCrossed, Brain, Bed, TrendingUp, Heart, BookOpen, DollarSign,
   Smile, Zap, Droplet, Pill, AlertCircle, Wind, Users, Sun, CheckSquare, FileText,
-  Smartphone, Target, Flag, Monitor
+  Smartphone, Target, Flag, Monitor, Trees
 } from 'lucide-react';
 
 export type TrackerTheme = {
@@ -87,6 +87,24 @@ export function getTrackerTheme(trackerName: string): TrackerTheme {
       buttonHover: 'hover:bg-red-700',
       accentBg: 'bg-red-50',
       accentText: 'text-red-700',
+    };
+  }
+  
+  // Nutrition & Hydration Tracker (unified food + hydration tracking)
+  // Check for "nutrition & hydration" or "nutrition hydration" before generic nutrition
+  if ((name.includes('nutrition') && name.includes('hydration')) || 
+      (name.includes('nutrition') && name.includes('&'))) {
+    return {
+      icon: UtensilsCrossed,
+      gradient: 'from-green-500 via-emerald-500 to-teal-500',
+      iconBg: 'bg-green-100',
+      iconColor: 'text-green-600',
+      borderColor: 'border-green-200',
+      hoverBorderColor: 'hover:border-green-400',
+      buttonBg: 'bg-green-600',
+      buttonHover: 'hover:bg-green-700',
+      accentBg: 'bg-green-50',
+      accentText: 'text-green-700',
     };
   }
   
@@ -246,6 +264,22 @@ export function getTrackerTheme(trackerName: string): TrackerTheme {
     };
   }
   
+  // Health Tracker (unified medication + symptom tracking)
+  if (name.includes('health') && !name.includes('mental health')) {
+    return {
+      icon: Heart,
+      gradient: 'from-red-500 via-rose-500 to-pink-500',
+      iconBg: 'bg-red-100',
+      iconColor: 'text-red-600',
+      borderColor: 'border-red-200',
+      hoverBorderColor: 'hover:border-red-400',
+      buttonBg: 'bg-red-600',
+      buttonHover: 'hover:bg-red-700',
+      accentBg: 'bg-red-50',
+      accentText: 'text-red-700',
+    };
+  }
+
   if (name.includes('medication')) {
     return {
       icon: Pill,
@@ -260,7 +294,7 @@ export function getTrackerTheme(trackerName: string): TrackerTheme {
       accentText: 'text-violet-700',
     };
   }
-  
+
   if (name.includes('symptom')) {
     return {
       icon: AlertCircle,
@@ -289,6 +323,23 @@ export function getTrackerTheme(trackerName: string): TrackerTheme {
       buttonHover: 'hover:bg-blue-700',
       accentBg: 'bg-blue-50',
       accentText: 'text-blue-700',
+    };
+  }
+  
+  // Environmental Impact Tracker (behavior-focused environmental actions)
+  // Check for "environmental impact" before generic environment/weather
+  if (name.includes('environmental impact') || (name.includes('environmental') && name.includes('impact'))) {
+    return {
+      icon: Trees,
+      gradient: 'from-green-500 via-emerald-500 to-teal-500',
+      iconBg: 'bg-green-100',
+      iconColor: 'text-green-600',
+      borderColor: 'border-green-200',
+      hoverBorderColor: 'hover:border-green-400',
+      buttonBg: 'bg-green-600',
+      buttonHover: 'hover:bg-green-700',
+      accentBg: 'bg-green-50',
+      accentText: 'text-green-700',
     };
   }
   
@@ -338,8 +389,10 @@ export function getTrackerTheme(trackerName: string): TrackerTheme {
     };
   }
 
-  // Screen Time & Digital Wellness
-  if (name.includes('screen time') || name.includes('screen-time') || name.includes('phone usage') || name.includes('app usage')) {
+  // Digital Wellness & Screen Time (Digital Wellness Tracker evolved from Screen Time Tracker)
+  if (name.includes('digital wellness') || name.includes('digital-wellness') ||
+      name.includes('screen time') || name.includes('screen-time') || 
+      name.includes('phone usage') || name.includes('app usage')) {
     return {
       icon: Smartphone,
       gradient: 'from-violet-500 via-purple-500 to-fuchsia-500',

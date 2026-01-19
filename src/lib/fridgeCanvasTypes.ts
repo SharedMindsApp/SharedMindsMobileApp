@@ -4,9 +4,6 @@ export type WidgetType =
   | 'note'
   | 'task'
   | 'calendar'
-  | 'goal'
-  | 'habit'
-  | 'habit_tracker'
   | 'achievements'
   | 'photo'
   | 'insight'
@@ -19,9 +16,10 @@ export type WidgetType =
   | 'collections'
   | 'tables'
   | 'todos'
-  | 'tracker'
   | 'tracker_app'
   | 'tracker_quicklink'
+  | 'journal'
+  | 'workspace'
   | 'custom';
 
 export type SizeMode = 'icon' | 'mini' | 'large' | 'xlarge';
@@ -186,6 +184,16 @@ export interface TrackerQuickLinkContent {
   // No content needed - shows all trackers
 }
 
+export interface JournalContent {
+  // No content needed - journal app manages its own state
+  // space_id is passed via householdId prop
+}
+
+export interface WorkspaceContent {
+  workspace_id?: string; // Legacy: kept for backward compatibility
+  page_id?: string; // Page ID for page-centric model
+}
+
 export interface CustomContent {
   [key: string]: unknown;
 }
@@ -210,6 +218,8 @@ export type WidgetContent =
   | TrackerContent
   | TrackerAppContent
   | TrackerQuickLinkContent
+  | JournalContent
+  | WorkspaceContent
   | CustomContent;
 
 export type { CalendarEvent };

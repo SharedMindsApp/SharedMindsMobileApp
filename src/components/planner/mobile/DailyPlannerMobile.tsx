@@ -384,18 +384,6 @@ export function DailyPlannerMobile({
           </div>
         </div>
       </div>
-
-      {/* Scroll to Now Button */}
-      {isToday && showScrollToNow && (
-        <button
-          onClick={scrollToNow}
-          className="fixed bottom-20 right-4 z-40 bg-blue-600 text-white rounded-full p-3 shadow-lg hover:bg-blue-700 active:scale-95 transition-all flex items-center gap-2 min-h-[44px]"
-          aria-label="Scroll to current time"
-        >
-          <Clock size={20} />
-          <span className="font-medium">Now</span>
-        </button>
-      )}
     </div>
   );
 }

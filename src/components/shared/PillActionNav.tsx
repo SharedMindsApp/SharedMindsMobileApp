@@ -3,15 +3,16 @@
  * 
  * Unified pill-style bottom action navigation for Calendar, Planner, and Guardrails.
  * 
- * A single floating pill containing two actions:
+ * A single floating pill containing three actions:
  * - Left: Settings/Configuration
- * - Right: Quick Actions/Areas
+ * - Middle: Quick Actions
+ * - Right: Areas/Life Areas
  * 
  * Features:
  * - Pill-shaped floating navigation (mobile-only)
  * - Fixed to bottom center
  * - Soft shadow and background blur
- * - Two independently tappable halves
+ * - Three independently tappable sections
  * - Active press states
  * - Always visible (non-dismissible)
  * 
@@ -30,21 +31,26 @@ export interface PillAction {
 
 export interface PillActionNavProps {
   leftAction: PillAction;
+  middleAction?: PillAction;
   rightAction: PillAction;
   visible?: boolean;
   leftActive?: boolean;
+  middleActive?: boolean;
   rightActive?: boolean;
 }
 
 export function PillActionNav({
   leftAction,
+  middleAction,
   rightAction,
   visible = true,
   leftActive = false,
+  middleActive = false,
   rightActive = false,
 }: PillActionNavProps) {
   const [isMobile, setIsMobile] = useState(false);
   const [leftPressed, setLeftPressed] = useState(false);
+  const [middlePressed, setMiddlePressed] = useState(false);
   const [rightPressed, setRightPressed] = useState(false);
 
   // Mobile detection
@@ -64,6 +70,13 @@ export function PillActionNav({
     setLeftPressed(true);
     setTimeout(() => setLeftPressed(false), 150);
     leftAction.onPress();
+  };
+
+  const handleMiddlePress = () => {
+    if (!middleAction) return;
+    setMiddlePressed(true);
+    setTimeout(() => setMiddlePressed(false), 150);
+    middleAction.onPress();
   };
 
   const handleRightPress = () => {
@@ -95,8 +108,8 @@ export function PillActionNav({
         `}
         style={{
           minHeight: '56px',
-          // Ensure minimum tap target size
-          minWidth: '280px',
+          // Icon-only: smaller width needed
+          minWidth: middleAction ? '168px' : '112px',
         }}
       >
         {/* Left Action */}
@@ -107,8 +120,8 @@ export function PillActionNav({
             setTimeout(() => setLeftPressed(false), 150);
           }}
           className={`
-            flex-1 flex items-center justify-center gap-2
-            px-6 py-3
+            flex-1 flex items-center justify-center
+            px-4 py-3
             min-h-[56px]
             transition-all duration-150
             border-r border-gray-200/50
@@ -122,7 +135,7 @@ export function PillActionNav({
           aria-label={leftAction.label}
           aria-pressed={leftActive}
           style={{
-            minWidth: '44px', // Minimum tap target
+            minWidth: '56px', // Minimum tap target
           }}
         >
           <div
@@ -131,14 +144,51 @@ export function PillActionNav({
               ${leftActive ? 'text-blue-600' : 'text-gray-600'}
               transition-colors duration-150
             `}
-            style={{ width: '20px', height: '20px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+            style={{ width: '24px', height: '24px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
           >
             {leftAction.icon}
           </div>
-          <span className="text-sm font-medium whitespace-nowrap">
-            {leftAction.label}
-          </span>
         </button>
+
+        {/* Middle Action (if provided) */}
+        {middleAction && (
+          <button
+            onClick={handleMiddlePress}
+            onTouchStart={() => setMiddlePressed(true)}
+            onTouchEnd={() => {
+              setTimeout(() => setMiddlePressed(false), 150);
+            }}
+            className={`
+              flex-1 flex items-center justify-center
+              px-4 py-3
+              min-h-[56px]
+              transition-all duration-150
+              border-r border-gray-200/50
+              focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 focus:ring-inset
+              ${middleActive
+                ? 'bg-blue-50 text-blue-700'
+                : 'text-gray-700 hover:bg-gray-50 active:bg-gray-100'
+              }
+              ${middlePressed ? 'scale-95 opacity-80' : ''}
+            `}
+            aria-label={middleAction.label}
+            aria-pressed={middleActive}
+            style={{
+              minWidth: '56px', // Minimum tap target
+            }}
+          >
+            <div
+              className={`
+                flex-shrink-0
+                ${middleActive ? 'text-blue-600' : 'text-gray-600'}
+                transition-colors duration-150
+              `}
+              style={{ width: '24px', height: '24px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+            >
+              {middleAction.icon}
+            </div>
+          </button>
+        )}
 
         {/* Right Action */}
         <button
@@ -148,8 +198,8 @@ export function PillActionNav({
             setTimeout(() => setRightPressed(false), 150);
           }}
           className={`
-            flex-1 flex items-center justify-center gap-2
-            px-6 py-3
+            flex-1 flex items-center justify-center
+            px-4 py-3
             min-h-[56px]
             transition-all duration-150
             focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 focus:ring-inset
@@ -162,7 +212,7 @@ export function PillActionNav({
           aria-label={rightAction.label}
           aria-pressed={rightActive}
           style={{
-            minWidth: '44px', // Minimum tap target
+            minWidth: '56px', // Minimum tap target
           }}
         >
           <div
@@ -171,13 +221,10 @@ export function PillActionNav({
               ${rightActive ? 'text-blue-600' : 'text-gray-600'}
               transition-colors duration-150
             `}
-            style={{ width: '20px', height: '20px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+            style={{ width: '24px', height: '24px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
           >
             {rightAction.icon}
           </div>
-          <span className="text-sm font-medium whitespace-nowrap">
-            {rightAction.label}
-          </span>
         </button>
       </div>
     </nav>

@@ -41,6 +41,12 @@ export interface TrackerFieldSchema {
   type: TrackerFieldType;
   validation?: TrackerFieldValidation;
   default?: string | number | boolean; // Default value (optional)
+  conditional?: {
+    field: string; // Field ID to check
+    value: string | number | boolean; // Value that must match for this field to be shown
+  }; // Conditional field visibility (e.g., show medication fields only when entry_type = 'medication')
+  options?: Array<{ value: string; label: string }>; // Options for text fields with predefined choices
+  description?: string; // Optional field description/help text
 }
 
 /**
@@ -84,6 +90,7 @@ export interface TrackerTemplate {
   created_at: string;
   updated_at: string;
   archived_at: string | null;
+  deprecated_at: string | null; // Timestamp when template was deprecated (hidden from new template selection)
 }
 
 /**

@@ -17,8 +17,6 @@ import {
   NoteContent,
   TaskContent,
   CalendarContent,
-  GoalContent,
-  HabitContent,
   PhotoContent,
   InsightContent,
   ReminderContent,
@@ -29,6 +27,8 @@ import {
   TrackerContent,
   TrackerAppContent,
   TrackerQuickLinkContent,
+  JournalContent,
+  WorkspaceContent,
 } from "./fridgeCanvasTypes";
 import { createStackCardWithInitialCards } from "./stackCards";
 
@@ -286,15 +286,23 @@ export async function createWidget(
     widgetContent = {} as TrackerQuickLinkContent;
   }
 
+  if (widgetType === 'journal') {
+    // journal has no content needed - space_id is passed via householdId prop
+    widgetContent = {} as JournalContent;
+  }
+
+  if (widgetType === 'workspace') {
+    // workspace requires workspace_id, but we'll create it on first use
+    // For now, use empty workspace_id and let the widget create the workspace
+    widgetContent = { workspace_id: '' } as WorkspaceContent;
+  }
+
   // Map widget type to proper display name
   const widgetTypeNames: Record<WidgetType, string> = {
     note: 'Note',
     task: 'Task',
     reminder: 'Reminder',
     calendar: 'Calendar',
-    goal: 'Goal',
-    habit: 'Habit',
-    habit_tracker: 'Habit Tracker',
     achievements: 'Achievements',
     photo: 'Photo',
     insight: 'Insight',
@@ -306,9 +314,10 @@ export async function createWidget(
     collections: 'Collections',
     tables: 'Tables',
     todos: 'Todos',
-    tracker: 'Tracker',
     tracker_app: 'Tracker App',
     tracker_quicklink: 'Tracker Quick Links',
+    journal: 'Journal',
+    workspace: 'Workspace',
     custom: 'Custom Widget',
   };
 
@@ -464,12 +473,6 @@ export function getDefaultWidgetContent(type: WidgetType): WidgetContent {
       return { description: "", completed: false } as TaskContent;
     case "calendar":
       return { eventCount: 0, events: [] } as CalendarContent;
-    case "goal":
-      return { progress: 0, target: 100 } as GoalContent;
-    case "habit":
-      return { streak: 0, frequency: "daily", completedToday: false } as HabitContent;
-    case "habit_tracker":
-      return { totalHabits: 0, completedToday: 0, totalStreak: 0, totalCompletions: 0 };
     case "achievements":
       return { totalAchievements: 0, unlockedCount: 0, progressPercentage: 0 };
     case "photo":
@@ -492,10 +495,6 @@ export function getDefaultWidgetContent(type: WidgetType): WidgetContent {
       return {};
     case "tables":
       return { tableId: '', tableName: '', rowCount: 0, columnCount: 0 } as TablesContent;
-    case "tracker":
-      // Tracker widget requires tracker_id to be set via selection modal
-      // This default should never be used, but provides type safety
-      return { tracker_id: '' } as TrackerContent;
     case "tracker_app":
       // Tracker app requires tracker_id to be set when creating
       // This default should never be used, but provides type safety
@@ -503,6 +502,12 @@ export function getDefaultWidgetContent(type: WidgetType): WidgetContent {
     case "tracker_quicklink":
       // Tracker quicklink has no content needed
       return {} as TrackerQuickLinkContent;
+    case "journal":
+      // Journal has no content needed - space_id is passed via householdId prop
+      return {} as JournalContent;
+    case "workspace":
+      // Workspace requires workspace_id, but we'll create it on first use
+      return { workspace_id: '' } as WorkspaceContent;
     default:
       return {} as CustomContent;
   }

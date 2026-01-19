@@ -257,32 +257,29 @@ export const PLANNER_STYLE_PRESETS: Record<PlannerStylePreset, PlannerStylePrese
 export const DEFAULT_PLANNER_SETTINGS: PlannerSettings = {
   stylePreset: 'bright-playful',
   tabConfig: [
-    // Left tabs
-    { path: '/planner', label: 'Index', enabled: true, side: 'left', order: 0 },
-    { path: '/planner/calendar?view=day', label: 'Daily', enabled: true, side: 'left', order: 1 },
-    { path: '/planner/calendar?view=week', label: 'Weekly', enabled: true, side: 'left', order: 2 },
-    { path: '/planner/calendar?view=month', label: 'Monthly', enabled: true, side: 'left', order: 3 },
-    { path: '/planner/tasks', label: 'Tasks', enabled: true, side: 'left', order: 4 },
-    { path: '/settings', label: 'Settings', enabled: true, side: 'left', order: 5 },
-    // Right tabs
-    { path: '/planner/personal', label: 'Personal', enabled: true, side: 'right', order: 0 },
-    { path: '/planner/work', label: 'Work', enabled: true, side: 'right', order: 1 },
-    { path: '/planner/education', label: 'Education', enabled: true, side: 'right', order: 2 },
-    { path: '/planner/finance', label: 'Finance', enabled: true, side: 'right', order: 3 },
-    { path: '/planner/budget', label: 'Budget', enabled: true, side: 'right', order: 4 },
-    { path: '/planner/vision', label: 'Vision', enabled: true, side: 'right', order: 5 },
-    { path: '/planner/planning', label: 'Planning', enabled: true, side: 'right', order: 6 },
-    { path: '/planner/household', label: 'Household', enabled: true, side: 'right', order: 7 },
-    { path: '/planner/selfcare', label: 'Self-Care', enabled: true, side: 'right', order: 8 },
-    { path: '/planner/travel', label: 'Travel', enabled: true, side: 'right', order: 9 },
-    { path: '/planner/social', label: 'Social', enabled: true, side: 'right', order: 10 },
-    { path: '/planner/journal', label: 'Journal', enabled: true, side: 'right', order: 11 },
+    // Left tabs - Temporal views (primary navigation)
+    { path: '/planner/today', label: 'Today', enabled: true, side: 'left', order: 0 },
+    { path: '/planner/week', label: 'Week', enabled: true, side: 'left', order: 1 },
+    { path: '/planner/month', label: 'Month', enabled: true, side: 'left', order: 2 },
+    { path: '/planner/quarter', label: 'Quarter', enabled: true, side: 'left', order: 3 },
+    { path: '/planner/year', label: 'Year', enabled: true, side: 'left', order: 4 },
+    { path: '/planner/tasks', label: 'Tasks', enabled: true, side: 'left', order: 5 },
+    { path: '/settings', label: 'Settings', enabled: true, side: 'left', order: 6 },
+    // Right tabs - Life area filters (secondary navigation, deprecated - kept for backward compat)
+    // Note: Life areas are now filters within temporal views, not primary navigation
+    { path: '/planner/today?area=vision', label: 'Vision', enabled: false, side: 'right', order: 0 },
+    { path: '/planner/today?area=work', label: 'Work', enabled: false, side: 'right', order: 1 },
+    { path: '/planner/today?area=personal', label: 'Personal', enabled: false, side: 'right', order: 2 },
+    { path: '/planner/today?area=household', label: 'Household', enabled: false, side: 'right', order: 3 },
+    { path: '/planner/today?area=financial', label: 'Financial', enabled: false, side: 'right', order: 4 },
+    { path: '/planner/today?area=social', label: 'Social', enabled: false, side: 'right', order: 5 },
+    { path: '/planner/today?area=travel', label: 'Travel', enabled: false, side: 'right', order: 6 },
   ],
   favouriteTabs: [
-    '/planner',
-    '/planner/calendar?view=day',
-    '/planner/calendar?view=week',
-    '/planner/calendar?view=month',
+    '/planner/today',
+    '/planner/week',
+    '/planner/month',
+    '/planner/quarter',
   ],
   comfort: {
     spacing: 'comfortable',

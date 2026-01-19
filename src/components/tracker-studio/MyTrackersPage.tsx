@@ -618,14 +618,13 @@ function SortableTrackerCard({
   }, [isDragging]);
 
   // Handle touch move - cancel hold if moved too much
+  // Note: Scroll prevention is handled by document-level listeners (useEffect below)
+  // React synthetic events are passive by default, so we can't preventDefault here
   const handleTouchMove = useCallback((e: React.TouchEvent) => {
     if (!touchStartRef.current) return;
     
-    // If holding or dragging, prevent default to stop scroll
-    if (isHolding || isDragging) {
-      e.preventDefault();
-      return;
-    }
+    // Don't prevent default here - document-level listener handles scroll prevention
+    // Just track movement to cancel hold if moved too much
     
     const touch = e.touches[0];
     if (touch) {

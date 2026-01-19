@@ -657,6 +657,15 @@ export async function updateBudgetCategory(categoryId: string, updates: Partial<
   if (error) throw error;
 }
 
+export async function deleteBudgetCategory(categoryId: string): Promise<void> {
+  const { error } = await supabase
+    .from('trip_budget_categories')
+    .delete()
+    .eq('id', categoryId);
+
+  if (error) throw error;
+}
+
 export async function getTripExpenses(tripId: string): Promise<TripExpense[]> {
   const { data, error } = await supabase
     .from('trip_expenses')
@@ -695,6 +704,83 @@ export async function deleteExpense(expenseId: string): Promise<void> {
     .eq('id', expenseId);
 
   if (error) throw error;
+}
+
+// Trip Summary Counts (for efficient list views)
+export interface TripSummaryCounts {
+  trip_id: string;
+  destinations_count: number;
+  accommodations_count: number;
+  itinerary_items_count: number;
+  places_count: number;
+}
+
+export async function getTripSummaryCounts(tripIds: string[]): Promise<Record<string, TripSummaryCounts>> {
+  if (tripIds.length === 0) {
+    return {};
+  }
+
+  // Fetch all counts in parallel
+  const [destinationsData, accommodationsData, itineraryData, placesData] = await Promise.all([
+    supabase
+      .from('trip_destinations')
+      .select('trip_id')
+      .in('trip_id', tripIds),
+    supabase
+      .from('trip_accommodations')
+      .select('trip_id')
+      .in('trip_id', tripIds),
+    supabase
+      .from('trip_itinerary_items')
+      .select('trip_id')
+      .in('trip_id', tripIds),
+    supabase
+      .from('trip_places_to_visit')
+      .select('trip_id')
+      .in('trip_id', tripIds),
+  ]);
+
+  // Initialize counts for all trips
+  const counts: Record<string, TripSummaryCounts> = {};
+  tripIds.forEach(tripId => {
+    counts[tripId] = {
+      trip_id: tripId,
+      destinations_count: 0,
+      accommodations_count: 0,
+      itinerary_items_count: 0,
+      places_count: 0,
+    };
+  });
+
+  // Count destinations
+  (destinationsData.data || []).forEach((row: any) => {
+    if (counts[row.trip_id]) {
+      counts[row.trip_id].destinations_count++;
+    }
+  });
+
+  // Count accommodations
+  (accommodationsData.data || []).forEach((row: any) => {
+    if (counts[row.trip_id]) {
+      counts[row.trip_id].accommodations_count++;
+    }
+  });
+
+  // Count itinerary items
+  (itineraryData.data || []).forEach((row: any) => {
+    if (counts[row.trip_id]) {
+      counts[row.trip_id].itinerary_items_count++;
+    }
+  });
+
+  // Count places
+  (placesData.data || []).forEach((row: any) => {
+    if (counts[row.trip_id]) {
+      counts[row.trip_id].places_count++;
+    }
+  });
+
+  return counts;
 }
 
 // Calendar Integration

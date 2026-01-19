@@ -31,6 +31,11 @@ import { FEATURE_CALENDAR_EXTRAS } from '../../lib/featureFlags';
 import { subscribeActivityChanged } from '../../lib/activities/activityEvents';
 import { QuickAddBottomSheet } from './mobile/QuickAddBottomSheet';
 import { DailyPlannerMobile } from './mobile/DailyPlannerMobile';
+import { IntentionsPanel } from './temporal/IntentionsPanel';
+import { ReflectionsPanel } from './temporal/ReflectionsPanel';
+import { PlannerEnergyModeSelector } from './temporal/PlannerEnergyModeSelector';
+import { PlannerMicroStepsPanel } from './temporal/PlannerMicroStepsPanel';
+import { EnergyMode, getDefaultEnergyMode } from '../../lib/planner/adaptivePlanEngine';
 
 interface DraggingState {
   eventId: string;
@@ -76,6 +81,7 @@ export function PlannerDailyV2() {
   // Scroll to Now state
   const [showScrollToNow, setShowScrollToNow] = useState(false);
   const [hasAutoScrolled, setHasAutoScrolled] = useState(false);
+  const [energyMode, setEnergyMode] = useState<EnergyMode>(getDefaultEnergyMode());
 
   // Calculate if selected date is today (needed for callbacks/effects)
   const isToday = useMemo(() => {
@@ -704,6 +710,36 @@ export function PlannerDailyV2() {
             transition: swipeOffset === 0 ? 'transform 0.2s ease-out' : 'none',
           }}
         >
+          {/* Intentions Panel - Top (Mobile) */}
+          {user && (
+            <div className="px-4 pt-4 pb-2">
+              <IntentionsPanel 
+                userId={user.id} 
+                scope="today" 
+                scopeDate={selectedDate} 
+              />
+            </div>
+          )}
+
+          {/* Energy Mode Selector (Mobile) */}
+          {user && (
+            <div className="px-4 pb-2">
+              <PlannerEnergyModeSelector onEnergyModeChange={setEnergyMode} />
+            </div>
+          )}
+
+          {/* Micro-Steps Panel (Mobile) */}
+          {user && (
+            <div className="px-4 pb-2">
+              <PlannerMicroStepsPanel
+                userId={user.id}
+                date={selectedDate}
+                energyMode={energyMode}
+                events={[...containers, ...nested, ...regular]}
+              />
+            </div>
+          )}
+
           <DailyPlannerMobile
             selectedDate={selectedDate}
             isToday={isToday}
@@ -760,6 +796,17 @@ export function PlannerDailyV2() {
               }}
             />
           )}
+
+          {/* Reflections Panel - Bottom (Mobile) */}
+          {user && (
+            <div className="px-4 pb-4 pt-2">
+              <ReflectionsPanel 
+                userId={user.id} 
+                scope="today" 
+                scopeDate={selectedDate} 
+              />
+            </div>
+          )}
         </div>
       </PlannerShell>
     );
@@ -778,6 +825,30 @@ export function PlannerDailyV2() {
           transition: swipeOffset === 0 ? 'transform 0.2s ease-out' : 'none',
         }}
       >
+        {/* Intentions Panel - Top */}
+        {user && (
+          <IntentionsPanel 
+            userId={user.id} 
+            scope="today" 
+            scopeDate={selectedDate} 
+          />
+        )}
+
+        {/* Energy Mode Selector */}
+        {user && (
+          <PlannerEnergyModeSelector onEnergyModeChange={setEnergyMode} />
+        )}
+
+        {/* Micro-Steps Panel */}
+        {user && (
+          <PlannerMicroStepsPanel
+            userId={user.id}
+            date={selectedDate}
+            energyMode={energyMode}
+            events={[...containers, ...nested, ...regular]}
+          />
+        )}
+
         {/* Header */}
         <div className="flex items-center justify-between mb-4 md:mb-6">
           <div className="flex items-center gap-4">
@@ -1033,16 +1104,13 @@ export function PlannerDailyV2() {
           />
         )}
 
-        {/* Mobile: Scroll to Now Button */}
-        {isMobile && showScrollToNow && isToday && (
-          <button
-            onClick={scrollToNow}
-            className="fixed bottom-20 right-4 z-40 bg-blue-600 text-white rounded-full p-3 shadow-lg hover:bg-blue-700 active:scale-95 transition-all flex items-center gap-2 min-h-[44px]"
-            aria-label="Scroll to current time"
-          >
-            <Clock size={20} />
-            <span className="font-medium">Now</span>
-          </button>
+        {/* Reflections Panel - Bottom */}
+        {user && (
+          <ReflectionsPanel 
+            userId={user.id} 
+            scope="today" 
+            scopeDate={selectedDate} 
+          />
         )}
       </div>
     </PlannerShell>

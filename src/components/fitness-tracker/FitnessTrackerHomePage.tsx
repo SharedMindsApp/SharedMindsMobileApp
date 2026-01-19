@@ -15,20 +15,26 @@ import { ActivityStateService } from '../../lib/fitnessTracker/activityStateServ
 import { ScheduledSessionService, type ScheduledSession } from '../../lib/fitnessTracker/scheduledSessionService';
 import type { UserMovementProfile, MovementDomain, MovementSession } from '../../lib/fitnessTracker/types';
 import { getActivityMetadata } from '../../lib/fitnessTracker/activityMetadata';
-import { getIconComponent } from '../../lib/fitnessTracker/iconUtils';
+import { getSportEmoji } from '../../lib/fitnessTracker/sportEmojis';
 import { getDisplayActivities, getActivityStateForCategory, type DisplayActivity } from '../../lib/fitnessTracker/activityDisplayHelper';
 import { ReconfigurationModal } from './ReconfigurationModal';
 import { DynamicQuickLog } from './DynamicQuickLog';
 import { PauseActivityModal } from './PauseActivityModal';
 import { PremiumActivityCard } from './PremiumActivityCard';
 import { SkeletonLoader } from './SkeletonLoader';
+import { BodyTransformationDashboard } from './BodyTransformationDashboard';
+import { useUIPreferences } from '../../contexts/UIPreferencesContext';
+import { Eye } from 'lucide-react';
+import { showToast } from '../Toast';
 
 export function FitnessTrackerHomePage() {
   const navigate = useNavigate();
   const { user } = useAuth();
+  const { getCustomOverride, updateCustomOverride } = useUIPreferences();
   const [profile, setProfile] = useState<UserMovementProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [refreshKey, setRefreshKey] = useState(0);
   const [showReconfiguration, setShowReconfiguration] = useState(false);
   const [pausingDomain, setPausingDomain] = useState<MovementDomain | null>(null);
   const [activitySessions, setActivitySessions] = useState<Record<MovementDomain, MovementSession[]>>({} as Record<MovementDomain, MovementSession[]>);
@@ -521,12 +527,13 @@ export function FitnessTrackerHomePage() {
                 const stats = getActivityStats(activity.domain);
                 const state = getActivityStateForCategory(profile, activity.id);
 
-                // For sport categories, use category name and icon instead of domain metadata
+                // For sport categories, use category name and emoji instead of domain metadata
                 const metadata = activity.id.startsWith('team_sport_') || activity.id.startsWith('individual_sport_')
                   ? {
                       displayName: activity.name,
                       description: '',
-                      icon: activity.icon,
+                      icon: activity.icon, // Deprecated - kept for backwards compatibility
+                      emoji: getSportEmoji(activity.name), // Use sport-specific emoji
                       color: activity.color,
                       // Use domain base gradients with color tinting (simpler approach)
                       gradient: activity.domain === 'team_sports' 
@@ -575,7 +582,8 @@ export function FitnessTrackerHomePage() {
                   ? {
                       displayName: activity.name,
                       description: '',
-                      icon: activity.icon,
+                      icon: activity.icon, // Deprecated - kept for backwards compatibility
+                      emoji: getSportEmoji(activity.name), // Use sport-specific emoji
                       color: activity.color,
                       gradient: activity.domain === 'team_sports' 
                         ? 'from-purple-600 via-violet-500 to-purple-600'
@@ -605,6 +613,42 @@ export function FitnessTrackerHomePage() {
                   </div>
                 );
               })}
+            </div>
+          </div>
+        )}
+
+        {/* Body Transformation Section */}
+        {getCustomOverride('bodyTransformationVisible', true) ? (
+          <div className="mt-8" key={`body-transformation-${refreshKey}`}>
+            <BodyTransformationDashboard 
+              onHide={() => {
+                setRefreshKey(prev => prev + 1);
+              }}
+            />
+          </div>
+        ) : (
+          <div className="mt-8" key={`body-transformation-restore-${refreshKey}`}>
+            <div className="bg-gray-50 border border-gray-200 rounded-xl p-4 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-gray-200 rounded-lg">
+                  <Eye className="w-5 h-5 text-gray-600" />
+                </div>
+                <div>
+                  <p className="text-sm font-medium text-gray-900">Body Transformation tracker is hidden</p>
+                  <p className="text-xs text-gray-600">Show it again to track how your body adapts to training</p>
+                </div>
+              </div>
+              <button
+                onClick={async () => {
+                  await updateCustomOverride('bodyTransformationVisible', true);
+                  showToast('success', 'Body Transformation tracker restored');
+                  setRefreshKey(prev => prev + 1);
+                }}
+                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2 text-sm font-medium"
+              >
+                <Eye size={16} />
+                <span>Show Tracker</span>
+              </button>
             </div>
           </div>
         )}

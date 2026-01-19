@@ -12,11 +12,8 @@ import {
   StickyNote,
   Bell,
   Calendar,
-  Target,
-  Zap,
   Image,
   Sparkles,
-  CheckCircle2,
   Trophy,
   UtensilsCrossed,
   ShoppingCart,
@@ -26,6 +23,8 @@ import {
   ImagePlus,
   Table,
   Activity,
+  BookOpen,
+  CheckCircle2,
 } from 'lucide-react';
 import { WidgetType, TrackerAppContent } from '../../lib/fridgeCanvasTypes';
 import { createWidget, getDefaultWidgetContent } from '../../lib/fridgeCanvas';
@@ -79,31 +78,22 @@ const widgetOptions: WidgetOption[] = [
     description: 'View upcoming events',
   },
   {
-    type: 'goal',
-    icon: Target,
-    label: 'Goal',
-    color: 'bg-emerald-50',
-    iconColor: 'text-emerald-600',
-    category: 'Tracking',
-    description: 'Track your goals',
-  },
-  {
-    type: 'habit',
-    icon: Zap,
-    label: 'Habit',
+    type: 'journal',
+    icon: BookOpen,
+    label: 'Journal',
     color: 'bg-amber-50',
     iconColor: 'text-amber-600',
-    category: 'Tracking',
-    description: 'Build daily habits',
+    category: 'Content',
+    description: 'Personal journal and gratitude entries',
   },
   {
-    type: 'habit_tracker',
-    icon: CheckCircle2,
-    label: 'Habit Tracker',
-    color: 'bg-cyan-50',
-    iconColor: 'text-cyan-600',
-    category: 'Tracking',
-    description: 'Visualize habit streaks',
+    type: 'workspace',
+    icon: FileText,
+    label: 'Workspace',
+    color: 'bg-slate-50',
+    iconColor: 'text-slate-600',
+    category: 'Content',
+    description: 'Structured thinking and reference surface',
   },
   {
     type: 'achievements',
@@ -196,15 +186,6 @@ const widgetOptions: WidgetOption[] = [
     description: 'Spreadsheet-style data tables',
   },
   {
-    type: 'tracker',
-    icon: Activity,
-    label: 'Tracker',
-    color: 'bg-indigo-50',
-    iconColor: 'text-indigo-600',
-    category: 'Tracking',
-    description: 'View tracker data from Tracker Studio',
-  },
-  {
     type: 'tracker_app',
     icon: Activity,
     label: 'Tracker App',
@@ -262,8 +243,8 @@ export function MobileAddWidgetModal({ isOpen, onClose, householdId, onWidgetAdd
       return;
     }
 
-    // Tracker widgets require selection
-    if (option.type === 'tracker' || option.type === 'tracker_app') {
+    // Tracker app requires selection
+    if (option.type === 'tracker_app') {
       setPendingWidgetType(option.type);
       setShowTrackerSelect(true);
       return;

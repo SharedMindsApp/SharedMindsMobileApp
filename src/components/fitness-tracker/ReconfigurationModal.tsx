@@ -8,13 +8,14 @@
  */
 
 import { useState, useEffect } from 'react';
-import { X, Loader2, Check as CheckIcon } from 'lucide-react';
+import { X, Loader2, Check as CheckIcon, Eye, EyeOff } from 'lucide-react';
 import { Dumbbell, Footprints, Bike, Waves, Users, Target, Sword, Flower2, Heart, Activity } from 'lucide-react';
 import { ReconfigurationService } from '../../lib/fitnessTracker/reconfigurationService';
 import type { UserMovementProfile, MovementDomain, DomainDetail } from '../../lib/fitnessTracker/types';
 import { showToast } from '../Toast';
 import { getOptionIcon, getOptionIconColor } from '../../lib/fitnessTracker/optionIcons';
 import { getSportEmoji } from '../../lib/fitnessTracker/sportEmojis';
+import { useUIPreferences } from '../../contexts/UIPreferencesContext';
 import * as LucideIcons from 'lucide-react';
 
 type ReconfigurationModalProps = {
@@ -35,6 +36,7 @@ export function ReconfigurationModal({
   const [movementLevel, setMovementLevel] = useState<string>(profile.movementLevel || 'regular');
   const [loading, setLoading] = useState(false);
   const [step, setStep] = useState<'domains' | 'details' | 'level'>('domains');
+  const { getCustomOverride, updateCustomOverride } = useUIPreferences();
 
   const reconfigurationService = new ReconfigurationService();
 
@@ -132,6 +134,34 @@ export function ReconfigurationModal({
         {/* Scrollable Content */}
         <div className="flex-1 overflow-y-auto overscroll-contain">
           <div className="p-4 sm:p-6 space-y-4 sm:space-y-6">
+            {/* Tracker Visibility Settings */}
+            {!getCustomOverride('bodyTransformationVisible', true) && (
+              <div className="bg-gray-50 border border-gray-200 rounded-xl p-4 mb-4 sm:mb-6">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 bg-gray-200 rounded-lg">
+                      <EyeOff className="w-5 h-5 text-gray-600" />
+                    </div>
+                    <div>
+                      <p className="text-sm font-medium text-gray-900">Body Transformation tracker is hidden</p>
+                      <p className="text-xs text-gray-600">Restore it to track how your body adapts to training</p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={async () => {
+                      await updateCustomOverride('bodyTransformationVisible', true);
+                      showToast('success', 'Body Transformation tracker restored');
+                      window.dispatchEvent(new CustomEvent('body-transformation-visibility-changed'));
+                    }}
+                    className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2 text-sm font-medium"
+                  >
+                    <Eye size={16} />
+                    <span>Restore</span>
+                  </button>
+                </div>
+              </div>
+            )}
+
             {/* Step Indicator */}
             <div className="flex items-center gap-1.5 sm:gap-2 text-xs sm:text-sm text-gray-600">
             <button

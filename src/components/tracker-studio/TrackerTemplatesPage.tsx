@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { 
   Plus, Sparkles, FileText, Share2, Lock, Copy, Crown, ArrowUp, Loader2, AlertCircle, ArrowLeft,
   Moon, Activity, UtensilsCrossed, Brain, Bed, TrendingUp, Heart, BookOpen, DollarSign,
-  Smile, Zap, Droplet, Pill, Wind, Users, Sun, CheckSquare, Search, X, Smartphone, Target
+  Smile, Zap, Droplet, Pill, Wind, Users, Sun, CheckSquare, Search, X, Smartphone, Target, Trees
 } from 'lucide-react';
 import * as LucideIcons from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
@@ -455,6 +455,20 @@ function getTemplateTheme(template: TrackerTemplate | string): TemplateTheme {
     }
   }
   
+  // Health Tracker - specific check (before medication/symptom)
+  if (name.includes('health') && !name.includes('mental health')) {
+    return {
+      icon: Heart,
+      gradient: 'from-red-500 via-rose-500 to-pink-500',
+      iconBg: 'bg-red-100',
+      iconColor: 'text-red-600',
+      borderColor: 'border-red-200',
+      hoverBorderColor: 'hover:border-red-400',
+      buttonBg: 'bg-red-600',
+      buttonHover: 'hover:bg-red-700',
+    };
+  }
+
   // Fitness Tracker - specific check
   if (name.includes('fitness')) {
     return {
@@ -507,6 +521,22 @@ function getTemplateTheme(template: TrackerTemplate | string): TemplateTheme {
       hoverBorderColor: 'hover:border-red-400',
       buttonBg: 'bg-red-600',
       buttonHover: 'hover:bg-red-700',
+    };
+  }
+  
+  // Nutrition & Hydration Tracker (unified food + hydration tracking)
+  // Check for "nutrition & hydration" or "nutrition hydration" before generic nutrition
+  if ((name.includes('nutrition') && name.includes('hydration')) || 
+      (name.includes('nutrition') && name.includes('&'))) {
+    return {
+      icon: UtensilsCrossed,
+      gradient: 'from-green-500 via-emerald-500 to-teal-500',
+      iconBg: 'bg-green-100',
+      iconColor: 'text-green-600',
+      borderColor: 'border-green-200',
+      hoverBorderColor: 'hover:border-green-400',
+      buttonBg: 'bg-green-600',
+      buttonHover: 'hover:bg-green-700',
     };
   }
   
@@ -686,6 +716,21 @@ function getTemplateTheme(template: TrackerTemplate | string): TemplateTheme {
     };
   }
   
+  // Environmental Impact Tracker (behavior-focused environmental actions)
+  // Check for "environmental impact" before generic environment/weather
+  if (name.includes('environmental impact') || (name.includes('environmental') && name.includes('impact'))) {
+    return {
+      icon: Trees,
+      gradient: 'from-green-500 via-emerald-500 to-teal-500',
+      iconBg: 'bg-green-100',
+      iconColor: 'text-green-600',
+      borderColor: 'border-green-200',
+      hoverBorderColor: 'hover:border-green-400',
+      buttonBg: 'bg-green-600',
+      buttonHover: 'hover:bg-green-700',
+    };
+  }
+  
   if (name.includes('weather') || name.includes('environment')) {
     return {
       icon: Sun,
@@ -726,8 +771,10 @@ function getTemplateTheme(template: TrackerTemplate | string): TemplateTheme {
     };
   }
 
-  // Screen Time & Digital Wellness
-  if (name.includes('screen time') || name.includes('screen-time') || name.includes('phone usage') || name.includes('app usage')) {
+  // Digital Wellness & Screen Time (Digital Wellness Tracker evolved from Screen Time Tracker)
+  if (name.includes('digital wellness') || name.includes('digital-wellness') || 
+      name.includes('screen time') || name.includes('screen-time') || 
+      name.includes('phone usage') || name.includes('app usage')) {
     return {
       icon: Smartphone,
       gradient: 'from-violet-500 via-purple-500 to-fuchsia-500',

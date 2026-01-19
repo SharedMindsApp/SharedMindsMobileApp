@@ -1,49 +1,23 @@
 /**
- * Planner Goal Tracker Widget (Thin Wrapper)
+ * Planner Goal Tracker Widget - DEPRECATED
  * 
- * Shell component for Planner context. Contains ZERO business logic.
- * Only resolves permissions and passes props to GoalTrackerCore.
+ * Tracking has been moved to Tracker Studio.
+ * This component now shows a placeholder directing users to Tracker Studio.
  */
 
-import { useAuth } from '../../../contexts/AuthContext';
-import { GoalTrackerCore, type GoalTrackerContext } from '../../activities/goals/GoalTrackerCore';
-import type { PermissionFlags } from '../../../lib/permissions/types';
+import { PlannerTrackerPlaceholder } from '../PlannerTrackerPlaceholder';
 
 export interface GoalTrackerWidgetProps {
   layout?: 'full' | 'compact';
 }
 
+/**
+ * @deprecated Goal tracking has been moved to Tracker Studio.
+ * This component now shows a placeholder instead of the actual tracker.
+ */
 export function GoalTrackerWidget({ layout = 'full' }: GoalTrackerWidgetProps) {
-  const { user } = useAuth();
-
-  if (!user) {
-    return <div className="p-6 text-gray-500">Please sign in to view goals.</div>;
-  }
-
-  // Planner context: user owns their own goals
-  const context: GoalTrackerContext = {
-    mode: 'planner',
-    scope: 'self',
-  };
-
-  // Full permissions for own goals in planner
-  const permissions: PermissionFlags = {
-    can_view: true,
-    can_comment: false,
-    can_edit: true,
-    can_manage: true,
-    detail_level: 'detailed',
-    scope: 'this_only',
-  };
-
-  return (
-    <GoalTrackerCore
-      ownerUserId={user.id}
-      context={context}
-      permissions={permissions}
-      layout={layout}
-    />
-  );
+  // Show placeholder instead of actual goal tracker
+  return <PlannerTrackerPlaceholder trackerName="Goal Tracking" trackerType="goal" />;
 }
 
 

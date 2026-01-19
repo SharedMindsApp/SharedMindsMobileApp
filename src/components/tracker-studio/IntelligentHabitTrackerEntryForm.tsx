@@ -1,14 +1,18 @@
 /**
- * Intelligent Habit Tracker Entry Form
+ * Intelligent Habit Tracker Entry Form - Premium Edition
  * 
- * Enhanced entry form for Habit Tracker with smart suggestions,
- * pattern-based defaults, and auto-complete for habit names.
+ * High-end, responsive, intelligent entry form with:
+ * - Smooth animations and micro-interactions
+ * - Premium visual design
+ * - Keyboard shortcuts
+ * - Smart defaults and suggestions
+ * - Pattern-based predictions
  */
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { createEntry, updateEntry, getEntryByDate, listEntriesByDateRange } from '../../lib/trackerStudio/trackerEntryService';
 import type { Tracker, TrackerEntry, TrackerFieldSchema } from '../../lib/trackerStudio/types';
-import { Loader2, AlertCircle, CheckCircle2, X, Sparkles, Clock, Zap, Flame, TrendingUp, Copy, Bell, AlertTriangle, Lightbulb } from 'lucide-react';
+import { Loader2, AlertCircle, CheckCircle2, X, Sparkles, Clock, Zap, Flame, TrendingUp, Copy, Bell, AlertTriangle, Lightbulb, Plus, Command } from 'lucide-react';
 import { HabitNameSelector } from './HabitNameSelector';
 import { TrackerRelationshipSuggestion } from './TrackerRelationshipSuggestion';
 import type { TrackerTheme } from '../../lib/trackerStudio/trackerThemeUtils';
@@ -16,6 +20,7 @@ import { useHabitPatterns } from '../../hooks/trackerStudio/useHabitPatterns';
 import { useHabitStreaks } from '../../hooks/trackerStudio/useHabitStreaks';
 import { useHabitPredictions } from '../../hooks/trackerStudio/useHabitPredictions';
 import { getYesterdayEntry } from '../../lib/trackerStudio/habitStreakAnalysis';
+import { showToast } from '../Toast';
 
 type IntelligentHabitTrackerEntryFormProps = {
   tracker: Tracker;
@@ -44,6 +49,7 @@ export function IntelligentHabitTrackerEntryForm({
   const [habitNameInput, setHabitNameInput] = useState('');
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [selectedSuggestionIndex, setSelectedSuggestionIndex] = useState(-1);
+  const [savingAnimation, setSavingAnimation] = useState(false);
 
   // Load habit patterns for smart suggestions
   const { patterns, suggestions, loading: patternsLoading } = useHabitPatterns(
@@ -72,7 +78,7 @@ export function IntelligentHabitTrackerEntryForm({
       try {
         setLoadingRecentEntries(true);
         const yesterday = new Date();
-        yesterday.setDate(yesterday.getDate() - 7); // Last 7 days
+        yesterday.setDate(yesterday.getDate() - 7);
         
         const entries = await listEntriesByDateRange({
           tracker_id: tracker.id,
@@ -99,29 +105,23 @@ export function IntelligentHabitTrackerEntryForm({
       setShowNotes(!!existingEntry.notes);
       setHabitNameInput(existingEntry.field_values?.habit_name as string || '');
     } else if (suggestions.defaultHabitName && patterns.size > 0) {
-      // Use smart defaults
       const defaults: Record<string, string | number | boolean | null> = {};
       
-      // Pre-fill habit name from suggestion
       defaults.habit_name = suggestions.defaultHabitName;
       setHabitNameInput(suggestions.defaultHabitName);
 
-      // Pre-fill status if available
       if (suggestions.defaultStatus) {
         defaults.status = suggestions.defaultStatus;
       }
 
-      // Pre-fill numeric value if available
       if (suggestions.defaultValueNumeric !== null) {
         defaults.value_numeric = suggestions.defaultValueNumeric;
       }
 
-      // Pre-fill boolean value if available
       if (suggestions.defaultValueBoolean !== null) {
         defaults.value_boolean = suggestions.defaultValueBoolean;
       }
 
-      // Set other fields to defaults
       for (const field of tracker.field_schema_snapshot) {
         if (!defaults[field.id]) {
           if (field.default !== undefined) {
@@ -136,7 +136,6 @@ export function IntelligentHabitTrackerEntryForm({
       setNotes('');
       setShowNotes(false);
     } else {
-      // Standard defaults
       const defaults: Record<string, string | number | boolean | null> = {};
       for (const field of tracker.field_schema_snapshot) {
         if (field.default !== undefined) {
@@ -152,16 +151,32 @@ export function IntelligentHabitTrackerEntryForm({
     }
   }, [existingEntry, tracker, suggestions, patterns]);
 
-  // Filter suggestions based on input
-  const filteredSuggestions = useMemo(() => {
-    if (!habitNameInput.trim()) {
-      return suggestions.suggestedHabitNames.slice(0, 5);
-    }
-    const inputLower = habitNameInput.toLowerCase();
-    return suggestions.suggestedHabitNames
-      .filter(name => name.toLowerCase().includes(inputLower))
-      .slice(0, 5);
-  }, [habitNameInput, suggestions.suggestedHabitNames]);
+  // Keyboard shortcuts
+  useEffect(() => {
+    if (readOnly || loading) return;
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Cmd/Ctrl + Enter to submit
+      if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+        e.preventDefault();
+        const form = document.querySelector('form');
+        if (form) {
+          form.requestSubmit();
+        }
+      }
+      
+      // Escape to clear form
+      if (e.key === 'Escape' && !existingEntry) {
+        setHabitNameInput('');
+        setFieldValues({});
+        setNotes('');
+        setShowNotes(false);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [readOnly, loading, existingEntry]);
 
   const getDefaultValueForType = (type: string): string | number | boolean | null => {
     switch (type) {
@@ -180,19 +195,18 @@ export function IntelligentHabitTrackerEntryForm({
     }
   };
 
-  const handleHabitNameChange = (value: string) => {
+  const handleHabitNameChange = useCallback((value: string) => {
     setHabitNameInput(value);
     setFieldValues(prev => ({ ...prev, habit_name: value }));
     setShowSuggestions(true);
     setSelectedSuggestionIndex(-1);
-  };
+  }, []);
 
-  const handleSelectSuggestion = (habitName: string) => {
+  const handleSelectSuggestion = useCallback((habitName: string) => {
     setHabitNameInput(habitName);
     setFieldValues(prev => ({ ...prev, habit_name: habitName }));
     setShowSuggestions(false);
 
-    // Load recent entry for this habit to pre-fill other fields
     if (patterns.has(habitName)) {
       const pattern = patterns.get(habitName)!;
       if (pattern.recentEntries.length > 0) {
@@ -210,9 +224,9 @@ export function IntelligentHabitTrackerEntryForm({
         }
       }
     }
-  };
+  }, [patterns]);
 
-  const handleFieldChange = (fieldId: string, value: string | number | boolean | null) => {
+  const handleFieldChange = useCallback((fieldId: string, value: string | number | boolean | null) => {
     setFieldValues(prev => ({ ...prev, [fieldId]: value }));
     if (validationErrors[fieldId]) {
       setValidationErrors(prev => {
@@ -221,13 +235,14 @@ export function IntelligentHabitTrackerEntryForm({
         return next;
       });
     }
-  };
+  }, [validationErrors]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
     try {
       setLoading(true);
+      setSavingAnimation(true);
       setError(null);
       setValidationErrors({});
 
@@ -244,6 +259,8 @@ export function IntelligentHabitTrackerEntryForm({
 
       if (Object.keys(errors).length > 0) {
         setValidationErrors(errors);
+        setSavingAnimation(false);
+        setLoading(false);
         return;
       }
 
@@ -252,6 +269,7 @@ export function IntelligentHabitTrackerEntryForm({
           field_values: fieldValues,
           notes: notes.trim() || undefined,
         });
+        showToast('success', 'Entry updated successfully! ✨');
       } else {
         await createEntry({
           tracker_id: tracker.id,
@@ -259,20 +277,55 @@ export function IntelligentHabitTrackerEntryForm({
           field_values: fieldValues,
           notes: notes.trim() || undefined,
         });
+        showToast('success', 'Habit logged! Keep it up! 🔥');
       }
 
       setSaved(true);
-      setTimeout(() => setSaved(false), 3000);
-      onEntrySaved();
+      setSavingAnimation(false);
+      setTimeout(() => {
+        setSaved(false);
+        onEntrySaved();
+      }, 1500);
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Failed to save entry';
       setError(errorMessage);
+      setSavingAnimation(false);
+      showToast('error', errorMessage);
     } finally {
       setLoading(false);
     }
   };
 
-  // Find status field and other fields
+  const handleQuickFill = useCallback((habitName: string, pattern?: any) => {
+    const defaults: Record<string, string | number | boolean | null> = {
+      habit_name: habitName,
+    };
+    
+    if (pattern) {
+      defaults.status = pattern.mostCommonStatus || 'done';
+      if (pattern.averageValueNumeric !== null) {
+        defaults.value_numeric = pattern.averageValueNumeric;
+      }
+      if (pattern.averageValueBoolean !== null) {
+        defaults.value_boolean = pattern.averageValueBoolean;
+      }
+    } else {
+      defaults.status = 'done';
+    }
+    
+    setFieldValues(defaults);
+    setHabitNameInput(habitName);
+    setNotes('');
+    setShowNotes(false);
+    
+    // Auto-focus status field if it exists
+    setTimeout(() => {
+      const statusField = document.querySelector('[id*="status"]') as HTMLElement;
+      if (statusField) statusField.focus();
+    }, 100);
+  }, []);
+
+  // Find fields
   const habitNameField = tracker.field_schema_snapshot.find(f => f.id === 'habit_name');
   const statusField = tracker.field_schema_snapshot.find(f => f.id === 'status');
   const valueNumericField = tracker.field_schema_snapshot.find(f => f.id === 'value_numeric');
@@ -282,188 +335,145 @@ export function IntelligentHabitTrackerEntryForm({
     f => !['habit_name', 'status', 'value_numeric', 'value_boolean', 'notes'].includes(f.id)
   );
 
+  const isLoadingData = patternsLoading || streaksLoading || predictionsLoading || loadingRecentEntries;
+
   return (
-    <form onSubmit={handleSubmit} className="space-y-6">
+    <form onSubmit={handleSubmit} className="space-y-4 sm:space-y-5">
+      {/* Success Animation */}
       {saved && (
-        <div className="bg-green-50 border-2 border-green-200 rounded-xl p-4 flex items-center gap-3 animate-in fade-in slide-in-from-top-2">
-          <CheckCircle2 className="h-5 w-5 text-green-600 flex-shrink-0" />
-          <p className="text-green-800 font-medium flex-1">Entry saved successfully!</p>
+        <div className="fixed inset-0 z-50 flex items-center justify-center pointer-events-none p-4">
+          <div className="bg-white rounded-2xl shadow-2xl p-6 sm:p-8 flex flex-col items-center gap-3 sm:gap-4 animate-in zoom-in-95 fade-in duration-300 max-w-xs w-full">
+            <div className="relative">
+              <div className="absolute inset-0 bg-green-500 rounded-full animate-ping opacity-75"></div>
+              <CheckCircle2 className="h-12 w-12 sm:h-16 sm:w-16 text-green-500 relative" />
+            </div>
+            <p className="text-lg sm:text-xl font-bold text-gray-900">Saved!</p>
+          </div>
         </div>
       )}
       
+      {/* Error Message - Premium Design */}
       {error && (
-        <div className="bg-red-50 border-2 border-red-200 rounded-xl p-4 flex items-start gap-3 animate-in fade-in slide-in-from-top-2">
-          <AlertCircle className="h-5 w-5 text-red-600 flex-shrink-0 mt-0.5" />
-          <p className="text-red-800 text-sm flex-1 font-medium">{error}</p>
+        <div className="bg-gradient-to-r from-red-50 to-pink-50 border-2 border-red-200 rounded-xl sm:rounded-2xl p-3 sm:p-4 flex items-start gap-2 sm:gap-3 shadow-lg animate-in slide-in-from-top-2 fade-in">
+          <div className="p-1.5 sm:p-2 bg-red-100 rounded-lg flex-shrink-0">
+            <AlertCircle className="h-4 w-4 sm:h-5 sm:w-5 text-red-600" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-sm sm:text-base text-red-900 font-semibold mb-0.5 sm:mb-1">Oops!</p>
+            <p className="text-xs sm:text-sm text-red-800 leading-relaxed">{error}</p>
+          </div>
+          <button
+            type="button"
+            onClick={() => setError(null)}
+            className="text-red-400 hover:text-red-600 transition-colors p-1.5 sm:p-2 rounded-lg hover:bg-red-100 flex-shrink-0 touch-manipulation"
+            aria-label="Dismiss error"
+          >
+            <X size={18} className="w-4 h-4 sm:w-5 sm:h-5" />
+          </button>
         </div>
       )}
 
-      {/* Proactive Predictive Suggestions */}
-      {predictiveSuggestions.length > 0 && !existingEntry && (
-        <div className={`${theme.accentBg} border-2 ${hasHighPriority ? 'border-orange-300' : theme.borderColor} rounded-xl p-4 space-y-3`}>
-          <div className="flex items-center gap-2 mb-2">
-            <Lightbulb className="h-4 w-4 text-blue-600" />
-            <h3 className="text-sm font-semibold text-gray-900">Suggestions for You</h3>
-          </div>
-          
-          {predictiveSuggestions.slice(0, 2).map((suggestion, idx) => (
-            <div
-              key={idx}
-              className={`p-3 rounded-lg border ${
-                suggestion.priority === 'high'
-                  ? 'bg-orange-50 border-orange-200'
-                  : suggestion.priority === 'medium'
-                  ? 'bg-blue-50 border-blue-200'
-                  : 'bg-gray-50 border-gray-200'
-              }`}
-            >
-              <p className="text-sm text-gray-800 mb-2">{suggestion.message}</p>
-              {suggestion.actionLabel && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    // Pre-fill form with this habit
-                    const pattern = patterns.get(suggestion.habitName);
-                    if (pattern) {
-                      const defaults: Record<string, string | number | boolean | null> = {
-                        habit_name: suggestion.habitName,
-                      };
-                      
-                      defaults.status = pattern.mostCommonStatus || 'done';
-                      if (pattern.averageValueNumeric !== null) {
-                        defaults.value_numeric = pattern.averageValueNumeric;
-                      }
-                      if (pattern.averageValueBoolean !== null) {
-                        defaults.value_boolean = pattern.averageValueBoolean;
-                      }
-                      
-                      setFieldValues(defaults);
-                      setHabitNameInput(suggestion.habitName);
-                      setNotes('');
-                      setShowNotes(false);
-                    }
-                  }}
-                  disabled={readOnly || loading}
-                  className={`text-xs font-semibold px-3 py-1.5 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
+      {/* Loading Skeleton for Initial Load */}
+      {isLoadingData && !existingEntry && !habitNameInput && (
+        <div className="space-y-3 sm:space-y-4 animate-pulse">
+          <div className="h-20 sm:h-24 bg-gradient-to-r from-gray-100 to-gray-200 rounded-xl sm:rounded-2xl"></div>
+          <div className="h-14 sm:h-16 bg-gradient-to-r from-gray-100 to-gray-200 rounded-lg sm:rounded-xl"></div>
+          <div className="h-14 sm:h-16 bg-gradient-to-r from-gray-100 to-gray-200 rounded-lg sm:rounded-xl"></div>
+        </div>
+      )}
+
+      {/* Proactive Predictive Suggestions - Premium Card */}
+      {predictiveSuggestions.length > 0 && !existingEntry && !isLoadingData && (
+        <div className={`relative overflow-hidden bg-gradient-to-br ${
+          hasHighPriority 
+            ? 'from-orange-50 via-amber-50 to-yellow-50 border-2 border-orange-300' 
+            : 'from-blue-50 via-indigo-50 to-purple-50 border-2 border-blue-200'
+        } rounded-xl sm:rounded-2xl p-4 sm:p-5 shadow-lg hover:shadow-xl transition-all duration-300`}>
+          <div className="absolute top-0 right-0 w-24 h-24 sm:w-32 sm:h-32 bg-gradient-to-br from-white/20 to-transparent rounded-full -mr-12 sm:-mr-16 -mt-12 sm:-mt-16"></div>
+          <div className="relative">
+            <div className="flex items-center gap-2 mb-3 sm:mb-4">
+              <div className={`p-1.5 sm:p-2 rounded-lg ${hasHighPriority ? 'bg-orange-100' : 'bg-blue-100'}`}>
+                <Lightbulb className={`h-4 w-4 sm:h-5 sm:w-5 ${hasHighPriority ? 'text-orange-600' : 'text-blue-600'}`} />
+              </div>
+              <h3 className="text-sm sm:text-base font-bold text-gray-900">Smart Suggestions</h3>
+            </div>
+            
+            <div className="space-y-2.5 sm:space-y-3">
+              {predictiveSuggestions.slice(0, 2).map((suggestion, idx) => (
+                <div
+                  key={idx}
+                  className={`p-3 sm:p-4 rounded-lg sm:rounded-xl border-2 backdrop-blur-sm transition-all ${
                     suggestion.priority === 'high'
-                      ? 'bg-orange-600 hover:bg-orange-700 text-white'
-                      : 'bg-blue-600 hover:bg-blue-700 text-white'
+                      ? 'bg-white/70 border-orange-200 shadow-md'
+                      : 'bg-white/60 border-blue-200 shadow-sm'
                   }`}
                 >
-                  {suggestion.actionLabel}
-                </button>
-              )}
-            </div>
-          ))}
-        </div>
-      )}
-
-      {/* Pattern Alerts */}
-      {alerts.length > 0 && !existingEntry && (
-        <div className={`${theme.accentBg} border-2 border-amber-300 rounded-xl p-4 space-y-2`}>
-          <div className="flex items-center gap-2 mb-2">
-            <AlertTriangle className="h-4 w-4 text-amber-600" />
-            <h3 className="text-sm font-semibold text-gray-900">Pattern Insights</h3>
-          </div>
-          
-          {alerts.slice(0, 2).map((alert, idx) => (
-            <div key={idx} className="p-3 bg-amber-50 border border-amber-200 rounded-lg">
-              <p className="text-sm text-gray-800 mb-1 font-medium">{alert.message}</p>
-              <p className="text-xs text-gray-600 mb-2">Pattern: {alert.pattern}</p>
-              {alert.suggestion && (
-                <p className="text-xs text-amber-800 italic">💡 {alert.suggestion}</p>
-              )}
-            </div>
-          ))}
-        </div>
-      )}
-
-      {/* Contextual Prompts */}
-      {prompts.length > 0 && !existingEntry && !habitNameInput.trim() && (
-        <div className={`${theme.accentBg} border-2 ${theme.borderColor} rounded-xl p-4`}>
-          <div className="flex items-center gap-2 mb-3">
-            <Bell className="h-4 w-4 text-blue-600" />
-            <h3 className="text-sm font-semibold text-gray-900">Reminders</h3>
-          </div>
-          
-          <div className="space-y-2">
-            {prompts.slice(0, 3).map((prompt, idx) => (
-              <button
-                key={idx}
-                type="button"
-                onClick={() => {
-                  // Pre-fill with this habit
-                  const pattern = patterns.get(prompt.habitName);
-                  if (pattern) {
-                    const defaults: Record<string, string | number | boolean | null> = {
-                      habit_name: prompt.habitName,
-                    };
-                    
-                    defaults.status = pattern.mostCommonStatus || 'done';
-                    if (pattern.averageValueNumeric !== null) {
-                      defaults.value_numeric = pattern.averageValueNumeric;
-                    }
-                    if (pattern.averageValueBoolean !== null) {
-                      defaults.value_boolean = pattern.averageValueBoolean;
-                    }
-                    
-                    setFieldValues(defaults);
-                    setHabitNameInput(prompt.habitName);
-                    setNotes('');
-                    setShowNotes(false);
-                  }
-                }}
-                disabled={readOnly || loading}
-                className="w-full text-left px-4 py-3 bg-gray-50 hover:bg-gray-100 border border-gray-200 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                <p className="text-sm font-medium text-gray-900">{prompt.prompt}</p>
-                {prompt.dayOfWeek && (
-                  <p className="text-xs text-gray-600 mt-1">{prompt.dayOfWeek} • {prompt.timeOfDay}</p>
-                )}
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* Streak Insights */}
-      {insights.length > 0 && !existingEntry && habitNameInput && streaks.has(habitNameInput) && (
-        <div className={`${theme.accentBg} border-2 ${theme.borderColor} rounded-xl p-4`}>
-          {insights
-            .filter(insight => insight.habitName.toLowerCase() === habitNameInput.trim().toLowerCase())
-            .map((insight, idx) => (
-              <div key={idx} className="flex items-start gap-3">
-                {insight.streak.streakType === 'active' && insight.streak.currentStreak > 0 ? (
-                  <Flame className={`h-5 w-5 flex-shrink-0 mt-0.5 ${
-                    insight.streak.currentStreak >= 7 ? 'text-orange-600' : 
-                    insight.streak.currentStreak >= 3 ? 'text-yellow-600' : 'text-blue-600'
-                  }`} />
-                ) : (
-                  <TrendingUp className="h-5 w-5 text-blue-600 flex-shrink-0 mt-0.5" />
-                )}
-                <div className="flex-1">
-                  <p className="text-sm font-medium text-gray-900 mb-1">{insight.message}</p>
-                  {insight.streak.longestStreak > 0 && insight.streak.streakType === 'active' && (
-                    <p className="text-xs text-gray-600">
-                      Longest streak: {insight.streak.longestStreak} days
-                    </p>
+                  <p className="text-xs sm:text-sm text-gray-800 mb-2.5 sm:mb-3 leading-relaxed">{suggestion.message}</p>
+                  {suggestion.actionLabel && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const pattern = patterns.get(suggestion.habitName);
+                        handleQuickFill(suggestion.habitName, pattern);
+                      }}
+                      disabled={readOnly || loading}
+                      className={`group inline-flex items-center justify-center gap-2 px-4 py-2.5 sm:py-2 min-h-[44px] sm:min-h-[36px] rounded-lg font-semibold text-xs sm:text-sm transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed touch-manipulation ${
+                        suggestion.priority === 'high'
+                          ? 'bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white shadow-md hover:shadow-lg active:scale-95'
+                          : 'bg-gradient-to-r from-blue-500 to-indigo-500 hover:from-blue-600 hover:to-indigo-600 text-white shadow-md hover:shadow-lg active:scale-95'
+                      }`}
+                    >
+                      {suggestion.actionLabel}
+                      <Zap size={14} className="w-3.5 h-3.5 sm:w-3.5 sm:h-3.5 group-active:animate-spin" />
+                    </button>
                   )}
                 </div>
-              </div>
-            ))}
+              ))}
+            </div>
+          </div>
         </div>
       )}
 
-      {/* Quick Actions */}
-      {!existingEntry && recentEntries.length > 0 && (
-        <div className={`${theme.accentBg} border-2 ${theme.borderColor} rounded-xl p-4`}>
+      {/* Pattern Alerts - Refined */}
+      {alerts.length > 0 && !existingEntry && !isLoadingData && (
+        <div className="bg-gradient-to-r from-amber-50 to-yellow-50 border-2 border-amber-300 rounded-xl sm:rounded-2xl p-4 sm:p-5 shadow-lg">
           <div className="flex items-center gap-2 mb-3">
-            <Zap className="h-4 w-4 text-blue-600" />
-            <h3 className="text-sm font-semibold text-gray-900">Quick Actions</h3>
+            <div className="p-1.5 sm:p-2 bg-amber-100 rounded-lg">
+              <AlertTriangle className="h-4 w-4 sm:h-5 sm:w-5 text-amber-600" />
+            </div>
+            <h3 className="text-sm sm:text-base font-bold text-gray-900">Pattern Insights</h3>
+          </div>
+          
+          <div className="space-y-2.5 sm:space-y-3">
+            {alerts.slice(0, 2).map((alert, idx) => (
+              <div key={idx} className="p-3 sm:p-4 bg-white/80 backdrop-blur-sm border border-amber-200 rounded-lg sm:rounded-xl">
+                <p className="text-xs sm:text-sm text-gray-900 mb-1 font-semibold leading-relaxed">{alert.message}</p>
+                <p className="text-[10px] sm:text-xs text-gray-600 mb-2">Pattern: {alert.pattern}</p>
+                {alert.suggestion && (
+                  <p className="text-[10px] sm:text-xs text-amber-800 bg-amber-50 px-2.5 sm:px-3 py-1.5 sm:py-2 rounded-lg mt-2 leading-relaxed">
+                    💡 {alert.suggestion}
+                  </p>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Quick Actions - Premium Grid */}
+      {!existingEntry && recentEntries.length > 0 && !isLoadingData && (
+        <div className="bg-gradient-to-br from-gray-50 to-white border-2 border-gray-200 rounded-xl sm:rounded-2xl p-4 sm:p-5 shadow-lg">
+          <div className="flex items-center justify-between mb-3 sm:mb-4">
+            <div className="flex items-center gap-2">
+              <div className="p-1.5 sm:p-2 bg-blue-100 rounded-lg">
+                <Zap className="h-4 w-4 sm:h-5 sm:w-5 text-blue-600" />
+              </div>
+              <h3 className="text-sm sm:text-base font-bold text-gray-900">Quick Actions</h3>
+            </div>
+            <span className="hidden sm:inline text-xs text-gray-500 font-medium">Press ⌘+↩ to save</span>
           </div>
           
           <div className="space-y-2">
-            {/* Same as Yesterday Button */}
             {(() => {
               const currentHabitName = habitNameInput.trim();
               if (!currentHabitName) return null;
@@ -481,13 +491,15 @@ export function IntelligentHabitTrackerEntryForm({
                     setShowNotes(!!yesterdayEntry.notes);
                   }}
                   disabled={readOnly || loading}
-                  className="w-full flex items-center justify-between px-4 py-3 bg-blue-50 hover:bg-blue-100 border-2 border-blue-200 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-left"
+                  className="group w-full flex items-center justify-between px-4 sm:px-5 py-3.5 sm:py-4 min-h-[56px] sm:min-h-[64px] bg-gradient-to-r from-blue-500 to-indigo-500 hover:from-blue-600 hover:to-indigo-600 text-white rounded-lg sm:rounded-xl transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed shadow-md hover:shadow-lg active:scale-[0.98] touch-manipulation"
                 >
-                  <div className="flex items-center gap-3">
-                    <Copy size={18} className="text-blue-600" />
-                    <div>
-                      <p className="text-sm font-medium text-gray-900">Same as yesterday</p>
-                      <p className="text-xs text-gray-600">
+                  <div className="flex items-center gap-2.5 sm:gap-3 min-w-0 flex-1">
+                    <div className="p-1.5 sm:p-2 bg-white/20 rounded-lg group-active:bg-white/30 transition-colors flex-shrink-0">
+                      <Copy size={16} className="w-4 h-4 sm:w-[18px] sm:h-[18px]" />
+                    </div>
+                    <div className="text-left min-w-0 flex-1">
+                      <p className="text-xs sm:text-sm font-bold truncate">Same as yesterday</p>
+                      <p className="text-[10px] sm:text-xs opacity-90 truncate">
                         {yesterdayEntry.field_values?.status || 'Done'}
                         {yesterdayEntry.field_values?.value_numeric && typeof yesterdayEntry.field_values.value_numeric === 'number' && (
                           ` • ${yesterdayEntry.field_values.value_numeric}`
@@ -495,11 +507,11 @@ export function IntelligentHabitTrackerEntryForm({
                       </p>
                     </div>
                   </div>
+                  <div className="hidden sm:block text-xs opacity-75 flex-shrink-0 ml-2">Click to apply</div>
                 </button>
               );
             })()}
 
-            {/* Quick Log Buttons for Common Habits */}
             {suggestions.suggestedHabitNames.slice(0, 3).map((habitName) => {
               const streak = streaks.get(habitName);
               const pattern = patterns.get(habitName);
@@ -508,36 +520,14 @@ export function IntelligentHabitTrackerEntryForm({
                 <button
                   key={habitName}
                   type="button"
-                  onClick={() => {
-                    // Pre-fill from pattern
-                    const defaults: Record<string, string | number | boolean | null> = {
-                      habit_name: habitName,
-                    };
-                    
-                    if (pattern) {
-                      defaults.status = pattern.mostCommonStatus || 'done';
-                      if (pattern.averageValueNumeric !== null) {
-                        defaults.value_numeric = pattern.averageValueNumeric;
-                      }
-                      if (pattern.averageValueBoolean !== null) {
-                        defaults.value_boolean = pattern.averageValueBoolean;
-                      }
-                    } else {
-                      defaults.status = 'done';
-                    }
-                    
-                    setFieldValues(defaults);
-                    setHabitNameInput(habitName);
-                    setNotes('');
-                    setShowNotes(false);
-                  }}
+                  onClick={() => handleQuickFill(habitName, pattern)}
                   disabled={readOnly || loading}
-                  className="w-full flex items-center justify-between px-4 py-2.5 bg-gray-50 hover:bg-gray-100 border border-gray-200 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-left"
+                  className="group w-full flex items-center justify-between px-4 sm:px-5 py-3 min-h-[48px] bg-white hover:bg-gradient-to-r hover:from-gray-50 hover:to-gray-100 border-2 border-gray-200 hover:border-blue-300 rounded-lg sm:rounded-xl transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed shadow-sm hover:shadow-md active:scale-[0.98] touch-manipulation"
                 >
-                  <span className="text-sm font-medium text-gray-900">{habitName}</span>
+                  <span className="text-xs sm:text-sm font-semibold text-gray-900 truncate flex-1 text-left pr-2">{habitName}</span>
                   {streak && streak.streakType === 'active' && streak.currentStreak > 0 && (
-                    <span className="text-xs font-semibold text-orange-600 flex items-center gap-1">
-                      <Flame size={14} />
+                    <span className="flex items-center gap-1.5 px-2 sm:px-2.5 py-1 bg-gradient-to-r from-orange-500 to-red-500 text-white text-[10px] sm:text-xs font-bold rounded-full shadow-sm flex-shrink-0">
+                      <Flame size={10} className="w-2.5 h-2.5 sm:w-3 sm:h-3 animate-pulse" />
                       {streak.currentStreak}
                     </span>
                   )}
@@ -548,86 +538,135 @@ export function IntelligentHabitTrackerEntryForm({
         </div>
       )}
 
-      {/* Smart Suggestions Context */}
-      {suggestions.contextualNote && !existingEntry && (
-        <div className={`${theme.accentBg} border-2 ${theme.borderColor} rounded-xl p-4 flex items-start gap-3`}>
-          <Sparkles className="h-5 w-5 text-blue-600 flex-shrink-0 mt-0.5" />
-          <div className="flex-1">
-            <p className="text-sm text-gray-700 font-medium">{suggestions.contextualNote}</p>
-          </div>
+      {/* Streak Insights - Premium Design */}
+      {insights.length > 0 && !existingEntry && habitNameInput && streaks.has(habitNameInput) && !isLoadingData && (
+        <div className="bg-gradient-to-r from-orange-50 via-amber-50 to-yellow-50 border-2 border-orange-200 rounded-xl sm:rounded-2xl p-4 sm:p-5 shadow-lg">
+          {insights
+            .filter(insight => insight.habitName.toLowerCase() === habitNameInput.trim().toLowerCase())
+            .map((insight, idx) => (
+              <div key={idx} className="flex items-start gap-3 sm:gap-4">
+                <div className={`p-2 sm:p-3 rounded-lg sm:rounded-xl flex-shrink-0 ${
+                  insight.streak.streakType === 'active' && insight.streak.currentStreak > 0
+                    ? insight.streak.currentStreak >= 7 
+                      ? 'bg-gradient-to-br from-orange-400 to-red-500' 
+                      : 'bg-gradient-to-br from-yellow-400 to-orange-500'
+                    : 'bg-gradient-to-br from-blue-400 to-indigo-500'
+                } shadow-lg`}>
+                  {insight.streak.streakType === 'active' && insight.streak.currentStreak > 0 ? (
+                    <Flame className="h-5 w-5 sm:h-6 sm:w-6 text-white" />
+                  ) : (
+                    <TrendingUp className="h-5 w-5 sm:h-6 sm:w-6 text-white" />
+                  )}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm sm:text-base font-bold text-gray-900 mb-1 leading-relaxed">{insight.message}</p>
+                  {insight.streak.longestStreak > 0 && insight.streak.streakType === 'active' && (
+                    <p className="text-xs sm:text-sm text-gray-700">
+                      Best streak: <span className="font-bold text-orange-600">{insight.streak.longestStreak} days</span>
+                    </p>
+                  )}
+                </div>
+              </div>
+            ))}
         </div>
       )}
 
-      {/* Habit Name Field with Tag Selection + Free Type */}
+      {/* Contextual Note */}
+      {suggestions.contextualNote && !existingEntry && !isLoadingData && (
+        <div className={`${theme.accentBg} border-2 ${theme.borderColor} rounded-xl p-3 sm:p-4 flex items-start gap-2 sm:gap-3`}>
+          <Sparkles className="h-4 w-4 sm:h-5 sm:w-5 text-blue-600 flex-shrink-0 mt-0.5" />
+          <p className="text-xs sm:text-sm text-gray-700 font-medium leading-relaxed">{suggestions.contextualNote}</p>
+        </div>
+      )}
+
+      {/* Habit Name Field - Premium */}
       {habitNameField && (
-        <div className={`${theme.accentBg} rounded-xl p-5 border-2 ${validationErrors.habit_name ? 'border-red-300' : theme.borderColor} transition-all hover:shadow-md`}>
+        <div className={`relative ${theme.accentBg} rounded-xl sm:rounded-2xl p-4 sm:p-6 border-2 ${
+          validationErrors.habit_name ? 'border-red-400 shadow-red-200' : theme.borderColor
+        } transition-all duration-200 hover:shadow-lg ${validationErrors.habit_name ? 'shadow-lg' : 'shadow-md'}`}>
           <HabitNameSelector
             value={habitNameInput}
-            onChange={(value) => {
-              setHabitNameInput(value);
-              setFieldValues(prev => ({ ...prev, habit_name: value }));
-              setShowSuggestions(false);
-            }}
+            onChange={handleHabitNameChange}
             disabled={readOnly || loading}
             theme={theme}
             allowFreeType={true}
           />
           {validationErrors.habit_name && (
-            <p className="mt-2 text-sm text-red-600 font-medium flex items-center gap-1">
-              <AlertCircle size={14} />
+            <p className="mt-2 sm:mt-3 text-xs sm:text-sm text-red-600 font-semibold flex items-center gap-1.5 sm:gap-2 animate-in slide-in-from-top-1">
+              <AlertCircle size={14} className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
               {validationErrors.habit_name}
             </p>
           )}
         </div>
       )}
 
-      {/* Tracker Relationship Suggestion - Show when habit has a corresponding detailed tracker */}
+      {/* Tracker Relationship Suggestion */}
       {habitNameInput && !existingEntry && (
         <TrackerRelationshipSuggestion
           habitName={habitNameInput}
-          onSyncToDetailed={(trackerId) => {
-            // Store tracker ID for sync when entry is saved
-            // This will be handled in handleSubmit
-          }}
+          onSyncToDetailed={(trackerId) => {}}
         />
       )}
 
-      {/* Status Field */}
+      {/* Status Field - Premium Pill Design */}
       {statusField && (
-        <FieldInput
-          field={statusField}
-          value={fieldValues.status}
-          onChange={(value) => handleFieldChange('status', value)}
-          error={validationErrors.status}
-          readOnly={readOnly}
-          theme={theme}
-          trackerName={tracker.name}
-        />
+        <div className={`${theme.accentBg} rounded-xl sm:rounded-2xl p-4 sm:p-6 border-2 ${validationErrors.status ? 'border-red-400' : theme.borderColor} shadow-md transition-all hover:shadow-lg`}>
+          <label className="block text-xs sm:text-sm font-bold text-gray-900 mb-3 sm:mb-4">
+            Status {statusField.validation?.required && <span className="text-red-500">*</span>}
+          </label>
+          <div className="flex flex-wrap gap-2 sm:gap-3">
+            {statusField.options?.map(option => {
+              const isSelected = fieldValues.status === option.value;
+              return (
+                <button
+                  key={option.value}
+                  type="button"
+                  onClick={() => !readOnly && handleFieldChange('status', option.value)}
+                  disabled={readOnly || loading}
+                  className={`group relative px-4 sm:px-6 py-2.5 sm:py-3 min-h-[44px] sm:min-h-[40px] rounded-lg sm:rounded-xl font-semibold text-xs sm:text-sm transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed touch-manipulation active:scale-95 ${
+                    isSelected
+                      ? 'bg-gradient-to-r from-blue-500 to-indigo-500 text-white shadow-lg sm:scale-105 ring-2 sm:ring-4 ring-blue-200'
+                      : 'bg-white text-gray-700 border-2 border-gray-300 hover:border-blue-400 hover:bg-blue-50 sm:hover:scale-105 shadow-sm'
+                  }`}
+                >
+                  {option.label}
+                  {isSelected && (
+                    <CheckCircle2 size={14} className="w-3.5 h-3.5 sm:w-4 sm:h-4 inline-block ml-1.5 sm:ml-2" />
+                  )}
+                </button>
+              );
+            })}
+          </div>
+          {validationErrors.status && (
+            <p className="mt-2 sm:mt-3 text-xs sm:text-sm text-red-600 font-semibold flex items-center gap-1.5 sm:gap-2">
+              <AlertCircle size={14} className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+              {validationErrors.status}
+            </p>
+          )}
+        </div>
       )}
 
-      {/* Numeric Value Field */}
+      {/* Numeric Value Field - Premium */}
       {valueNumericField && (
-        <FieldInput
+        <PremiumNumberInput
           field={valueNumericField}
-          value={fieldValues.value_numeric}
+          value={fieldValues.value_numeric as number | null}
           onChange={(value) => handleFieldChange('value_numeric', value)}
           error={validationErrors.value_numeric}
           readOnly={readOnly}
           theme={theme}
-          trackerName={tracker.name}
         />
       )}
 
-      {/* Boolean Value Field */}
+      {/* Boolean Value Field - Premium Toggle */}
       {valueBooleanField && (
-        <FieldInput
+        <PremiumToggleInput
           field={valueBooleanField}
-          value={fieldValues.value_boolean}
+          value={fieldValues.value_boolean as boolean | null}
           onChange={(value) => handleFieldChange('value_boolean', value)}
           error={validationErrors.value_boolean}
           readOnly={readOnly}
           theme={theme}
-          trackerName={tracker.name}
         />
       )}
 
@@ -645,28 +684,30 @@ export function IntelligentHabitTrackerEntryForm({
         />
       ))}
 
-      {/* Notes Field - Collapsible */}
+      {/* Notes Field - Premium Collapsible */}
       <div>
         {!showNotes ? (
           <button
             type="button"
             onClick={() => setShowNotes(true)}
             disabled={readOnly}
-            className={`w-full ${theme.accentBg} border-2 ${theme.borderColor} rounded-xl p-4 text-left transition-all hover:shadow-md ${
+            className={`w-full ${theme.accentBg} border-2 ${theme.borderColor} rounded-xl sm:rounded-2xl p-4 sm:p-5 text-left transition-all duration-200 hover:shadow-lg active:scale-[0.98] min-h-[56px] sm:min-h-[64px] touch-manipulation ${
               readOnly ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'
             }`}
           >
             <div className="flex items-center justify-between">
-              <span className="text-sm font-medium text-gray-700">
-                Add a note <span className="text-gray-500">(optional)</span>
+              <span className="text-xs sm:text-sm font-semibold text-gray-700">
+                Add a note <span className="text-gray-500 font-normal">(optional)</span>
               </span>
-              <X size={18} className="text-gray-400 rotate-45" />
+              <div className="p-1.5 sm:p-2 bg-gray-100 rounded-lg group-active:bg-gray-200 transition-colors flex-shrink-0">
+                <Plus size={16} className="w-4 h-4 sm:w-[18px] sm:h-[18px] text-gray-600" />
+              </div>
             </div>
           </button>
         ) : (
-          <div className={`${theme.accentBg} rounded-xl p-5 border-2 ${theme.borderColor}`}>
-            <div className="flex items-center justify-between mb-3">
-              <label className="text-sm font-semibold text-gray-900">
+          <div className={`${theme.accentBg} rounded-xl sm:rounded-2xl p-4 sm:p-6 border-2 ${theme.borderColor} shadow-md transition-all`}>
+            <div className="flex items-center justify-between mb-3 sm:mb-4">
+              <label className="text-xs sm:text-sm font-bold text-gray-900">
                 Note <span className="text-gray-500 font-normal">(optional)</span>
               </label>
               {!readOnly && (
@@ -676,10 +717,10 @@ export function IntelligentHabitTrackerEntryForm({
                     setShowNotes(false);
                     setNotes('');
                   }}
-                  className="text-gray-400 hover:text-gray-600 transition-colors"
+                  className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors touch-manipulation min-w-[44px] min-h-[44px] flex items-center justify-center"
                   aria-label="Hide notes"
                 >
-                  <X size={18} />
+                  <X size={18} className="w-4 h-4 sm:w-[18px] sm:h-[18px]" />
                 </button>
               )}
             </div>
@@ -688,43 +729,187 @@ export function IntelligentHabitTrackerEntryForm({
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
               disabled={loading || readOnly}
-              rows={3}
-              className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 resize-none text-base bg-white disabled:bg-gray-50"
-              placeholder="Anything you want to add?"
+              rows={4}
+              className="w-full px-4 sm:px-5 py-3 sm:py-4 border-2 border-gray-300 rounded-lg sm:rounded-xl focus:outline-none focus:ring-4 focus:ring-blue-200 focus:border-blue-500 resize-none text-sm sm:text-base bg-white disabled:bg-gray-50 transition-all placeholder:text-gray-400 leading-relaxed"
+              placeholder="Reflections, observations, or anything you'd like to remember..."
             />
           </div>
         )}
       </div>
 
-      {/* Submit Button */}
+      {/* Submit Button - Premium Design */}
       {readOnly ? (
-        <div className={`${theme.accentBg} border-2 ${theme.borderColor} rounded-xl p-6 text-center`}>
-          <p className={`text-sm ${theme.accentText} font-medium`}>You have read-only access to this tracker</p>
+        <div className={`${theme.accentBg} border-2 ${theme.borderColor} rounded-xl sm:rounded-2xl p-4 sm:p-6 text-center`}>
+          <p className={`text-xs sm:text-sm ${theme.accentText} font-semibold`}>You have read-only access to this tracker</p>
         </div>
       ) : (
         <button
           type="submit"
           disabled={loading}
-          className={`w-full px-6 py-4 ${theme.buttonBg} ${theme.buttonHover} text-white rounded-xl hover:shadow-lg active:scale-[0.98] transition-all disabled:opacity-50 disabled:cursor-not-allowed font-semibold focus:outline-none focus:ring-2 focus:ring-offset-2 flex items-center justify-center gap-3 min-h-[52px] text-base shadow-md`}
+          className={`group relative w-full px-6 sm:px-8 py-4 sm:py-5 min-h-[56px] sm:min-h-[60px] bg-gradient-to-r ${
+            loading 
+              ? 'from-gray-400 to-gray-500' 
+              : 'from-blue-500 via-indigo-500 to-purple-500 hover:from-blue-600 hover:via-indigo-600 hover:to-purple-600 active:from-blue-700 active:via-indigo-700 active:to-purple-700'
+          } text-white rounded-xl sm:rounded-2xl font-bold text-sm sm:text-base shadow-xl hover:shadow-2xl transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed overflow-hidden touch-manipulation active:scale-[0.98]`}
         >
-          {loading ? (
-            <>
-              <Loader2 className="h-5 w-5 animate-spin" />
-              <span>Saving...</span>
-            </>
-          ) : (
-            <>
-              <CheckCircle2 size={20} />
-              <span>{existingEntry ? 'Update Entry' : 'Save Entry'}</span>
-            </>
+          {savingAnimation && (
+            <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent animate-pulse"></div>
           )}
+          <div className="relative flex items-center justify-center gap-2 sm:gap-3">
+            {loading ? (
+              <>
+                <Loader2 className="h-5 w-5 sm:h-6 sm:w-6 animate-spin" />
+                <span className="text-sm sm:text-base">Saving...</span>
+              </>
+            ) : (
+              <>
+                <CheckCircle2 size={20} className="w-5 h-5 sm:w-6 sm:h-6 group-active:scale-110 transition-transform" />
+                <span className="text-sm sm:text-base">{existingEntry ? 'Update Entry' : 'Save Entry'}</span>
+                <span className="hidden sm:inline text-xs opacity-75 ml-auto">⌘↩</span>
+              </>
+            )}
+          </div>
         </button>
       )}
     </form>
   );
 }
 
-// Reuse FieldInput from TrackerEntryForm
+// Premium Number Input Component
+function PremiumNumberInput({
+  field,
+  value,
+  onChange,
+  error,
+  readOnly,
+  theme,
+}: {
+  field: TrackerFieldSchema;
+  value: number | null;
+  onChange: (value: number | null) => void;
+  error?: string;
+  readOnly?: boolean;
+  theme: TrackerTheme;
+}) {
+  const isRequired = field.validation?.required;
+
+  return (
+    <div className={`${theme.accentBg} rounded-xl sm:rounded-2xl p-4 sm:p-6 border-2 ${error ? 'border-red-400 shadow-red-200' : theme.borderColor} shadow-md transition-all hover:shadow-lg`}>
+      <label htmlFor={field.id} className="block text-xs sm:text-sm font-bold text-gray-900 mb-3 sm:mb-4">
+        {field.label} {isRequired && <span className="text-red-500">*</span>}
+      </label>
+      <div className="relative">
+        <input
+          id={field.id}
+          type="number"
+          value={value ?? ''}
+          onChange={(e) => onChange(e.target.value ? parseFloat(e.target.value) : null)}
+          disabled={readOnly}
+          min={field.validation?.min}
+          max={field.validation?.max}
+          step="any"
+          className={`w-full px-4 sm:px-5 py-3.5 sm:py-4 border-2 rounded-lg sm:rounded-xl focus:outline-none focus:ring-4 focus:ring-offset-0 text-xl sm:text-2xl font-bold text-center transition-all touch-manipulation ${
+            error 
+              ? 'border-red-400 focus:border-red-500 focus:ring-red-200' 
+              : 'border-gray-300 focus:border-blue-500 focus:ring-blue-200'
+          } ${readOnly ? 'bg-gray-50 cursor-not-allowed' : 'bg-white'} hover:border-gray-400`}
+          placeholder="0"
+          inputMode="numeric"
+        />
+        {!readOnly && (
+          <div className="absolute right-3 sm:right-4 top-1/2 -translate-y-1/2 flex flex-col gap-1.5 sm:gap-1">
+            <button
+              type="button"
+              onClick={() => onChange((value ?? 0) + 1)}
+              className="w-10 h-10 sm:w-8 sm:h-8 flex items-center justify-center bg-gray-100 hover:bg-gray-200 active:bg-gray-300 rounded-lg text-gray-600 font-bold transition-colors touch-manipulation text-base sm:text-sm"
+              aria-label="Increase value"
+            >
+              +
+            </button>
+            <button
+              type="button"
+              onClick={() => onChange(Math.max((value ?? 0) - 1, field.validation?.min ?? 0))}
+              className="w-10 h-10 sm:w-8 sm:h-8 flex items-center justify-center bg-gray-100 hover:bg-gray-200 active:bg-gray-300 rounded-lg text-gray-600 font-bold transition-colors touch-manipulation text-base sm:text-sm"
+              aria-label="Decrease value"
+            >
+              −
+            </button>
+          </div>
+        )}
+      </div>
+      {error && (
+        <p className="mt-2 sm:mt-3 text-xs sm:text-sm text-red-600 font-semibold flex items-center gap-1.5 sm:gap-2">
+          <AlertCircle size={14} className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+          {error}
+        </p>
+      )}
+    </div>
+  );
+}
+
+// Premium Toggle Input Component
+function PremiumToggleInput({
+  field,
+  value,
+  onChange,
+  error,
+  readOnly,
+  theme,
+}: {
+  field: TrackerFieldSchema;
+  value: boolean | null;
+  onChange: (value: boolean) => void;
+  error?: string;
+  readOnly?: boolean;
+  theme: TrackerTheme;
+}) {
+  const isRequired = field.validation?.required;
+  const isChecked = value === true;
+
+  return (
+    <div className={`${theme.accentBg} rounded-xl sm:rounded-2xl p-4 sm:p-6 border-2 ${error ? 'border-red-400' : theme.borderColor} shadow-md transition-all hover:shadow-lg`}>
+      <label className={`flex items-center gap-3 sm:gap-4 cursor-pointer min-h-[44px] ${readOnly ? 'cursor-not-allowed' : ''}`}>
+        <div className="relative flex-shrink-0">
+          <input
+            type="checkbox"
+            checked={isChecked}
+            onChange={(e) => onChange(e.target.checked)}
+            disabled={readOnly}
+            className="sr-only"
+          />
+          <div
+            className={`w-12 h-7 sm:w-14 sm:h-8 rounded-full transition-all duration-300 touch-manipulation ${
+              isChecked
+                ? 'bg-gradient-to-r from-blue-500 to-indigo-500'
+                : 'bg-gray-300'
+            } ${readOnly ? 'opacity-50' : 'cursor-pointer'}`}
+            onClick={() => !readOnly && onChange(!isChecked)}
+          >
+            <div
+              className={`absolute top-0.5 sm:top-1 left-0.5 sm:left-1 w-6 h-6 bg-white rounded-full shadow-lg transition-all duration-300 ${
+                isChecked ? 'translate-x-5 sm:translate-x-6' : 'translate-x-0'
+              }`}
+            />
+          </div>
+        </div>
+        <span className="text-sm sm:text-base font-bold text-gray-900 flex-1">
+          {field.label} {isRequired && <span className="text-red-500">*</span>}
+        </span>
+        {isChecked && (
+          <CheckCircle2 className="h-5 w-5 sm:h-6 sm:w-6 text-blue-500 animate-in zoom-in-95 flex-shrink-0" />
+        )}
+      </label>
+      {error && (
+        <p className="mt-2 sm:mt-3 text-xs sm:text-sm text-red-600 font-semibold flex items-center gap-1.5 sm:gap-2">
+          <AlertCircle size={14} className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+          {error}
+        </p>
+      )}
+    </div>
+  );
+}
+
+// Reuse FieldInput for other fields (keeping simpler design for less common fields)
 type FieldInputProps = {
   field: TrackerFieldSchema;
   value: string | number | boolean | null;
@@ -736,15 +921,12 @@ type FieldInputProps = {
 };
 
 function FieldInput({ field, value, onChange, error, readOnly = false, theme, trackerName = '' }: FieldInputProps) {
-  // Import FieldInput logic from TrackerEntryForm - for now, simplified version
-  // This should match the FieldInput implementation in TrackerEntryForm
   const isRequired = field.validation?.required;
 
-  // Handle text fields with options (like status dropdown)
   if (field.type === 'text' && field.options && field.options.length > 0) {
     return (
-      <div className={`${theme.accentBg} rounded-xl p-5 border-2 ${error ? 'border-red-300' : theme.borderColor} transition-all hover:shadow-md`}>
-        <label htmlFor={field.id} className="block text-sm font-semibold text-gray-900 mb-3">
+      <div className={`${theme.accentBg} rounded-xl sm:rounded-2xl p-4 sm:p-6 border-2 ${error ? 'border-red-400' : theme.borderColor} shadow-md transition-all hover:shadow-lg`}>
+        <label htmlFor={field.id} className="block text-xs sm:text-sm font-bold text-gray-900 mb-3 sm:mb-4">
           {field.label} {isRequired && <span className="text-red-500">*</span>}
         </label>
         <select
@@ -752,9 +934,11 @@ function FieldInput({ field, value, onChange, error, readOnly = false, theme, tr
           value={(value as string) || ''}
           onChange={(e) => onChange(e.target.value)}
           disabled={readOnly}
-          className={`w-full px-4 py-3 border-2 rounded-lg focus:outline-none focus:ring-2 focus:ring-offset-2 text-base font-medium min-h-[52px] transition-all ${
-            error ? 'border-red-300 focus:border-red-500 focus:ring-red-500' : 'border-gray-300 focus:border-blue-500 focus:ring-blue-500'
-          } ${readOnly ? 'bg-gray-50 cursor-not-allowed' : 'bg-white'}`}
+          className={`w-full px-4 sm:px-5 py-3 sm:py-4 min-h-[48px] sm:min-h-[52px] border-2 rounded-lg sm:rounded-xl focus:outline-none focus:ring-4 focus:ring-offset-0 text-sm sm:text-base font-semibold transition-all touch-manipulation ${
+            error 
+              ? 'border-red-400 focus:border-red-500 focus:ring-red-200' 
+              : 'border-gray-300 focus:border-blue-500 focus:ring-blue-200'
+          } ${readOnly ? 'bg-gray-50 cursor-not-allowed' : 'bg-white cursor-pointer'} hover:border-gray-400`}
         >
           <option value="">Select {field.label.toLowerCase()}...</option>
           {field.options.map(option => (
@@ -764,70 +948,8 @@ function FieldInput({ field, value, onChange, error, readOnly = false, theme, tr
           ))}
         </select>
         {error && (
-          <p className="mt-2 text-sm text-red-600 font-medium flex items-center gap-1">
-            <AlertCircle size={14} />
-            {error}
-          </p>
-        )}
-      </div>
-    );
-  }
-
-  // Handle number field
-  if (field.type === 'number') {
-    return (
-      <div className={`${theme.accentBg} rounded-xl p-5 border-2 ${error ? 'border-red-300' : theme.borderColor} transition-all hover:shadow-md`}>
-        <label htmlFor={field.id} className="block text-sm font-semibold text-gray-900 mb-3">
-          {field.label} {isRequired && <span className="text-red-500">*</span>}
-        </label>
-        <input
-          id={field.id}
-          type="number"
-          value={(value as number) ?? ''}
-          onChange={(e) => onChange(e.target.value ? parseFloat(e.target.value) : null)}
-          disabled={readOnly}
-          min={field.validation?.min}
-          max={field.validation?.max}
-          step="any"
-          className={`w-full px-4 py-3 border-2 rounded-lg focus:outline-none focus:ring-2 focus:ring-offset-2 text-lg font-semibold min-h-[52px] transition-all ${
-            error ? 'border-red-300 focus:border-red-500 focus:ring-red-500' : 'border-gray-300 focus:border-blue-500 focus:ring-blue-500'
-          } ${readOnly ? 'bg-gray-50 cursor-not-allowed' : 'bg-white'}`}
-          placeholder={`Enter ${field.label.toLowerCase()}...`}
-        />
-        {error && (
-          <p className="mt-2 text-sm text-red-600 font-medium flex items-center gap-1">
-            <AlertCircle size={14} />
-            {error}
-          </p>
-        )}
-      </div>
-    );
-  }
-
-  // Handle boolean field
-  if (field.type === 'boolean') {
-    return (
-      <div className={`${theme.accentBg} rounded-xl p-5 border-2 ${error ? 'border-red-300' : theme.borderColor} transition-all hover:shadow-md`}>
-        <label className={`flex items-center gap-4 cursor-pointer min-h-[60px] ${readOnly ? 'cursor-not-allowed' : ''}`}>
-          <div className="relative">
-            <input
-              type="checkbox"
-              checked={value === true}
-              onChange={(e) => onChange(e.target.checked)}
-              disabled={readOnly}
-              className={`w-6 h-6 ${theme.buttonBg.replace('bg-', 'text-')} border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-offset-2 disabled:cursor-not-allowed flex-shrink-0 transition-all cursor-pointer`}
-            />
-            {value === true && (
-              <CheckCircle2 className="absolute inset-0 w-6 h-6 text-white pointer-events-none" size={24} />
-            )}
-          </div>
-          <span className="text-base font-semibold text-gray-900 flex-1">
-            {field.label} {isRequired && <span className="text-red-500">*</span>}
-          </span>
-        </label>
-        {error && (
-          <p className="mt-2 text-sm text-red-600 font-medium flex items-center gap-1">
-            <AlertCircle size={14} />
+          <p className="mt-2 sm:mt-3 text-xs sm:text-sm text-red-600 font-semibold flex items-center gap-1.5 sm:gap-2">
+            <AlertCircle size={14} className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
             {error}
           </p>
         )}

@@ -96,6 +96,10 @@ export async function listTemplates(includeArchived: boolean = false): Promise<T
     query = query.is('archived_at', null);
   }
 
+  // Filter out deprecated templates from new template selection
+  // Deprecated templates are hidden from UI but remain accessible for existing trackers
+  query = query.is('deprecated_at', null);
+
   const { data, error } = await query.order('created_at', { ascending: false });
 
   if (error) {

@@ -19,6 +19,7 @@ import {
   CalendarPlus,
   Loader2,
   Share2,
+  ShoppingBag,
 } from 'lucide-react';
 import * as travelService from '../../../lib/travelService';
 import type {
@@ -34,8 +35,12 @@ import { SharingDrawer } from '../../../components/sharing/SharingDrawer';
 import { PermissionIndicator } from '../../../components/sharing/PermissionIndicator';
 import { showToast } from '../../Toast';
 import { ConfirmDialogInline } from '../../ConfirmDialogInline';
+import { EditTripModal } from './EditTripModal';
+import { PackingTab } from './PackingTab';
+import { BudgetTab } from './BudgetTab';
+import { TripLinksPanel } from './TripLinksPanel';
 
-type TabType = 'destinations' | 'accommodations' | 'itinerary' | 'wishlist';
+type TabType = 'destinations' | 'accommodations' | 'itinerary' | 'wishlist' | 'packing' | 'budget';
 
 const ACCOMMODATION_TYPES = [
   { value: 'hotel', label: 'Hotel' },
@@ -101,6 +106,9 @@ export function TripDetailPage() {
   const { isOpen: isSharingOpen, adapter: sharingAdapter, openDrawer: openSharing, closeDrawer: closeSharing } = useSharingDrawer('trip', tripId || null);
   const [canManageTrip, setCanManageTrip] = useState(false);
   const [tripPermissionFlags, setTripPermissionFlags] = useState<any>(null);
+  
+  // Edit Trip Modal
+  const [showEditModal, setShowEditModal] = useState(false);
 
   useEffect(() => {
     if (tripId) {
@@ -282,15 +290,28 @@ export function TripDetailPage() {
                     </span>
                   </div>
                 )}
+                {/* Links Panel */}
+                <div className="mt-4">
+                  <TripLinksPanel tripId={trip.id} canManage={canManageTrip} />
+                </div>
               </div>
               {canManageTrip && (
-                <button
-                  onClick={openSharing}
-                  className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-                >
-                  <Share2 size={16} />
-                  Share
-                </button>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => setShowEditModal(true)}
+                    className="flex items-center gap-2 px-4 py-2 border-2 border-slate-300 text-slate-700 rounded-lg hover:bg-slate-50 transition-colors"
+                  >
+                    <Edit2 size={16} />
+                    Edit
+                  </button>
+                  <button
+                    onClick={openSharing}
+                    className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                  >
+                    <Share2 size={16} />
+                    Share
+                  </button>
+                </div>
               )}
             </div>
             
@@ -301,6 +322,16 @@ export function TripDetailPage() {
                 onClose={closeSharing}
               />
             )}
+
+            {/* Edit Trip Modal */}
+            <EditTripModal
+              isOpen={showEditModal}
+              onClose={() => setShowEditModal(false)}
+              trip={trip}
+              onSaved={() => {
+                loadTripData();
+              }}
+            />
 
             <div className="flex gap-2 mt-6 border-b border-slate-200">
               <button
@@ -353,6 +384,32 @@ export function TripDetailPage() {
                 <div className="flex items-center gap-2">
                   <Heart className="w-5 h-5" />
                   Wish List ({wishlist.length})
+                </div>
+              </button>
+              <button
+                onClick={() => setActiveTab('packing')}
+                className={`px-6 py-3 font-medium transition-all ${
+                  activeTab === 'packing'
+                    ? 'text-blue-600 border-b-2 border-blue-600'
+                    : 'text-slate-600 hover:text-slate-800'
+                }`}
+              >
+                <div className="flex items-center gap-2">
+                  <ShoppingBag className="w-5 h-5" />
+                  Packing
+                </div>
+              </button>
+              <button
+                onClick={() => setActiveTab('budget')}
+                className={`px-6 py-3 font-medium transition-all ${
+                  activeTab === 'budget'
+                    ? 'text-blue-600 border-b-2 border-blue-600'
+                    : 'text-slate-600 hover:text-slate-800'
+                }`}
+              >
+                <div className="flex items-center gap-2">
+                  <DollarSign className="w-5 h-5" />
+                  Budget
                 </div>
               </button>
             </div>
@@ -424,6 +481,24 @@ export function TripDetailPage() {
               }}
               onDelete={handleDeleteWishlistItem}
               onToggleVisited={handleToggleVisited}
+            />
+          )}
+
+          {activeTab === 'packing' && trip && user && (
+            <PackingTab
+              tripId={trip.id}
+              userId={user.id}
+              canManage={canManageTrip}
+            />
+          )}
+
+          {activeTab === 'budget' && trip && user && (
+            <BudgetTab
+              tripId={trip.id}
+              userId={user.id}
+              canManage={canManageTrip}
+              accommodations={accommodations}
+              itinerary={itinerary}
             />
           )}
         </div>

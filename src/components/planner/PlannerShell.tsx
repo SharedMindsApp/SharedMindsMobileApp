@@ -27,6 +27,8 @@ import {
 import { saveLastPlannerView } from '../../lib/contextMemory';
 import { useActiveCalendarContext } from '../../contexts/ActiveCalendarContext';
 import { showToast } from '../Toast';
+import { LIFE_AREAS, shouldShowLifeArea, type LifeArea } from '../../lib/planner/plannerIA';
+import { useAuth } from '../../contexts/AuthContext';
 
 type PlannerShellProps = {
   children: React.ReactNode;
@@ -36,6 +38,7 @@ export function PlannerShell({ children }: PlannerShellProps) {
   const navigate = useNavigate();
   const location = useLocation();
   const { getCustomOverride } = useUIPreferences();
+  const { user } = useAuth();
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [mobileMenuSide, setMobileMenuSide] = useState<'left' | 'right' | null>(null);
@@ -44,6 +47,8 @@ export function PlannerShell({ children }: PlannerShellProps) {
   const [sidecarTab, setSidecarTab] = useState<'analytics' | 'notifications'>('notifications');
   const [windowWidth, setWindowWidth] = useState(0);
   const [quickActionsOpen, setQuickActionsOpen] = useState(false);
+  const [areasMenuOpen, setAreasMenuOpen] = useState(false);
+  const [visibleLifeAreas, setVisibleLifeAreas] = useState<LifeArea[]>([]);
   const [quickViewDrawerOpen, setQuickViewDrawerOpen] = useState(false);
   const [calendarSettingsOpen, setCalendarSettingsOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
@@ -83,6 +88,25 @@ export function PlannerShell({ children }: PlannerShellProps) {
     return () => window.removeEventListener('resize', checkWidth);
   }, []);
 
+  // Load visible life areas (handles episodic areas like Travel)
+  useEffect(() => {
+    const loadVisibleLifeAreas = async () => {
+      const userId = user?.id;
+      const visible: LifeArea[] = [];
+      
+      for (const area of LIFE_AREAS) {
+        const shouldShow = await shouldShowLifeArea(area.id, userId);
+        if (shouldShow) {
+          visible.push(area);
+        }
+      }
+      
+      setVisibleLifeAreas(visible);
+    };
+
+    loadVisibleLifeAreas();
+  }, [user]);
+
   const plannerSettings: PlannerSettingsType = getCustomOverride('planner_settings', DEFAULT_PLANNER_SETTINGS);
   const stylePreset = PLANNER_STYLE_PRESETS[plannerSettings.stylePreset];
   const spacing = plannerSettings.comfort.spacing;
@@ -94,14 +118,25 @@ export function PlannerShell({ children }: PlannerShellProps) {
 
   // Map paths to color keys
   const getTabColor = (path: string): string => {
+    // Extract base path (without query params) for color matching
+    const basePath = path.split('?')[0];
+    
     const colorMap: Record<string, string> = {
+      // Temporal views (primary)
+      '/planner/today': stylePreset.colors.leftTabs.daily,
+      '/planner/week': stylePreset.colors.leftTabs.weekly,
+      '/planner/month': stylePreset.colors.leftTabs.monthly,
+      '/planner/quarter': stylePreset.colors.leftTabs.monthly, // Reuse monthly color
+      '/planner/year': stylePreset.colors.leftTabs.monthly, // Reuse monthly color
       '/planner': stylePreset.colors.leftTabs.index,
-      '/planner/calendar': stylePreset.colors.leftTabs.daily, // Use daily color for calendar
+      // Legacy calendar routes (for backward compat)
+      '/planner/calendar': stylePreset.colors.leftTabs.daily,
       '/planner/calendar?view=day': stylePreset.colors.leftTabs.daily,
       '/planner/calendar?view=week': stylePreset.colors.leftTabs.weekly,
       '/planner/calendar?view=month': stylePreset.colors.leftTabs.monthly,
       '/planner/tasks': stylePreset.colors.leftTabs.tasks,
       '/settings': stylePreset.colors.leftTabs.settings,
+      // Life area filters (deprecated, kept for backward compat)
       '/planner/personal': stylePreset.colors.rightTabs.personal,
       '/planner/work': stylePreset.colors.rightTabs.work,
       '/planner/education': stylePreset.colors.rightTabs.education,
@@ -115,7 +150,7 @@ export function PlannerShell({ children }: PlannerShellProps) {
       '/planner/social': stylePreset.colors.rightTabs.social,
       '/planner/journal': stylePreset.colors.rightTabs.journal,
     };
-    return colorMap[path] || 'bg-gray-500';
+    return colorMap[basePath] || colorMap[path] || 'bg-gray-500';
   };
 
   // Build tab arrays from settings
@@ -149,8 +184,8 @@ export function PlannerShell({ children }: PlannerShellProps) {
     return () => window.removeEventListener('resize', checkMobile);
   }, []);
   const defaultFavourites = isMobile 
-    ? ['/planner/calendar?view=day', '/planner/calendar?view=week', '/planner/calendar?view=month', '/planner']
-    : ['/planner', '/planner/calendar?view=day', '/planner/calendar?view=week', '/planner/calendar?view=month'];
+    ? ['/planner/today', '/planner/week', '/planner/month', '/planner/quarter']
+    : ['/planner/today', '/planner/week', '/planner/month', '/planner/quarter'];
   const favouritesList = plannerSettings.favouriteTabs?.length
     ? plannerSettings.favouriteTabs
     : defaultFavourites;
@@ -160,21 +195,47 @@ export function PlannerShell({ children }: PlannerShellProps) {
     .filter((tab): tab is NonNullable<typeof tab> => tab !== undefined);
 
   const isActive = (path: string) => {
-    if (path === '/planner/tasks' || path.startsWith('/planner/tasks')) {
-      return location.pathname === '/planner/tasks';
+    const basePath = path.split('?')[0];
+    const currentPath = location.pathname;
+    const currentSearch = location.search;
+    
+    // Handle tasks path
+    if (basePath === '/planner/tasks' || path.startsWith('/planner/tasks')) {
+      return currentPath === '/planner/tasks';
     }
-    if (path === '/planner') {
-      return location.pathname === '/planner' || location.pathname === '/planner/index';
-    }
+    
     // Handle settings path - match /settings and any /settings/* routes
-    if (path === '/settings') {
-      return location.pathname === '/settings' || location.pathname.startsWith('/settings/');
+    if (basePath === '/settings') {
+      return currentPath === '/settings' || currentPath.startsWith('/settings/');
     }
-    // Handle calendar paths with query params
+    
+    // Handle temporal views with life area filters (e.g., /planner/today?area=work)
+    if (['/planner/today', '/planner/week', '/planner/month', '/planner/quarter', '/planner/year'].includes(basePath)) {
+      if (path.includes('?')) {
+        const [pathPart, queryPart] = path.split('?');
+        if (currentPath === pathPart) {
+          const areaParam = new URLSearchParams(queryPart).get('area');
+          const currentArea = new URLSearchParams(currentSearch).get('area');
+          // If area param is specified, match both path and area
+          if (areaParam) {
+            return areaParam === currentArea;
+          }
+          // If no area param, match just the path (no area filter)
+          return !currentArea;
+        }
+        return false;
+      }
+      // Exact path match (no query params)
+      return currentPath === basePath && !currentSearch.includes('area=');
+    }
+    
+    // Handle /planner default route
+    if (basePath === '/planner') {
+      return currentPath === '/planner' || currentPath === '/planner/index';
+    }
+    
+    // Handle legacy calendar paths with query params
     if (path.startsWith('/planner/calendar')) {
-      const currentPath = location.pathname;
-      const currentSearch = location.search;
-      
       // If path has query params, match both path and view param
       if (path.includes('?')) {
         const [pathPart, queryPart] = path.split('?');
@@ -188,18 +249,22 @@ export function PlannerShell({ children }: PlannerShellProps) {
       // If path is just /planner/calendar, match any calendar route
       return currentPath === '/planner/calendar';
     }
-    return location.pathname === path;
+    
+    // Default: exact pathname match
+    return currentPath === basePath;
   };
 
 
   // Phase 4A: Remember last planner view when navigating
   useEffect(() => {
-    // Save calendar route (with view param if present)
-    if (location.pathname === '/planner/calendar') {
+    // Save temporal view routes
+    if (['/planner/today', '/planner/week', '/planner/month', '/planner/quarter', '/planner/year'].includes(location.pathname)) {
+      saveLastPlannerView(location.pathname);
+    } else if (location.pathname === '/planner/calendar') {
       const viewParam = new URLSearchParams(location.search).get('view') || 'month';
       saveLastPlannerView(`/planner/calendar?view=${viewParam}`);
     } else if (location.pathname === '/planner') {
-      saveLastPlannerView('/planner');
+      saveLastPlannerView('/planner/today'); // Default to today
     }
   }, [location.pathname, location.search]);
 
@@ -593,7 +658,7 @@ export function PlannerShell({ children }: PlannerShellProps) {
                             <div className="flex items-start gap-2 pb-2 border-b border-gray-100">
                               <div className="w-1.5 h-1.5 rounded-full bg-blue-500 mt-1.5 flex-shrink-0"></div>
                               <div className="flex-1 min-w-0">
-                                <div className="text-gray-900 font-medium">Completed: "Morning Run"</div>
+                                <div className="text-gray-900 font-medium">Planned: "Morning Run"</div>
                                 <div className="text-gray-500 text-[10px] mt-0.5">15 minutes ago</div>
                               </div>
                             </div>
@@ -657,7 +722,7 @@ export function PlannerShell({ children }: PlannerShellProps) {
                           </div>
                           <div className="space-y-3">
                             <div className="flex items-center justify-between">
-                              <span className="text-xs text-gray-600">Goals Completed</span>
+                              <span className="text-xs text-gray-600">Goals Planned</span>
                               <span className="text-sm font-bold text-gray-900">3/5</span>
                             </div>
                             <div className="w-full bg-gray-200 rounded-full h-2">
@@ -768,17 +833,29 @@ export function PlannerShell({ children }: PlannerShellProps) {
               setSettingsOpen(mobileMenuSide !== 'left');
             },
           }}
-          rightAction={{
+          middleAction={{
             label: 'Actions',
             icon: <Zap size={20} />,
             onPress: () => {
-              setMobileMenuSide(mobileMenuSide === 'right' ? null : 'right');
-              setMobileMenuOpen(mobileMenuSide !== 'right');
-              setQuickActionsOpen(mobileMenuSide !== 'right');
+              setQuickActionsOpen(!quickActionsOpen);
+            },
+          }}
+          rightAction={{
+            label: 'Areas',
+            icon: <Layers size={20} />,
+            onPress: () => {
+              setAreasMenuOpen(!areasMenuOpen);
+              // Close other menus when opening Areas
+              if (!areasMenuOpen) {
+                setMobileMenuOpen(false);
+                setMobileMenuSide(null);
+                setQuickActionsOpen(false);
+              }
             },
           }}
           leftActive={mobileMenuSide === 'left'}
-          rightActive={mobileMenuSide === 'right'}
+          middleActive={quickActionsOpen}
+          rightActive={areasMenuOpen}
         />
 
         {/* Mobile Side Drawers */}
@@ -842,8 +919,9 @@ export function PlannerShell({ children }: PlannerShellProps) {
           </div>
         )}
 
-        {mobileMenuOpen && mobileMenuSide === 'right' && (
-          <div className="lg:hidden fixed inset-0 bg-black/50 z-50" onClick={() => setMobileMenuOpen(false)}>
+        {/* Areas Menu Drawer */}
+        {areasMenuOpen && (
+          <div className="lg:hidden fixed inset-0 bg-black/50 z-50" onClick={() => setAreasMenuOpen(false)}>
             <div 
               className="fixed right-0 top-0 bottom-0 w-72 bg-white/95 backdrop-blur-md shadow-2xl overflow-y-auto"
               onClick={(e) => e.stopPropagation()}
@@ -852,7 +930,7 @@ export function PlannerShell({ children }: PlannerShellProps) {
               <div className="p-4 border-b border-gray-200 flex items-center justify-between bg-white/80 backdrop-blur-sm sticky top-0 z-10">
                 <h3 className="font-bold text-gray-900">Life Areas</h3>
                 <button
-                  onClick={() => setMobileMenuOpen(false)}
+                  onClick={() => setAreasMenuOpen(false)}
                   className="p-3 text-gray-600 hover:text-gray-900 active:text-gray-700 rounded-lg hover:bg-gray-100 active:bg-gray-200 min-w-[44px] min-h-[44px] flex items-center justify-center"
                   aria-label="Close menu"
                 >
@@ -860,28 +938,48 @@ export function PlannerShell({ children }: PlannerShellProps) {
                 </button>
               </div>
               <div className="py-2">
-                {rightTabs.map((tab) => (
-                  <button
-                    key={tab.path}
-                    onClick={() => {
-                      navigate(tab.path);
-                      setMobileMenuOpen(false);
-                    }}
-                    className={`
-                      w-full ${getTabColorClass(tab.color)}
-                      ${isActive(tab.path) ? 'opacity-100 ring-2 ring-white/70 shadow-lg' : 'opacity-80 active:opacity-100'}
-                      px-4 py-4 text-left text-white font-bold uppercase
-                      border-b border-white/20
-                      transition-all duration-200
-                      min-h-[44px] flex items-center
-                      ${isActive(tab.path) ? 'pr-6 border-r-4 border-white/80' : 'pr-4'}
-                    `}
-                    aria-label={tab.label}
-                    aria-current={isActive(tab.path) ? 'page' : undefined}
-                  >
-                    {tab.label}
-                  </button>
-                ))}
+                {visibleLifeAreas.map((area) => {
+                  const Icon = area.icon;
+                  // Ensure route is properly formatted: default to /planner/today with area filter
+                  const areaRoute = area.route || `/planner/today?area=${area.id}`;
+                  const areaColor = area.color || 'bg-gray-500';
+                  const isAreaActive = isActive(areaRoute) || (location.search.includes(`area=${area.id}`) && location.pathname.startsWith('/planner/'));
+                  
+                  const handleAreaClick = (e: React.MouseEvent) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    
+                    // Use explicit navigation to ensure query params are handled correctly
+                    const [pathname, search] = areaRoute.split('?');
+                    const targetPath = search ? `${pathname}?${search}` : pathname;
+                    
+                    // Navigate to the route
+                    navigate(targetPath);
+                    setAreasMenuOpen(false);
+                  };
+                  
+                  return (
+                    <button
+                      key={area.id}
+                      onClick={handleAreaClick}
+                      type="button"
+                      className={`
+                        w-full ${areaColor}
+                        ${isAreaActive ? 'opacity-100 ring-2 ring-white/70 shadow-lg' : 'opacity-80 active:opacity-100'}
+                        px-4 py-4 text-left text-white font-bold uppercase
+                        border-b border-white/20
+                        transition-all duration-200
+                        min-h-[44px] flex items-center gap-2
+                        ${isAreaActive ? 'pr-6 border-r-4 border-white/80' : 'pr-4'}
+                      `}
+                      aria-label={area.label}
+                      aria-current={isAreaActive ? 'page' : undefined}
+                    >
+                      {Icon && <Icon size={18} className="flex-shrink-0" />}
+                      {area.label}
+                    </button>
+                  );
+                })}
               </div>
             </div>
           </div>
