@@ -309,6 +309,7 @@ export async function createWidget(
     agreement: 'Agreement',
     meal_planner: 'Meal Planner',
     grocery_list: 'Grocery List',
+    pantry: 'Pantry',
     stack_card: 'Stack Cards',
     files: 'Files',
     collections: 'Collections',
@@ -487,6 +488,9 @@ export function getDefaultWidgetContent(type: WidgetType): WidgetContent {
       return { weekPlan: {} };
     case "grocery_list":
       return { items: [] };
+    case "pantry":
+      // Pantry has no content needed - uses intelligentGrocery service
+      return {};
     case "stack_card":
       return { stackId: '', title: '', cardCount: 0, colorScheme: 'cyan' } as StackCardContent;
     case "files":

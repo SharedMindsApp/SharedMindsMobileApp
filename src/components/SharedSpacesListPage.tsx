@@ -110,6 +110,16 @@ export function SharedSpacesListPage() {
                           <Users size={16} />
                           Shared Spaces
                         </button>
+                        <button
+                          onClick={() => {
+                            setShowSpacesMenu(false);
+                            navigate('/guardrails');
+                          }}
+                          className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2"
+                        >
+                          <Target size={16} />
+                          Teams
+                        </button>
                       </div>
                     </>
                   )}

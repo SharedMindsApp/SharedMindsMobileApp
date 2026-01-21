@@ -44,6 +44,11 @@ export function MobileCalendarApp({ householdId, widgetId, onClose }: MobileAppP
             setSelectedEvent(undefined);
             setEventModalOpen(true);
           },
+          onEventCreate: (date) => {
+            setNewEventDate(date);
+            setSelectedEvent(undefined);
+            setEventModalOpen(true);
+          },
         }}
         className="h-full"
       />

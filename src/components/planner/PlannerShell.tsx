@@ -860,7 +860,7 @@ export function PlannerShell({ children }: PlannerShellProps) {
 
         {/* Mobile Side Drawers */}
         {mobileMenuOpen && mobileMenuSide === 'left' && (
-          <div className="lg:hidden fixed inset-0 bg-black/50 z-50" onClick={() => setMobileMenuOpen(false)}>
+          <div className="lg:hidden fixed inset-0 bg-black/50" style={{ zIndex: 400 }} onClick={() => setMobileMenuOpen(false)}>
             <div 
               className="fixed left-0 top-0 bottom-0 w-72 bg-white/95 backdrop-blur-md shadow-2xl overflow-y-auto"
               onClick={(e) => e.stopPropagation()}
@@ -921,7 +921,7 @@ export function PlannerShell({ children }: PlannerShellProps) {
 
         {/* Areas Menu Drawer */}
         {areasMenuOpen && (
-          <div className="lg:hidden fixed inset-0 bg-black/50 z-50" onClick={() => setAreasMenuOpen(false)}>
+          <div className="lg:hidden fixed inset-0 bg-black/50" style={{ zIndex: 400 }} onClick={() => setAreasMenuOpen(false)}>
             <div 
               className="fixed right-0 top-0 bottom-0 w-72 bg-white/95 backdrop-blur-md shadow-2xl overflow-y-auto"
               onClick={(e) => e.stopPropagation()}

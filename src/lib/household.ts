@@ -295,7 +295,7 @@ export async function getPersonalSpace(): Promise<Household | null> {
     .select('space_id, spaces!inner(*)')
     .eq('user_id', profile.id)
     .eq('status', 'active')
-    .eq('spaces.space_type', 'personal')
+    .eq('spaces.context_type', 'personal')
     .limit(1)
     .maybeSingle();
 

@@ -265,6 +265,8 @@ export function Layout({ children }: LayoutProps) {
                   <HomeIcon size={16} className="text-amber-600" />
                   Household Hub
                 </button>
+                {/* Note: This menu should ideally use SharedSpaceSwitcher for consistency
+                    but keeping simple navigation for now */}
                 <button
                   onClick={() => {
                     setShowSpacesMenu(false);
@@ -292,6 +294,20 @@ export function Layout({ children }: LayoutProps) {
                 >
                   <Users size={16} />
                   Shared Spaces
+                </button>
+                <button
+                  onClick={() => {
+                    setShowSpacesMenu(false);
+                    navigate('/guardrails');
+                  }}
+                  className={`w-full text-left px-4 py-2 text-sm flex items-center gap-2 transition-colors ${
+                    config.appTheme === 'dark' || config.appTheme === 'neon-dark'
+                      ? 'text-gray-200 hover:bg-gray-700'
+                      : 'text-gray-700 hover:bg-gray-50'
+                  }`}
+                >
+                  <Target size={16} />
+                  Teams
                 </button>
               </div>
             </>

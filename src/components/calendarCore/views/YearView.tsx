@@ -62,7 +62,7 @@ export function YearView({
   };
 
   return (
-    <div className="flex-1 overflow-y-auto overscroll-contain p-3 md:p-4 lg:p-6">
+    <div className="h-full w-full overflow-y-auto overscroll-contain p-3 md:p-4 lg:p-6 pb-[100px] md:pb-6 min-h-0">
       <div className="max-w-7xl mx-auto">
         {/* Year Grid - 3 columns on desktop, 2 on mobile */}
         <div className="grid grid-cols-2 md:grid-cols-3 gap-4 md:gap-6">

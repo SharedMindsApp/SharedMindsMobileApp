@@ -1,4 +1,5 @@
 import { supabase } from './supabase';
+import { getOrCreateFoodItem, getFoodItemName, getFoodItemNames, type FoodItem } from './foodItems';
 
 export interface GroceryTemplate {
   id: string;
@@ -15,7 +16,8 @@ export interface GroceryItem {
   id: string;
   household_id: string;
   shopping_list_id: string | null;
-  item_name: string;
+  food_item_id: string; // References food_items table
+  item_name?: string; // Deprecated - kept for backward compatibility, use food_item.name
   quantity: string | null;
   unit: string | null;
   category: string;
@@ -33,6 +35,8 @@ export interface GroceryItem {
   sort_order: number;
   created_at: string;
   updated_at: string;
+  // Joined from food_items
+  food_item?: FoodItem;
 }
 
 export interface ShoppingList {
@@ -50,16 +54,20 @@ export interface ShoppingList {
 export interface PantryItem {
   id: string;
   household_id: string;
-  item_name: string;
+  food_item_id: string; // References food_items table
+  item_name?: string; // Deprecated - kept for backward compatibility, use food_item.name
   category: string;
   quantity: string | null;
   unit: string | null;
   expiration_date: string | null;
-  location: string | null;
+  location: string | null; // 'fridge' | 'freezer' | 'cupboard'
+  status?: 'have' | 'low' | 'out'; // Optional status
   notes: string | null;
   added_by: string | null;
   created_at: string;
   updated_at: string;
+  // Joined from food_items
+  food_item?: FoodItem;
 }
 
 export interface SmartSuggestion {
@@ -112,7 +120,10 @@ export async function getOrCreateDefaultList(householdId: string, memberId?: str
 export async function getGroceryItems(householdId: string, listId?: string): Promise<GroceryItem[]> {
   let query = supabase
     .from('household_grocery_list_items')
-    .select('*')
+    .select(`
+      *,
+      food_item:food_items(*)
+    `)
     .eq('household_id', householdId)
     .order('checked', { ascending: true })
     .order('sort_order', { ascending: true })
@@ -124,7 +135,15 @@ export async function getGroceryItems(householdId: string, listId?: string): Pro
 
   const { data, error } = await query;
   if (error) throw error;
-  return data || [];
+  
+  // Map results to include food_item and ensure item_name is available for backward compatibility
+  const items = (data || []).map((item: any) => ({
+    ...item,
+    food_item: item.food_item || null,
+    item_name: item.food_item?.name || item.item_name || 'Unknown Item',
+  }));
+  
+  return items;
 }
 
 export async function autoCategorizeItem(itemName: string): Promise<string> {
@@ -169,7 +188,8 @@ export async function getSmartSuggestions(householdId: string, limit: number = 1
 export async function addGroceryItem(params: {
   householdId: string;
   listId?: string;
-  itemName: string;
+  itemName?: string; // Deprecated - use foodItemId instead
+  foodItemId?: string; // Preferred - use this
   quantity?: string;
   unit?: string;
   category?: string;
@@ -181,11 +201,32 @@ export async function addGroceryItem(params: {
   memberId?: string;
   memberName?: string;
 }): Promise<GroceryItem> {
-  let category = params.category;
+  // Get or create food item
+  let foodItemId: string;
+  if (params.foodItemId) {
+    foodItemId = params.foodItemId;
+  } else if (params.itemName) {
+    // Backward compatibility - create food item from name
+    const foodItem = await getOrCreateFoodItem(params.itemName, params.category);
+    foodItemId = foodItem.id;
+  } else {
+    throw new Error('Either foodItemId or itemName must be provided');
+  }
+
+  // Get food item to determine category if not provided
+  const foodItem = await supabase
+    .from('food_items')
+    .select('category')
+    .eq('id', foodItemId)
+    .single();
+
+  let category = params.category || foodItem.data?.category;
   let autoCategorized = false;
 
   if (!category) {
-    category = await autoCategorizeItem(params.itemName);
+    // Fallback to auto-categorization if needed
+    const foodItemName = await getFoodItemName(foodItemId);
+    category = await autoCategorizeItem(foodItemName);
     autoCategorized = true;
   }
 
@@ -194,7 +235,8 @@ export async function addGroceryItem(params: {
     .insert({
       household_id: params.householdId,
       shopping_list_id: params.listId || null,
-      item_name: params.itemName,
+      food_item_id: foodItemId,
+      item_name: null, // No longer storing item_name directly
       quantity: params.quantity || null,
       unit: params.unit || null,
       category: category,
@@ -208,17 +250,33 @@ export async function addGroceryItem(params: {
       added_by_name: params.memberName || null,
       checked: false,
     })
-    .select()
+    .select(`
+      *,
+      food_item:food_items(*)
+    `)
     .single();
 
   if (error) throw error;
-  return data;
+  
+  // Ensure item_name is available for backward compatibility
+  return {
+    ...data,
+    food_item: data.food_item || null,
+    item_name: data.food_item?.name || 'Unknown Item',
+  };
 }
 
 export async function updateGroceryItem(itemId: string, updates: Partial<GroceryItem>): Promise<void> {
+  // If updating food_item_id, ensure we don't also update item_name
+  const cleanUpdates = { ...updates };
+  if (cleanUpdates.food_item_id) {
+    // Don't update item_name when food_item_id is being set
+    delete (cleanUpdates as any).item_name;
+  }
+
   const { error } = await supabase
     .from('household_grocery_list_items')
-    .update(updates)
+    .update(cleanUpdates)
     .eq('id', itemId);
 
   if (error) throw error;
@@ -262,19 +320,37 @@ export async function clearCheckedItems(householdId: string, listId?: string): P
 
 export async function recordPurchase(params: {
   householdId: string;
-  itemName: string;
-  category: string;
+  foodItemId: string; // Use food_item_id instead of itemName
+  itemName?: string; // Deprecated - kept for backward compatibility
+  category?: string;
   quantity?: string;
   price?: number;
   storeName?: string;
   memberId?: string;
 }): Promise<void> {
+  // Get food item name if not provided
+  let itemName = params.itemName;
+  if (!itemName && params.foodItemId) {
+    itemName = await getFoodItemName(params.foodItemId);
+  }
+
+  // Get category from food item if not provided
+  let category = params.category;
+  if (!category && params.foodItemId) {
+    const foodItem = await supabase
+      .from('food_items')
+      .select('category')
+      .eq('id', params.foodItemId)
+      .single();
+    category = foodItem.data?.category || 'other';
+  }
+
   const { error } = await supabase
     .from('household_grocery_purchase_history')
     .insert({
       household_id: params.householdId,
-      item_name: params.itemName,
-      category: params.category,
+      item_name: itemName || 'Unknown Item', // Keep for backward compatibility
+      category: category || 'other',
       quantity: params.quantity || null,
       price: params.price || null,
       store_name: params.storeName || null,
@@ -294,7 +370,8 @@ export async function completeShoppingTrip(
   for (const item of checkedItems) {
     await recordPurchase({
       householdId,
-      itemName: item.item_name,
+      foodItemId: item.food_item_id,
+      itemName: item.item_name || item.food_item?.name, // Backward compatibility
       category: item.category,
       quantity: item.quantity || undefined,
       price: item.estimated_price || undefined,
@@ -307,44 +384,89 @@ export async function completeShoppingTrip(
 export async function getPantryItems(householdId: string): Promise<PantryItem[]> {
   const { data, error } = await supabase
     .from('household_pantry_items')
-    .select('*')
+    .select(`
+      *,
+      food_item:food_items(*)
+    `)
     .eq('household_id', householdId)
     .order('expiration_date', { ascending: true, nullsFirst: false })
-    .order('item_name', { ascending: true });
+    .order('food_item_id', { ascending: true });
 
   if (error) throw error;
-  return data || [];
+  
+  // Map results to include food_item and ensure item_name is available for backward compatibility
+  const items = (data || []).map((item: any) => ({
+    ...item,
+    food_item: item.food_item || null,
+    item_name: item.food_item?.name || item.item_name || 'Unknown Item',
+  }));
+  
+  return items;
 }
 
 export async function addPantryItem(params: {
   householdId: string;
-  itemName: string;
-  category: string;
+  foodItemId?: string; // Preferred - use this
+  itemName?: string; // Deprecated - kept for backward compatibility
+  category?: string;
   quantity?: string;
   unit?: string;
   expirationDate?: string;
-  location?: string;
+  location?: 'fridge' | 'freezer' | 'cupboard' | string;
+  status?: 'have' | 'low' | 'out';
   notes?: string;
   memberId?: string;
 }): Promise<PantryItem> {
+  // Get or create food item
+  let foodItemId: string;
+  if (params.foodItemId) {
+    foodItemId = params.foodItemId;
+  } else if (params.itemName) {
+    // Backward compatibility - create food item from name
+    const foodItem = await getOrCreateFoodItem(params.itemName, params.category);
+    foodItemId = foodItem.id;
+  } else {
+    throw new Error('Either foodItemId or itemName must be provided');
+  }
+
+  // Get food item to determine category if not provided
+  const foodItem = await supabase
+    .from('food_items')
+    .select('category')
+    .eq('id', foodItemId)
+    .single();
+
+  const category = params.category || foodItem.data?.category || 'other';
+
   const { data, error } = await supabase
     .from('household_pantry_items')
     .insert({
       household_id: params.householdId,
-      item_name: params.itemName,
-      category: params.category,
+      food_item_id: foodItemId,
+      item_name: null, // No longer storing item_name directly
+      category: category,
       quantity: params.quantity || null,
       unit: params.unit || null,
       expiration_date: params.expirationDate || null,
       location: params.location || null,
+      status: params.status || null,
       notes: params.notes || null,
       added_by: params.memberId || null,
     })
-    .select()
+    .select(`
+      *,
+      food_item:food_items(*)
+    `)
     .single();
 
   if (error) throw error;
-  return data;
+  
+  // Ensure item_name is available for backward compatibility
+  return {
+    ...data,
+    food_item: data.food_item || null,
+    item_name: data.food_item?.name || 'Unknown Item',
+  };
 }
 
 export async function updatePantryItem(itemId: string, updates: Partial<PantryItem>): Promise<void> {
@@ -368,7 +490,7 @@ export async function deletePantryItem(itemId: string): Promise<void> {
 export async function moveToPantry(groceryItem: GroceryItem, householdId: string, memberId?: string): Promise<void> {
   await addPantryItem({
     householdId,
-    itemName: groceryItem.item_name,
+    foodItemId: groceryItem.food_item_id,
     category: groceryItem.category,
     quantity: groceryItem.quantity || undefined,
     memberId,
@@ -384,10 +506,13 @@ export async function addFromTemplate(
   memberId?: string,
   memberName?: string
 ): Promise<GroceryItem> {
+  // Get or create food item from template
+  const foodItem = await getOrCreateFoodItem(template.item_name, template.category);
+  
   return addGroceryItem({
     householdId,
     listId,
-    itemName: template.item_name,
+    foodItemId: foodItem.id,
     quantity: template.typical_quantity || undefined,
     category: template.category,
     source: 'template',
@@ -404,10 +529,13 @@ export async function bulkAddFromSuggestions(
   memberName?: string
 ): Promise<void> {
   for (const suggestion of suggestions) {
+    // Get or create food item from suggestion
+    const foodItem = await getOrCreateFoodItem(suggestion.item_name, suggestion.category);
+    
     await addGroceryItem({
       householdId,
       listId,
-      itemName: suggestion.item_name,
+      foodItemId: foodItem.id,
       quantity: suggestion.typical_quantity || undefined,
       category: suggestion.category,
       source: 'suggestion',

@@ -280,7 +280,7 @@ export function TaskSelector({
           isOpen={isOpen}
           onClose={() => setIsOpen(false)}
           header={renderMobileHeader()}
-          maxHeight="85vh"
+          maxHeight="95vh"
           showCloseButton={false}
           closeOnBackdrop={true}
         >

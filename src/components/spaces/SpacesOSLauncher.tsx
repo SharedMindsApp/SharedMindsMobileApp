@@ -12,11 +12,11 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, useLocation, useSearchParams } from 'react-router-dom';
-import { ArrowLeft, Plus, X, GripVertical, LayoutGrid, Grid3x3, ChevronLeft, ChevronRight } from 'lucide-react';
+import { ArrowLeft, Plus, X, GripVertical, LayoutGrid, Grid3x3, ChevronLeft, ChevronRight, Trash2, Check } from 'lucide-react';
 import * as Icons from 'lucide-react';
 import { WidgetWithLayout } from '../../lib/fridgeCanvasTypes';
 import { showToast } from '../Toast';
-import { updateWidgetLayout } from '../../lib/fridgeCanvas';
+import { updateWidgetLayout, deleteWidget } from '../../lib/fridgeCanvas';
 import { MobileAddWidgetModal } from './MobileAddWidgetModal';
 import { MobileNavigationPanel } from './MobileNavigationPanel';
 import { NotificationBell } from '../notifications/NotificationBell';
@@ -24,6 +24,7 @@ import { executeWithRollback, checkStateConsistency, createStateSnapshot } from 
 import { SharedSpaceSwitcher } from '../shared/SharedSpaceSwitcher';
 import { SharedSpacesManagementPanel } from '../shared/SharedSpacesManagementPanel';
 import { CreateSpaceModal } from '../shared/CreateSpaceModal';
+import { useActiveData } from '../../contexts/ActiveDataContext';
 
 interface SpacesOSLauncherProps {
   widgets: WidgetWithLayout[];
@@ -52,12 +53,14 @@ const WIDGET_ICON_MAP: Record<string, keyof typeof Icons> = {
   agreement: 'FileCheck',
   meal_planner: 'UtensilsCrossed',
   grocery_list: 'ShoppingCart',
+  pantry: 'Package',
   todos: 'CheckSquare',
   stack_card: 'Layers',
   files: 'FileText',
   collections: 'Folder',
   tables: 'Table',
   graphics: 'ImagePlus',
+  workspace: 'Layers', // Layered Desk Canvas
   custom: 'Square',
 };
 
@@ -76,12 +79,14 @@ const WIDGET_COLOR_MAP: Record<string, string> = {
   agreement: 'bg-blue-500',
   meal_planner: 'bg-orange-500',
   grocery_list: 'bg-teal-500',
+  pantry: 'bg-stone-500',
   todos: 'bg-green-500',
   stack_card: 'bg-sky-500',
   files: 'bg-slate-500',
   collections: 'bg-indigo-500',
   tables: 'bg-purple-500',
   graphics: 'bg-fuchsia-500',
+  workspace: 'bg-stone-500', // Neutral stone tone for desk canvas
   custom: 'bg-gray-500',
 };
 
@@ -89,11 +94,23 @@ export function SpacesOSLauncher({ widgets, householdId, householdName, onWidget
   const navigate = useNavigate();
   const location = useLocation();
   const [searchParams, setSearchParams] = useSearchParams();
-  const [isEditMode, setIsEditMode] = useState(false);
-  const [longPressTimer, setLongPressTimer] = useState<NodeJS.Timeout | null>(null);
-  const [draggedWidget, setDraggedWidget] = useState<string | null>(null);
+  const { state: adcState } = useActiveData();
+  
+  // Explicit launcher modes - single source of truth
+  type LauncherMode = 'normal' | 'editing' | 'dragging';
+  const [launcherMode, setLauncherMode] = useState<LauncherMode>('normal');
+  const [selectedWidgets, setSelectedWidgets] = useState<Set<string>>(new Set());
+  
+  // Long-press state (only for entering edit mode)
+  const longPressTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const longPressStartRef = useRef<{ widgetId: string; startX: number; startY: number } | null>(null);
+  
+  // Drag state (only active in editing mode)
+  const [draggedWidgetId, setDraggedWidgetId] = useState<string | null>(null);
   const [draggedOverIndex, setDraggedOverIndex] = useState<number | null>(null);
   const [dragPosition, setDragPosition] = useState<{ x: number; y: number } | null>(null);
+  
+  // Animation state (visual only, not used in logic)
   const [isAnimating, setIsAnimating] = useState(false);
   const [currentPage, setCurrentPage] = useState(0);
   const [isSaving, setIsSaving] = useState(false);
@@ -256,222 +273,296 @@ export function SpacesOSLauncher({ widgets, householdId, householdName, onWidget
 
   // Phase 9A: Handle app icon tap - navigate to full-screen app view with smooth animation
   const handleAppTap = (widget: WidgetWithLayout, event?: React.MouseEvent | React.TouchEvent) => {
-    if (isEditMode) {
-      // In edit mode, tap does nothing (or could show widget options)
+    // Only allow navigation in normal mode
+    if (launcherMode !== 'normal') {
       return;
     }
 
     // Store tapped widget position for smooth transition
     if (event) {
       const target = event.currentTarget as HTMLElement;
-      const rect = target.getBoundingClientRect();
-      setTappedWidget({ widget, rect });
-      setIsTransitioning(true);
-      
-      // Small delay for visual feedback before navigation
-      setTimeout(() => {
-        navigate(`/spaces/${householdId}/app/${widget.id}`, { replace: false });
-        // Reset after navigation starts
-        setTimeout(() => {
-          setTappedWidget(null);
-          setIsTransitioning(false);
-        }, 300);
-      }, 100);
-    } else {
-      // Fallback if no event (direct call)
-      navigate(`/spaces/${householdId}/app/${widget.id}`, { replace: false });
-    }
-  };
-
-  // Phase 9A: Handle long-press to enter edit mode or start drag
-  const handleTouchStart = (e: React.TouchEvent, widget: WidgetWithLayout, index: number) => {
-    const touch = e.touches[0];
-    
-    touchStartRef.current = {
-      widgetId: widget.id,
-      startTime: Date.now(),
-      startX: touch.clientX,
-      startY: touch.clientY,
-    };
-
-    if (isEditMode) {
-      // In edit mode, start dragging immediately
-      setDraggedWidget(widget.id);
-      setDragPosition({ x: touch.clientX, y: touch.clientY });
-      setIsAnimating(true);
-      // Prevent default to avoid scrolling while dragging
-      e.preventDefault();
-    } else {
-      // Not in edit mode, start long-press timer to enable drag mode
-      const timer = setTimeout(() => {
-        setIsEditMode(true);
-        setDraggedWidget(widget.id);
-        setDragPosition({ x: touch.clientX, y: touch.clientY });
-        setIsAnimating(true);
-        showToast('info', 'Edit mode enabled. Drag apps to reorder.');
-      }, 300); // 300ms for long-press (reduced from 500ms for better responsiveness)
-
-      setLongPressTimer(timer);
-    }
-  };
-
-  const handleTouchMove = (e: React.TouchEvent) => {
-    const touch = e.touches[0];
-    
-    if (!touchStartRef.current) return;
-
-    // Check movement distance
-    const deltaX = Math.abs(touch.clientX - touchStartRef.current.startX);
-    const deltaY = Math.abs(touch.clientY - touchStartRef.current.startY);
-    const totalMovement = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
-
-    // If user has moved significantly and we're in edit mode or have a dragged widget, handle drag
-    if ((isEditMode || draggedWidget) && draggedWidget && touchStartRef.current) {
-      // Prevent default scrolling while dragging
-      e.preventDefault();
-      
-      // Handle drag in edit mode
-      if (containerRef.current) {
-        const containerRect = containerRef.current.getBoundingClientRect();
-        const relativeX = touch.clientX - containerRect.left;
-        const relativeY = touch.clientY - containerRect.top;
-        
-        // Update drag position for smooth following (relative to viewport)
-        setDragPosition({ x: touch.clientX, y: touch.clientY });
-        
-        // Calculate which grid position we're over (accounting for current page) - using dynamic dimensions
-        const gridX = Math.floor(relativeX / cellWidth);
-        const gridY = Math.floor(relativeY / cellHeight);
-        
-        if (gridX >= 0 && gridX < gridCols && gridY >= 0 && gridY < GRID_ROWS) {
-          const widgetsPerPage = gridCols * GRID_ROWS;
-          const targetIndex = gridY * gridCols + gridX + (currentPage * widgetsPerPage);
-          if (targetIndex >= 0 && targetIndex < orderedWidgets.length) {
-            if (targetIndex !== draggedOverIndex) {
-              setIsAnimating(true);
-              setDraggedOverIndex(targetIndex);
-              // Reset animation flag after transition
-              setTimeout(() => setIsAnimating(false), 250);
-            }
-          }
-        }
-      }
-    } else if (!isEditMode && !draggedWidget && touchStartRef.current) {
-      // If user moves finger significantly (more than 10px), check if we should start drag mode
-      if (totalMovement > 10) {
-        // If user has held for at least 200ms and moved, enable drag mode immediately
-        const holdTime = Date.now() - touchStartRef.current.startTime;
-        if (holdTime > 200) {
-          // Cancel long-press timer and enable drag mode
-          if (longPressTimer) {
-            clearTimeout(longPressTimer);
-            setLongPressTimer(null);
-          }
-          
-          // Enable edit mode and start dragging
-          setIsEditMode(true);
-          if (touchStartRef.current.widgetId) {
-            setDraggedWidget(touchStartRef.current.widgetId);
-            setDragPosition({ x: touch.clientX, y: touch.clientY });
-            setIsAnimating(true);
-            showToast('info', 'Drag apps to reorder.');
-            // Prevent scrolling
-            e.preventDefault();
-          }
-        } else if (totalMovement > 30) {
-          // If moved too much too quickly, cancel long-press (might be a swipe)
-          if (longPressTimer) {
-            clearTimeout(longPressTimer);
-            setLongPressTimer(null);
-          }
-        }
-      }
-    }
-  };
-
-  const handleTouchEnd = (e: React.TouchEvent, widget: WidgetWithLayout, index: number) => {
-    const wasLongPress = longPressTimer !== null;
-    const wasDragging = isEditMode && draggedWidget;
-    
-    if (longPressTimer) {
-      clearTimeout(longPressTimer);
-      setLongPressTimer(null);
-    }
-    
-    if (wasDragging) {
-      // Handle drop in edit mode
-      setIsAnimating(true);
-      if (draggedOverIndex !== null) {
-        const draggedItem = orderedWidgets.find(w => w.id === draggedWidget);
-        if (draggedItem) {
-          const oldIndex = orderedWidgets.indexOf(draggedItem);
-          if (oldIndex !== draggedOverIndex) {
-            // Reorder widgets
-            const newOrder = [...orderedWidgets];
-            newOrder.splice(oldIndex, 1);
-            newOrder.splice(draggedOverIndex, 0, draggedItem);
-            setOrderedWidgets(newOrder);
-            
-            // Save new order to database
-            saveWidgetOrder(newOrder);
-          }
-        }
-      }
-      
-      // Reset drag state after animation completes
-      setTimeout(() => {
-        setDraggedWidget(null);
-        setDraggedOverIndex(null);
-        setDragPosition(null);
-        setIsAnimating(false);
-        // Keep edit mode active so user can continue reordering
-        // setIsEditMode(false); // Commented out - keep edit mode active
-      }, 250);
-      touchStartRef.current = null;
-      return; // Don't process tap/swipe if we were dragging
-    } else if (touchStartRef.current && !wasLongPress && !isEditMode && swipeStartRef.current) {
-      // Check for swipe gesture
-      const touch = e.changedTouches[0];
-      const deltaX = touch.clientX - swipeStartRef.current.x;
-      const deltaY = touch.clientY - swipeStartRef.current.y;
-      
-      // Horizontal swipe (more horizontal than vertical, minimum 50px)
-      if (Math.abs(deltaX) > Math.abs(deltaY) && Math.abs(deltaX) > 50) {
-        if (deltaX > 0 && currentPage > 0) {
-          // Swipe right - go to previous page
-          setCurrentPage(currentPage - 1);
-        } else if (deltaX < 0 && currentPage < totalPages - 1) {
-          // Swipe left - go to next page
-          setCurrentPage(currentPage + 1);
-        }
-        touchStartRef.current = null;
-        swipeStartRef.current = null;
-        return; // Don't process tap if it was a swipe
-      } else if (Math.abs(deltaX) < 30 && Math.abs(deltaY) < 30) {
-        // Quick tap - open the widget with smooth animation
-        const touchDuration = Date.now() - (touchStartRef.current.startTime || Date.now());
-        if (touchDuration < 300 && !isEditMode) {
-          // Get button position for smooth transition
-          const buttonElement = e.currentTarget as HTMLElement;
-          const rect = buttonElement.getBoundingClientRect();
+      // Check if target still exists (might be null if called from setTimeout after DOM changes)
+      if (target && target.getBoundingClientRect) {
+        try {
+          const rect = target.getBoundingClientRect();
           setTappedWidget({ widget, rect });
           setIsTransitioning(true);
           
           // Small delay for visual feedback before navigation
           setTimeout(() => {
-            handleAppTap(widget, e);
+            navigate(`/spaces/${householdId}/app/${widget.id}`, { replace: false });
             // Reset after navigation starts
             setTimeout(() => {
               setTappedWidget(null);
               setIsTransitioning(false);
             }, 300);
           }, 100);
+          return;
+        } catch (error) {
+          // If getBoundingClientRect fails, fall through to direct navigation
+          console.warn('Failed to get bounding rect for transition:', error);
         }
       }
     }
     
-    touchStartRef.current = null;
-    swipeStartRef.current = null;
+    // Fallback: direct navigation without transition
+    navigate(`/spaces/${householdId}/app/${widget.id}`, { replace: false });
+  };
+
+  // Toggle widget selection in edit mode
+  const toggleWidgetSelection = (widgetId: string) => {
+    setSelectedWidgets(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(widgetId)) {
+        newSet.delete(widgetId);
+      } else {
+        newSet.add(widgetId);
+      }
+      return newSet;
+    });
+  };
+
+  // Handle widget deletion with confirmation
+  const handleDeleteWidgets = async () => {
+    if (selectedWidgets.size === 0) return;
+
+    const widgetIdsToDelete = Array.from(selectedWidgets);
+    const count = widgetIdsToDelete.length;
+    
+    // Confirm deletion
+    const confirmed = window.confirm(
+      `Delete ${count} widget${count > 1 ? 's' : ''}? This action cannot be undone.`
+    );
+    
+    if (!confirmed) return;
+    
+    try {
+      setIsSaving(true);
+      
+      // Delete all selected widgets
+      await Promise.all(widgetIdsToDelete.map(id => deleteWidget(id)));
+      
+      // Remove from local state
+      setOrderedWidgets(prev => prev.filter(w => !selectedWidgets.has(w.id)));
+      setSelectedWidgets(new Set());
+      
+      // Exit edit mode if no widgets remain
+      if (orderedWidgets.length - count === 0) {
+        setLauncherMode('normal');
+      }
+      
+      showToast('success', `Deleted ${count} widget${count > 1 ? 's' : ''}`);
+      
+      // Refresh widgets
+      if (onWidgetsChange) {
+        setTimeout(() => {
+          onWidgetsChange();
+        }, 500);
+      }
+    } catch (error) {
+      console.error('Error deleting widgets:', error);
+      showToast('error', 'Failed to delete widgets');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  // Long-press handler - ONLY enters edit mode, never starts dragging
+  const handlePointerDown = (clientX: number, clientY: number, widget: WidgetWithLayout) => {
+    // Clear any existing timer
+    if (longPressTimerRef.current) {
+      clearTimeout(longPressTimerRef.current);
+      longPressTimerRef.current = null;
+    }
+
+    // Only handle long-press in normal mode
+    if (launcherMode === 'normal') {
+      longPressStartRef.current = {
+        widgetId: widget.id,
+        startX: clientX,
+        startY: clientY,
+      };
+
+      // Start long-press timer (350ms)
+      longPressTimerRef.current = setTimeout(() => {
+        setLauncherMode('editing');
+        toggleWidgetSelection(widget.id);
+        showToast('info', 'Edit mode enabled. Tap to select, drag to reorder.');
+        longPressTimerRef.current = null;
+        longPressStartRef.current = null;
+      }, 350);
+    }
+  };
+
+  // Handle pointer down (touch or mouse)
+  const handlePointerDownEvent = (e: React.PointerEvent, widget: WidgetWithLayout) => {
+    // Don't handle if started in gesture-blocked zone
+    if (isGestureBlockedTarget(e.target)) {
+      return;
+    }
+
+    // Only handle primary pointer (left mouse button or touch)
+    if (e.button !== 0 && e.pointerType !== 'touch') return;
+
+    e.preventDefault();
+    handlePointerDown(e.clientX, e.clientY, widget);
+  };
+
+  // Handle pointer move - cancel long-press if moved too much, or handle drag in edit mode
+  const handlePointerMove = (clientX: number, clientY: number) => {
+    // Cancel long-press if user moves more than 8px
+    if (launcherMode === 'normal' && longPressStartRef.current) {
+      const deltaX = Math.abs(clientX - longPressStartRef.current.startX);
+      const deltaY = Math.abs(clientY - longPressStartRef.current.startY);
+      const totalMovement = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
+
+      if (totalMovement > 8) {
+        // Cancel long-press timer
+        if (longPressTimerRef.current) {
+          clearTimeout(longPressTimerRef.current);
+          longPressTimerRef.current = null;
+        }
+        longPressStartRef.current = null;
+        return;
+      }
+    }
+
+    // Handle dragging ONLY in editing mode
+    if (launcherMode === 'editing' && longPressStartRef.current) {
+      const deltaX = Math.abs(clientX - longPressStartRef.current.startX);
+      const deltaY = Math.abs(clientY - longPressStartRef.current.startY);
+      const totalMovement = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
+
+      // Start dragging if moved more than 6px
+      if (totalMovement > 6 && !draggedWidgetId) {
+        setLauncherMode('dragging');
+        setDraggedWidgetId(longPressStartRef.current.widgetId);
+        setDragPosition({ x: clientX, y: clientY });
+      }
+    }
+
+    // Continue dragging if already dragging
+    if (launcherMode === 'dragging' && draggedWidgetId) {
+      setDragPosition({ x: clientX, y: clientY });
+
+      // Calculate which grid position we're over
+      if (containerRef.current) {
+        const containerRect = containerRef.current.getBoundingClientRect();
+        const relativeX = clientX - containerRect.left;
+        const relativeY = clientY - containerRect.top;
+
+        const gridX = Math.floor(relativeX / cellWidth);
+        const gridY = Math.floor(relativeY / cellHeight);
+
+        if (gridX >= 0 && gridX < gridCols && gridY >= 0 && gridY < GRID_ROWS) {
+          const widgetsPerPage = gridCols * GRID_ROWS;
+          const targetIndex = gridY * gridCols + gridX + (currentPage * widgetsPerPage);
+          if (targetIndex >= 0 && targetIndex < orderedWidgets.length) {
+            if (targetIndex !== draggedOverIndex) {
+              setDraggedOverIndex(targetIndex);
+            }
+          }
+        }
+      }
+    }
+  };
+
+  // Handle pointer move event
+  const handlePointerMoveEvent = (e: React.PointerEvent) => {
+    if (isGestureBlockedTarget(e.target)) {
+      return;
+    }
+
+    handlePointerMove(e.clientX, e.clientY);
+
+    // Prevent default scrolling while dragging
+    if (launcherMode === 'dragging') {
+      e.preventDefault();
+    }
+  };
+
+  // Handle pointer up - commit drag or toggle selection
+  const handlePointerUp = (e: React.PointerEvent, widget: WidgetWithLayout) => {
+    // Clear long-press timer
+    if (longPressTimerRef.current) {
+      clearTimeout(longPressTimerRef.current);
+      longPressTimerRef.current = null;
+    }
+
+    // Handle drag end
+    if (launcherMode === 'dragging' && draggedWidgetId) {
+      if (draggedOverIndex !== null) {
+        const draggedItem = orderedWidgets.find(w => w.id === draggedWidgetId);
+        if (draggedItem) {
+          const oldIndex = orderedWidgets.indexOf(draggedItem);
+          if (oldIndex !== draggedOverIndex) {
+            const newOrder = [...orderedWidgets];
+            newOrder.splice(oldIndex, 1);
+            newOrder.splice(draggedOverIndex, 0, draggedItem);
+            setOrderedWidgets(newOrder);
+            saveWidgetOrder(newOrder);
+          }
+        }
+      }
+
+      // Return to editing mode after drag
+      setLauncherMode('editing');
+      setDraggedWidgetId(null);
+      setDraggedOverIndex(null);
+      setDragPosition(null);
+      longPressStartRef.current = null;
+      return;
+    }
+
+    // Handle selection in edit mode (if not dragging)
+    if (launcherMode === 'editing' && longPressStartRef.current) {
+      const deltaX = Math.abs(e.clientX - longPressStartRef.current.startX);
+      const deltaY = Math.abs(e.clientY - longPressStartRef.current.startY);
+      const totalMovement = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
+
+      // Toggle selection if minimal movement
+      if (totalMovement < 10) {
+        toggleWidgetSelection(widget.id);
+      }
+      longPressStartRef.current = null;
+      return;
+    }
+
+    // Handle normal tap (only in normal mode)
+    if (launcherMode === 'normal' && longPressStartRef.current) {
+      const deltaX = Math.abs(e.clientX - longPressStartRef.current.startX);
+      const deltaY = Math.abs(e.clientY - longPressStartRef.current.startY);
+      const totalMovement = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
+
+      // Quick tap to open app
+      if (totalMovement < 10) {
+        const buttonElement = e.currentTarget as HTMLElement;
+        // Check if element still exists before accessing getBoundingClientRect
+        if (buttonElement && buttonElement.getBoundingClientRect) {
+          try {
+            const rect = buttonElement.getBoundingClientRect();
+            setTappedWidget({ widget, rect });
+            setIsTransitioning(true);
+
+            setTimeout(() => {
+              handleAppTap(widget, e);
+              setTimeout(() => {
+                setTappedWidget(null);
+                setIsTransitioning(false);
+              }, 300);
+            }, 100);
+          } catch (error) {
+            // If getBoundingClientRect fails, just navigate directly
+            console.warn('Failed to get bounding rect, navigating directly:', error);
+            handleAppTap(widget, e);
+          }
+        } else {
+          // Element no longer exists, navigate directly
+          handleAppTap(widget, e);
+        }
+      }
+      longPressStartRef.current = null;
+    }
   };
 
   // Phase 5: State Management Resilience - Save widget order with rollback protection
@@ -551,10 +642,22 @@ export function SpacesOSLauncher({ widgets, householdId, householdName, onWidget
     setIsSaving(false);
   };
 
+  // Shared helper: Check if a target is in a gesture-blocked zone (global system UI)
+  // This must be used in ALL gesture handlers to prevent interference with system controls
+  function isGestureBlockedTarget(target: EventTarget | null): boolean {
+    return target instanceof HTMLElement &&
+      target.closest('[data-gesture-exempt="true"]') !== null;
+  }
+
   // Handle swipe start for page navigation
   const handleSwipeStart = (e: React.TouchEvent) => {
-    // Don't handle swipe if we're in edit mode or dragging
-    if (isEditMode || draggedWidget) {
+    // Don't handle swipe if touch started in gesture-blocked zone
+    if (isGestureBlockedTarget(e.target)) {
+      return;
+    }
+    
+    // Don't handle swipe if we're not in normal mode
+    if (launcherMode !== 'normal') {
       return;
     }
     
@@ -572,14 +675,14 @@ export function SpacesOSLauncher({ widgets, householdId, householdName, onWidget
     };
   };
 
-  // Phase 9A: Exit edit mode
+  // Exit edit mode
   const handleDone = () => {
-    setIsAnimating(true);
-    setIsEditMode(false);
-    setDraggedWidget(null);
+    setLauncherMode('normal');
+    setSelectedWidgets(new Set());
+    setDraggedWidgetId(null);
     setDraggedOverIndex(null);
     setDragPosition(null);
-    setTimeout(() => setIsAnimating(false), 250);
+    longPressStartRef.current = null;
   };
 
   // Phase 9A: Handle back button - open navigation panel instead of navigating
@@ -593,6 +696,13 @@ export function SpacesOSLauncher({ widgets, householdId, householdName, onWidget
     const newParams = new URLSearchParams(searchParams);
     newParams.set('view', 'canvas');
     setSearchParams(newParams, { replace: true });
+  };
+
+  // Handle page change
+  const handlePageChange = (newPage: number) => {
+    // Only allow page changes in normal mode
+    if (launcherMode !== 'normal') return;
+    setCurrentPage(newPage);
   };
 
   // Phase 9A: Get icon component for widget
@@ -739,14 +849,35 @@ export function SpacesOSLauncher({ widgets, householdId, householdName, onWidget
     }
   };
 
+  // CRITICAL: Reset all gesture state when space mode changes
+  // This prevents phantom drag states, invisible gesture locks, and dead taps after navigation
+  useEffect(() => {
+    // Reset all gesture state on space switch
+    swipeStartRef.current = null;
+    touchStartRef.current = null;
+    setLauncherMode('normal');
+    setSelectedWidgets(new Set());
+    setDraggedWidgetId(null);
+    setDraggedOverIndex(null);
+    setDragPosition(null);
+    longPressStartRef.current = null;
+    
+    // Clear any pending long-press timer
+    if (longPressTimerRef.current) {
+      clearTimeout(longPressTimerRef.current);
+      longPressTimerRef.current = null;
+    }
+  }, [adcState.activeSpaceType, adcState.activeSpaceId, location.pathname, householdId]);
+
   // Cleanup on unmount
   useEffect(() => {
     return () => {
-      if (longPressTimer) {
-        clearTimeout(longPressTimer);
+      if (longPressTimerRef.current) {
+        clearTimeout(longPressTimerRef.current);
       }
     };
-  }, [longPressTimer]);
+  }, []);
+
 
   // Show Add Widget modal if no widgets (auto-opens)
   if (orderedWidgets.length === 0) {
@@ -757,7 +888,19 @@ export function SpacesOSLauncher({ widgets, householdId, householdName, onWidget
         style={{ overscrollBehavior: 'contain' }} // Prevent pull-to-refresh
       >
         {/* Header with notification bell even in empty state */}
-        <div className="sticky top-0 z-40 bg-white/95 backdrop-blur-md border-b border-gray-100 safe-top">
+        {/* Hard pointer island: Header is NOT part of the gesture surface */}
+        <div 
+          className="sticky top-0 z-40 bg-white/95 backdrop-blur-md border-b border-gray-100 safe-top"
+          data-gesture-exempt="true"
+          style={{
+            pointerEvents: 'auto',
+            touchAction: 'manipulation',
+          }}
+          onPointerDownCapture={(e) => {
+            // Hard stop all pointer events from reaching the launcher container
+            e.stopPropagation();
+          }}
+        >
           <div className="px-3 sm:px-4 py-2.5 sm:py-3 flex items-center justify-between">
             <div className="flex items-center gap-2 sm:gap-3 flex-1 min-w-0">
               <button
@@ -814,9 +957,7 @@ export function SpacesOSLauncher({ widgets, householdId, householdName, onWidget
         <MobileNavigationPanel
           isOpen={showNavigationPanel}
           onClose={() => setShowNavigationPanel(false)}
-          currentSpaceId={householdId}
           currentSpaceName={householdName}
-          isPersonalSpace={location.pathname.includes('/spaces/personal')}
         />
       </div>
     );
@@ -829,7 +970,20 @@ export function SpacesOSLauncher({ widgets, householdId, householdName, onWidget
       style={{ overscrollBehavior: 'contain' }} // Prevent pull-to-refresh
     >
       {/* Phase 9A: Minimal header - edge-to-edge, no fake frames, OS-native */}
-      <div className="sticky top-0 z-40 bg-white/95 backdrop-blur-md border-b border-gray-100 safe-top">
+      {/* Hard pointer island: Header is NOT part of the gesture surface */}
+      <div 
+        className="sticky top-0 z-40 bg-white/95 backdrop-blur-md border-b border-gray-100 safe-top"
+        data-gesture-exempt="true"
+        style={{
+          pointerEvents: 'auto',
+          touchAction: 'manipulation',
+        }}
+        onPointerDownCapture={(e) => {
+          // Hard stop all pointer events from reaching the launcher container
+          // This ensures header interactions never compete with launcher gestures
+          e.stopPropagation();
+        }}
+      >
         <div className="px-3 sm:px-4 py-2.5 sm:py-3 flex items-center justify-between">
           <div className="flex items-center gap-2 sm:gap-3 flex-1 min-w-0">
             <button
@@ -877,14 +1031,27 @@ export function SpacesOSLauncher({ widgets, householdId, householdName, onWidget
             >
               <Grid3x3 size={20} />
             </button>
-            {isEditMode && (
-              <button
-                onClick={handleDone}
-                disabled={isSaving}
-                className="px-3 sm:px-4 py-2 text-blue-600 font-semibold text-xs sm:text-sm active:scale-95 transition-transform min-h-[44px] disabled:opacity-50"
-              >
-                {isSaving ? 'Saving...' : 'Done'}
-              </button>
+            {launcherMode !== 'normal' && (
+              <>
+                {selectedWidgets.size > 0 && (
+                  <button
+                    onClick={handleDeleteWidgets}
+                    disabled={isSaving}
+                    className="p-2 text-red-600 active:bg-red-50 rounded-lg transition-colors min-h-[44px] min-w-[44px] flex items-center justify-center disabled:opacity-50"
+                    aria-label="Delete selected widgets"
+                    title={`Delete ${selectedWidgets.size} widget${selectedWidgets.size > 1 ? 's' : ''}`}
+                  >
+                    <Trash2 size={20} />
+                  </button>
+                )}
+                <button
+                  onClick={handleDone}
+                  disabled={isSaving}
+                  className="px-3 sm:px-4 py-2 text-blue-600 font-semibold text-xs sm:text-sm active:scale-95 transition-transform min-h-[44px] disabled:opacity-50"
+                >
+                  {isSaving ? 'Saving...' : 'Done'}
+                </button>
+              </>
             )}
           </div>
         </div>
@@ -925,27 +1092,30 @@ export function SpacesOSLauncher({ widgets, householdId, householdName, onWidget
       )}
 
       {/* Phase 9A: App icon grid - true OS home screen, edge-to-edge, no shadows/borders */}
+      {/* Gesture surface: ONLY this area receives gesture handlers (not the entire container) */}
       <div
         ref={containerRef}
         className="px-3 py-6 sm:px-4 sm:py-8 safe-bottom relative overflow-hidden"
         style={{
-          touchAction: isEditMode && draggedWidget ? 'none' : 'pan-x pan-y',
           overscrollBehavior: 'contain', // Prevent pull-to-refresh
         }}
-        onTouchStart={(e) => {
-          // Only handle swipe start if not dragging
-          if (!draggedWidget && !isEditMode) {
-            handleSwipeStart(e);
-          }
-        }}
-        onTouchMove={(e) => {
-          // Only handle container touch move if not dragging a widget
-          if (!draggedWidget && !touchStartRef.current?.widgetId) {
-            // Container can handle swipe gestures
-            // Individual widgets handle their own drag
-          }
-        }}
       >
+        <div
+          data-launcher-gesture-surface="true"
+          className="relative"
+          style={{
+            touchAction: launcherMode === 'dragging' ? 'none' : 'pan-x pan-y',
+          }}
+          onTouchStart={(e) => {
+            if (isGestureBlockedTarget(e.target)) {
+              return;
+            }
+            // Only handle swipe start in normal mode
+            if (launcherMode === 'normal') {
+              handleSwipeStart(e);
+            }
+          }}
+        >
         <div className="relative w-full overflow-hidden" style={{ 
           height: 'calc(100vh - 140px)', 
           minHeight: '350px',
@@ -997,15 +1167,16 @@ export function SpacesOSLauncher({ widgets, householdId, householdName, onWidget
                     const IconComponent = getIconComponent(widget);
                     const color = getWidgetColor(widget);
                     const name = getWidgetName(widget);
-                    const isDragging = draggedWidget === widget.id;
-                    const isDraggedOver = draggedOverIndex === globalIndex && draggedWidget !== widget.id && pageIndex === currentPage;
+                    const isDragging = draggedWidgetId === widget.id;
+                    const isDraggedOver = draggedOverIndex === globalIndex && draggedWidgetId !== widget.id && pageIndex === currentPage;
+                    const isSelected = selectedWidgets.has(widget.id);
                     
                     // Calculate visual offset during drag animation
                     let translateX = 0;
                     let translateY = 0;
                     
-                    if (isEditMode && draggedWidget && !isDragging && draggedOverIndex !== null && pageIndex === currentPage) {
-                      const draggedItemIndex = orderedWidgets.findIndex(w => w.id === draggedWidget);
+                    if (launcherMode === 'dragging' && draggedWidgetId && !isDragging && draggedOverIndex !== null && pageIndex === currentPage) {
+                      const draggedItemIndex = orderedWidgets.findIndex(w => w.id === draggedWidgetId);
                       if (draggedItemIndex !== -1 && draggedItemIndex !== globalIndex) {
                         // Only calculate offset for widgets on the same page
                         const draggedItemPage = Math.floor(draggedItemIndex / widgetsPerPage);
@@ -1050,7 +1221,7 @@ export function SpacesOSLauncher({ widgets, householdId, householdName, onWidget
                             ? `translate3d(${translateX}px, ${translateY}px, 0)`
                             : 'translate3d(0, 0, 0)',
                           opacity: pageIndex === currentPage && !isDragging ? 1 : (isDragging ? 0.95 : 0),
-                          animation: pageIndex === currentPage && !isAnimating && !isDragging && pageTransitionDirection === null && !isEditMode
+                          animation: pageIndex === currentPage && !isAnimating && !isDragging && pageTransitionDirection === null && launcherMode === 'normal'
                             ? `fadeInScale 0.3s cubic-bezier(0.34, 1.56, 0.64, 1) ${animationDelay}s both`
                             : 'none',
                           willChange: isAnimating || pageTransitionDirection !== null ? 'transform, opacity' : 'auto',
@@ -1059,41 +1230,35 @@ export function SpacesOSLauncher({ widgets, householdId, householdName, onWidget
                         <button
                           ref={isDragging ? draggedWidgetRef : null}
                           data-widget-button="true"
-                          onTouchStart={(e) => {
-                            e.stopPropagation(); // Prevent event bubbling to container
-                            handleTouchStart(e, widget, globalIndex);
+                          onPointerDown={(e) => {
+                            e.stopPropagation();
+                            handlePointerDownEvent(e, widget);
                           }}
-                          onTouchEnd={(e) => {
-                            e.stopPropagation(); // Prevent event bubbling to container
-                            handleTouchEnd(e, widget, globalIndex);
+                          onPointerMove={(e) => {
+                            e.stopPropagation();
+                            handlePointerMoveEvent(e);
                           }}
-                          onTouchMove={(e) => {
-                            e.stopPropagation(); // Prevent event bubbling to container
-                            handleTouchMove(e);
-                          }}
-                          onMouseDown={(e) => {
-                            if (!isEditMode) {
-                              // Store position for smooth transition
-                              const rect = e.currentTarget.getBoundingClientRect();
-                              setTappedWidget({ widget, rect });
-                            }
+                          onPointerUp={(e) => {
+                            e.stopPropagation();
+                            handlePointerUp(e, widget);
                           }}
                           onClick={(e) => {
-                            // Fallback for mouse clicks (desktop)
-                            if (!isEditMode && !draggedWidget) {
+                            // Only handle click in normal mode
+                            if (launcherMode === 'normal') {
                               e.preventDefault();
                               e.stopPropagation();
                               handleAppTap(widget, e);
                             }
                           }}
                           className={`relative flex items-center justify-center ${
-                            isEditMode
-                              ? 'cursor-move'
+                            launcherMode !== 'normal'
+                              ? 'cursor-move select-none'
                               : ''
-                          } ${isDragging ? 'z-50' : 'z-auto'} ${isDraggedOver ? 'ring-2 ring-blue-400 rounded-2xl' : ''}`}
+                          } ${isDragging ? 'z-50' : 'z-auto'} ${isDraggedOver ? 'ring-2 ring-blue-400 rounded-2xl' : ''} ${isSelected ? 'ring-2 ring-blue-600 rounded-2xl' : ''}`}
                           style={{
-                            touchAction: isEditMode || draggedWidget ? 'none' : 'manipulation',
+                            touchAction: launcherMode !== 'normal' ? 'none' : 'manipulation',
                             WebkitTapHighlightColor: 'transparent',
+                            userSelect: launcherMode !== 'normal' ? 'none' : 'auto',
                             position: isDragging ? 'fixed' : 'relative',
                             transform: isDragging && dragPosition
                               ? `translate3d(calc(${dragPosition.x}px - 50%), calc(${dragPosition.y}px - 50%), 0) scale(1.15)`
@@ -1120,7 +1285,7 @@ export function SpacesOSLauncher({ widgets, householdId, householdName, onWidget
                           {/* Phase 9A: App icon - OS-native style, flat, no shadows, confident design - Responsive sizing */}
                           <div
                             className={`relative w-16 h-16 sm:w-[72px] sm:h-[72px] md:w-20 md:h-20 rounded-2xl sm:rounded-3xl ${color} flex items-center justify-center ${
-                              isEditMode ? 'ring-2 ring-blue-500' : ''
+                              isSelected ? 'ring-2 ring-blue-600' : launcherMode !== 'normal' ? 'ring-2 ring-blue-500' : ''
                             } ${isDragging ? 'ring-4 ring-blue-400 ring-opacity-50' : ''}`}
                             style={{
                               transition: isDragging || (tappedWidget?.widget.id === widget.id && isTransitioning)
@@ -1141,8 +1306,15 @@ export function SpacesOSLauncher({ widgets, householdId, householdName, onWidget
                               <IconComponent size={28} className="text-white sm:w-8 sm:h-8 md:w-9 md:h-9" />
                             )}
                             
-                            {/* Phase 9A: Edit mode indicator - subtle, OS-style */}
-                            {isEditMode && (
+                            {/* Selection indicator */}
+                            {isSelected && (
+                              <div className="absolute -top-1 -right-1 w-6 h-6 bg-blue-600 rounded-full flex items-center justify-center shadow-sm border-2 border-white">
+                                <Check size={14} className="text-white" />
+                              </div>
+                            )}
+                            
+                            {/* Phase 9A: Edit mode indicator - subtle, OS-style (only show if not selected) */}
+                            {launcherMode !== 'normal' && !isSelected && (
                               <div className="absolute -top-1 -right-1 w-5 h-5 bg-blue-500 rounded-full flex items-center justify-center shadow-sm">
                                 <GripVertical size={10} className="text-white" />
                               </div>
@@ -1169,6 +1341,8 @@ export function SpacesOSLauncher({ widgets, householdId, householdName, onWidget
             );
           })}
         </div>
+        </div>
+        {/* End gesture surface - only grid area receives gesture handlers */}
       </div>
 
       {/* Page indicators (mobile) */}
@@ -1188,7 +1362,7 @@ export function SpacesOSLauncher({ widgets, householdId, householdName, onWidget
       )}
 
       {/* Phase 9A: Edit mode hint - dismissible, OS-style */}
-      {!isEditMode && orderedWidgets.length > 0 && (
+      {launcherMode === 'normal' && orderedWidgets.length > 0 && (
         <div className="fixed bottom-6 left-1/2 transform -translate-x-1/2 px-4 py-2 bg-gray-900/90 text-white text-xs rounded-full backdrop-blur-md shadow-lg opacity-0 animate-[fadeIn_0.3s_ease-out_1s_forwards]">
           Long-press an app to edit
         </div>

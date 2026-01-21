@@ -10,7 +10,13 @@ export interface MealLibraryItem {
   prep_time: number | null;
   cook_time: number | null;
   servings: number;
-  ingredients: Array<{ name: string; quantity: string; unit: string }>;
+  ingredients: Array<{ 
+    food_item_id?: string; // Preferred - use this
+    name?: string; // Deprecated - kept for backward compatibility
+    quantity: string; 
+    unit: string;
+    optional?: boolean;
+  }>;
   instructions: string | null;
   calories: number | null;
   protein: number | null;
@@ -306,7 +312,13 @@ export async function createCustomMeal(
     prepTime?: number;
     cookTime?: number;
     servings?: number;
-    ingredients?: Array<{ name: string; quantity: string; unit: string }>;
+    ingredients?: Array<{ 
+      food_item_id?: string;
+      name?: string; // Deprecated - kept for backward compatibility
+      quantity: string; 
+      unit: string;
+      optional?: boolean;
+    }>;
     instructions?: string;
     calories?: number;
     protein?: number;
@@ -357,7 +369,13 @@ export async function updateCustomMeal(
     prepTime?: number;
     cookTime?: number;
     servings?: number;
-    ingredients?: Array<{ name: string; quantity: string; unit: string }>;
+    ingredients?: Array<{ 
+      food_item_id?: string;
+      name?: string; // Deprecated - kept for backward compatibility
+      quantity: string; 
+      unit: string;
+      optional?: boolean;
+    }>;
     instructions?: string;
     calories?: number;
     protein?: number;

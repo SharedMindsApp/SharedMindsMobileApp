@@ -12,6 +12,7 @@ import { loadHouseholdWidgets, getWidgetById } from '../../lib/fridgeCanvas';
 import { WidgetWithLayout } from '../../lib/fridgeCanvasTypes';
 import { getSpaceById } from '../../lib/household';
 import { Loader2 } from 'lucide-react';
+import { findWidgetByType } from '../../lib/widgetLinking';
 
 // Import widget components
 import { NoteWidget } from '../fridge-canvas/widgets/NoteWidget';
@@ -22,6 +23,7 @@ import { InsightCanvasWidget } from '../fridge-canvas/widgets/InsightCanvasWidge
 import { AchievementsWidget } from '../fridge-canvas/widgets/AchievementsWidget';
 import { MealPlannerWidget } from '../fridge-canvas/widgets/MealPlannerWidget';
 import { GroceryListWidget } from '../fridge-canvas/widgets/GroceryListWidget';
+import { PantryWidget } from '../fridge-canvas/widgets/PantryWidget';
 import { TodoCanvasWidget } from '../fridge-canvas/widgets/TodoCanvasWidget';
 import { StackCardCanvasWidget } from '../fridge-canvas/widgets/StackCardCanvasWidget';
 import { FilesCanvasWidget } from '../fridge-canvas/widgets/FilesCanvasWidget';
@@ -62,8 +64,19 @@ export function WidgetAppView() {
         setHouseholdName(space.name);
       }
 
-      // Load widget
-      const loadedWidget = await getWidgetById(widgetId);
+      // Check if widgetId is a UUID or a widget type string
+      const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(widgetId);
+      
+      let loadedWidget: WidgetWithLayout | null = null;
+      
+      if (isUUID) {
+        // widgetId is a UUID, load by ID
+        loadedWidget = await getWidgetById(widgetId);
+      } else {
+        // widgetId is a widget type string (e.g., "calendar"), find by type
+        loadedWidget = await findWidgetByType(spaceId, widgetId as any);
+      }
+
       if (!loadedWidget) {
         setError('Widget not found');
         return;
@@ -187,6 +200,14 @@ export function WidgetAppView() {
             viewMode={viewMode}
             content={widget.content as any}
             onContentChange={canEdit ? handleContentChange : undefined}
+          />
+        );
+
+      case 'pantry':
+        return (
+          <PantryWidget
+            householdId={spaceId || ''}
+            viewMode={viewMode}
           />
         );
 

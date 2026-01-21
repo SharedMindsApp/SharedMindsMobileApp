@@ -74,7 +74,8 @@ export type FeatureKey =
   | 'reality_check_initial'
   | 'reality_check_secondary'
   | 'reality_check_detailed'
-  | 'reality_check_reframe';
+  | 'reality_check_reframe'
+  | 'intelligent_todo';
 
 export const FEATURE_KEYS: Record<string, FeatureKey> = {
   AI_CHAT: 'ai_chat',
@@ -91,6 +92,7 @@ export const FEATURE_KEYS: Record<string, FeatureKey> = {
   REALITY_CHECK_SECONDARY: 'reality_check_secondary',
   REALITY_CHECK_DETAILED: 'reality_check_detailed',
   REALITY_CHECK_REFRAME: 'reality_check_reframe',
+  INTELLIGENT_TODO: 'intelligent_todo',
 } as const;
 
 export const INTENT_TO_FEATURE_MAP: Record<string, FeatureKey> = {
@@ -105,6 +107,7 @@ export const INTENT_TO_FEATURE_MAP: Record<string, FeatureKey> = {
   note_assist: 'spaces_notes_assist',
   check_feasibility: 'reality_check_assist',
   analyze_offshoot: 'offshoot_analysis',
+  breakdown_task: 'intelligent_todo',
   general: 'ai_chat',
   conversational: 'ai_chat',
 };

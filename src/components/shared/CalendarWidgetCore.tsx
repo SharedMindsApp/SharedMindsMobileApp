@@ -15,7 +15,7 @@ import { CalendarSettingsSheet } from '../calendar/CalendarSettingsSheet';
 import type { WidgetRenderMode, WidgetViewMode } from '../../lib/fridgeCanvasTypes';
 import { CalendarShell } from '../calendarCore';
 import { EventModalCompact } from '../calendar/EventModalCompact';
-import { CollapsibleMobileNav } from './CollapsibleMobileNav';
+import { PillActionNav } from './PillActionNav';
 import { SpacesWidgetsMenuSheet } from '../spaces/SpacesWidgetsMenuSheet';
 import type { CalendarEventWithMembers } from '../../lib/calendarTypes';
 
@@ -159,6 +159,11 @@ export function CalendarWidgetCore({
               setSelectedEvent(undefined);
               setEventModalOpen(true);
             },
+            onEventCreate: (date) => {
+              setNewEventDate(date);
+              setSelectedEvent(undefined);
+              setEventModalOpen(true);
+            },
           }}
           className="h-full"
         />
@@ -181,12 +186,12 @@ export function CalendarWidgetCore({
           />
         )}
 
-        {/* Mobile Bottom Navigation - Collapsible */}
-        <CollapsibleMobileNav
-          leftButton={{
+        {/* Mobile Bottom Navigation - Pill-style */}
+        <PillActionNav
+          leftAction={{
             label: 'Calendar',
-            icon: Menu,
-            onClick: () => {
+            icon: <Calendar size={20} />,
+            onPress: () => {
               setMobileMenuSide(mobileMenuSide === 'left' ? null : 'left');
               setMobileMenuOpen(mobileMenuSide !== 'left');
               // Close widgets menu if open
@@ -194,13 +199,11 @@ export function CalendarWidgetCore({
                 setWidgetsMenuOpen(false);
               }
             },
-            isActive: mobileMenuSide === 'left',
-            ariaLabel: 'Calendar',
           }}
-          rightButton={{
+          rightAction={{
             label: 'Widgets',
-            icon: Menu,
-            onClick: () => {
+            icon: <Menu size={20} />,
+            onPress: () => {
               setMobileMenuSide(mobileMenuSide === 'right' ? null : 'right');
               setMobileMenuOpen(mobileMenuSide !== 'right');
               // Close calendar menu if open
@@ -210,9 +213,9 @@ export function CalendarWidgetCore({
               }
               setWidgetsMenuOpen(!widgetsMenuOpen);
             },
-            isActive: widgetsMenuOpen && mobileMenuSide === 'right',
-            ariaLabel: 'Widgets',
           }}
+          leftActive={mobileMenuSide === 'left'}
+          rightActive={widgetsMenuOpen && mobileMenuSide === 'right'}
         />
 
         {/* Mobile Calendar Menu Drawer - Left Side (matches Planner) */}
@@ -372,6 +375,11 @@ export function CalendarWidgetCore({
               setEventModalOpen(true);
             },
             onDayDoubleClick: (date) => {
+              setNewEventDate(date);
+              setSelectedEvent(undefined);
+              setEventModalOpen(true);
+            },
+            onEventCreate: (date) => {
               setNewEventDate(date);
               setSelectedEvent(undefined);
               setEventModalOpen(true);

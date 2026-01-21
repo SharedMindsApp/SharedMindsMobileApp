@@ -1,6 +1,6 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
-import { UtensilsCrossed, Coffee, Sun, Moon, X, Plus, Calendar, BookOpen, Heart, ChefHat, Clock, Edit, Trash2, Link as LinkIcon, Star, Search, Filter, ExternalLink, StickyNote } from 'lucide-react';
+import { UtensilsCrossed, Coffee, Sun, Moon, X, Plus, Calendar, BookOpen, Heart, ChefHat, Clock, Edit, Trash2, Link as LinkIcon, Star, Search, Filter, ExternalLink, StickyNote, Package, ShoppingCart, CheckCircle2, AlertCircle, Sparkles } from 'lucide-react';
 import type { WidgetViewMode, MealPlannerContent } from '../../../lib/fridgeCanvasTypes';
 import { getWeeklyMealPlan, addMealToPlan, removeMealFromPlan, getWeekStartDate, getMealLibrary, getHouseholdFavourites, toggleMealFavourite, createCustomMeal, updateCustomMeal, deleteCustomMeal, type MealLibraryItem, type MealPlan, type MealFavourite } from '../../../lib/mealPlanner';
 import { getHouseholdRecipeLinks, createRecipeLink, updateRecipeLink, deleteRecipeLink, toggleRecipeVote, updateRecipeIcon, getPlatformIcon, type RecipeLink } from '../../../lib/recipeLinks';
@@ -11,6 +11,19 @@ import { AddRecipeFromURLModal } from '../../meal-planner/AddRecipeFromURLModal'
 import { RecipeIconPickerModal } from '../../meal-planner/RecipeIconPickerModal';
 import { useAuth } from '../../../contexts/AuthContext';
 import { supabase } from '../../../lib/supabase';
+import { 
+  compareRecipeAgainstPantry, 
+  getPantryBasedRecipeSuggestions,
+  getMissingIngredientsForRecipe,
+  getRecipeAvailabilityMessage,
+  type RecipePantryMatch 
+} from '../../../lib/foodIntelligence';
+import { addGroceryItem, getOrCreateDefaultList } from '../../../lib/intelligentGrocery';
+import { showToast } from '../../Toast';
+import { useSpaceContext } from '../../../hooks/useSpaceContext';
+import { WidgetHeader } from '../../shared/WidgetHeader';
+import { SpaceContextSwitcher } from '../../shared/SpaceContextSwitcher';
+import { MakeableRecipesModal } from '../../shared/MakeableRecipesModal';
 
 interface MealPlannerWidgetProps {
   householdId: string;
@@ -28,6 +41,17 @@ type MealPlannerTab = 'week' | 'library' | 'favourites' | 'recipes';
 
 export function MealPlannerWidget({ householdId, viewMode, onViewModeChange, onFullscreenChange }: MealPlannerWidgetProps) {
   const { user } = useAuth();
+  
+  // Use centralized space context hook
+  const {
+    currentSpaceId,
+    availableSpaces,
+    setCurrentSpace,
+    isLoading: spacesLoading,
+    getAbortSignal,
+    isSwitching,
+  } = useSpaceContext(householdId);
+
   const [loading, setLoading] = useState(true);
   const [mealPlans, setMealPlans] = useState<Record<string, MealPlan>>({});
   const [showWeekView, setShowWeekView] = useState(false);
@@ -51,30 +75,145 @@ export function MealPlannerWidget({ householdId, viewMode, onViewModeChange, onF
   const [selectedRecipe, setSelectedRecipe] = useState<RecipeLink | null>(null);
   const [showIconPicker, setShowIconPicker] = useState(false);
   const [editingIconRecipe, setEditingIconRecipe] = useState<RecipeLink | null>(null);
+  
+  // Food Intelligence state
+  const [recipePantryMatches, setRecipePantryMatches] = useState<Map<string, RecipePantryMatch>>(new Map());
+  const [pantrySuggestions, setPantrySuggestions] = useState<RecipePantryMatch[]>([]);
+  const [showPantrySuggestions, setShowPantrySuggestions] = useState(false);
+  const [selectedRecipeForIntelligence, setSelectedRecipeForIntelligence] = useState<MealLibraryItem | null>(null);
+  
+  // Makeable recipes modal state
+  const [showMakeableRecipes, setShowMakeableRecipes] = useState(false);
+  
+  // Track if we're switching contexts to prevent stale updates
+  const contextSpaceIdRef = useRef(currentSpaceId);
 
+  // Update ref when space changes
   useEffect(() => {
-    if (householdId) {
+    contextSpaceIdRef.current = currentSpaceId;
+  }, [currentSpaceId]);
+
+  // Load meal plans when space or week changes
+  useEffect(() => {
+    if (currentSpaceId && !isSwitching()) {
       loadMealPlans();
     }
-  }, [householdId, weekStartDate]);
+  }, [currentSpaceId, weekStartDate]);
 
   useEffect(() => {
     const isFullscreen = viewMode === 'xlarge';
     setShowFullView(isFullscreen);
     onFullscreenChange?.(isFullscreen);
 
-    if (isFullscreen) {
+    if (isFullscreen && !isSwitching()) {
+      // Reset edit states when entering fullscreen or context changes
+      setEditingRecipe(undefined);
+      setSelectedRecipe(null);
+      setSelectedSlot(null);
+      
       loadLibraryMeals();
       loadFavourites();
       loadRecipes();
-      loadRecipeLinks();
+      if (activeTab === 'recipes') {
+        loadRecipeLinks();
+      }
+      loadPantryIntelligence();
     }
-  }, [viewMode, onFullscreenChange]);
+  }, [viewMode, onFullscreenChange, currentSpaceId]);
+
+  const loadPantryIntelligence = async () => {
+    const expectedSpaceId = contextSpaceIdRef.current;
+    const abortSignal = getAbortSignal();
+    
+    if (!currentSpaceId || !showFullView || isSwitching()) return;
+    
+    try {
+      // Load pantry matches for all recipes
+      const allRecipes = [...allMeals, ...recipeMeals];
+      if (allRecipes.length === 0) return;
+      
+      const matches = new Map<string, RecipePantryMatch>();
+      
+      for (const recipe of allRecipes) {
+        // Check if context changed during loop
+        if (contextSpaceIdRef.current !== expectedSpaceId || abortSignal?.aborted) {
+          return;
+        }
+        
+        const match = await compareRecipeAgainstPantry(recipe, currentSpaceId);
+        matches.set(recipe.id, match);
+      }
+      
+      // Verify still in same context before updating state
+      if (contextSpaceIdRef.current !== expectedSpaceId || abortSignal?.aborted) {
+        return;
+      }
+      
+      setRecipePantryMatches(matches);
+      
+      // Load pantry-based suggestions
+      const suggestions = await getPantryBasedRecipeSuggestions(allRecipes, currentSpaceId, 50);
+      
+      // Final check before updating state
+      if (contextSpaceIdRef.current !== expectedSpaceId || abortSignal?.aborted) {
+        return;
+      }
+      
+      setPantrySuggestions(suggestions.slice(0, 5)); // Top 5 suggestions
+    } catch (error: any) {
+      if (error.name === 'AbortError' || abortSignal?.aborted) {
+        return;
+      }
+      console.error('Failed to load pantry intelligence:', error);
+    }
+  };
+
+  useEffect(() => {
+    if (showFullView && allMeals.length > 0 && !isSwitching()) {
+      loadPantryIntelligence();
+    }
+  }, [showFullView, allMeals.length, currentSpaceId]);
+
+  const handleAddMissingIngredientsToGrocery = async (recipe: MealLibraryItem) => {
+    try {
+      const missingIngredients = await getMissingIngredientsForRecipe(recipe, currentSpaceId);
+      if (missingIngredients.length === 0) {
+        showToast('info', 'All ingredients are in your pantry!');
+        return;
+      }
+
+      const defaultList = await getOrCreateDefaultList(currentSpaceId);
+      
+      for (const foodItem of missingIngredients) {
+        await addGroceryItem({
+          householdId: currentSpaceId,
+          listId: defaultList.id,
+          foodItemId: foodItem.id,
+          source: 'meal_planner',
+        });
+      }
+
+      showToast('success', `Added ${missingIngredients.length} missing ingredient${missingIngredients.length !== 1 ? 's' : ''} to grocery list`);
+      setSelectedRecipeForIntelligence(null);
+    } catch (error) {
+      console.error('Failed to add missing ingredients:', error);
+      showToast('error', 'Failed to add ingredients to grocery list');
+    }
+  };
 
   const loadMealPlans = async () => {
+    const expectedSpaceId = contextSpaceIdRef.current;
+    const abortSignal = getAbortSignal();
+    
     setLoading(true);
     try {
-      const plans = await getWeeklyMealPlan(householdId, weekStartDate);
+      const plans = await getWeeklyMealPlan(currentSpaceId, weekStartDate);
+      
+      // Verify we're still in the same context
+      if (contextSpaceIdRef.current !== expectedSpaceId || abortSignal?.aborted) {
+        return;
+      }
+      
       const plansMap: Record<string, MealPlan> = {};
 
       plans.forEach(plan => {
@@ -83,10 +222,16 @@ export function MealPlannerWidget({ householdId, viewMode, onViewModeChange, onF
       });
 
       setMealPlans(plansMap);
-    } catch (error) {
+    } catch (error: any) {
+      if (error.name === 'AbortError' || abortSignal?.aborted) {
+        return;
+      }
       console.error('Failed to load meal plans:', error);
     } finally {
-      setLoading(false);
+      // Only update loading state if context hasn't changed
+      if (contextSpaceIdRef.current === expectedSpaceId) {
+        setLoading(false);
+      }
     }
   };
 
@@ -100,12 +245,24 @@ export function MealPlannerWidget({ householdId, viewMode, onViewModeChange, onF
   };
 
   const loadFavourites = async () => {
+    const expectedSpaceId = contextSpaceIdRef.current;
+    const abortSignal = getAbortSignal();
+    
     try {
-      const favourites = await getHouseholdFavourites(householdId);
+      const favourites = await getHouseholdFavourites(currentSpaceId);
+      
+      // Verify we're still in the same context
+      if (contextSpaceIdRef.current !== expectedSpaceId || abortSignal?.aborted) {
+        return;
+      }
+      
       const meals = favourites.map(f => f.meal).filter(Boolean) as MealLibraryItem[];
       setFavouriteMeals(meals);
       setFavouriteIds(new Set(meals.map(m => m.id)));
-    } catch (error) {
+    } catch (error: any) {
+      if (error.name === 'AbortError' || abortSignal?.aborted) {
+        return;
+      }
       console.error('Failed to load favourites:', error);
     }
   };
@@ -151,7 +308,7 @@ export function MealPlannerWidget({ householdId, viewMode, onViewModeChange, onF
       if (!profile) return;
 
       await addMealToPlan(
-        householdId,
+        currentSpaceId,
         meal?.id || null,
         customName || null,
         selectedSlot.mealType,
@@ -179,7 +336,7 @@ export function MealPlannerWidget({ householdId, viewMode, onViewModeChange, onF
     if (!user) return;
 
     try {
-      await toggleMealFavourite(mealId, householdId, user.id);
+      await toggleMealFavourite(mealId, currentSpaceId, user.id);
       await loadFavourites();
     } catch (error) {
       console.error('Failed to toggle favourite:', error);
@@ -230,7 +387,7 @@ export function MealPlannerWidget({ householdId, viewMode, onViewModeChange, onF
         await createCustomMeal(
           recipeData.name,
           recipeData.mealType,
-          householdId,
+          currentSpaceId,
           profile.id,
           {
             categories: recipeData.categories,
@@ -278,7 +435,10 @@ export function MealPlannerWidget({ householdId, viewMode, onViewModeChange, onF
   };
 
   const loadRecipeLinks = async () => {
-    if (!user) return;
+    const expectedSpaceId = contextSpaceIdRef.current;
+    const abortSignal = getAbortSignal();
+    
+    if (!user || !currentSpaceId) return;
 
     try {
       const { data: profile } = await supabase
@@ -289,15 +449,23 @@ export function MealPlannerWidget({ householdId, viewMode, onViewModeChange, onF
 
       if (!profile) return;
 
-      const links = await getHouseholdRecipeLinks(householdId, {
+      const links = await getHouseholdRecipeLinks(currentSpaceId, {
         searchQuery,
         tags: selectedTags.length > 0 ? selectedTags : undefined,
         sortBy,
         userId: profile.id
       });
+      
+      // Verify we're still in the same context
+      if (contextSpaceIdRef.current !== expectedSpaceId || abortSignal?.aborted) {
+        return;
+      }
 
       setRecipeLinks(links);
-    } catch (error) {
+    } catch (error: any) {
+      if (error.name === 'AbortError' || abortSignal?.aborted) {
+        return;
+      }
       console.error('Failed to load recipe links:', error);
     }
   };
@@ -321,7 +489,7 @@ export function MealPlannerWidget({ householdId, viewMode, onViewModeChange, onF
 
       if (!profile) return;
 
-      await createRecipeLink(householdId, profile.id, data);
+      await createRecipeLink(currentSpaceId, profile.id, data);
       await loadRecipeLinks();
     } catch (error) {
       console.error('Failed to add recipe:', error);
@@ -363,7 +531,7 @@ export function MealPlannerWidget({ householdId, viewMode, onViewModeChange, onF
     if (showFullView && activeTab === 'recipes') {
       loadRecipeLinks();
     }
-  }, [searchQuery, selectedTags, sortBy, activeTab, showFullView]);
+  }, [searchQuery, selectedTags, sortBy, activeTab, showFullView, currentSpaceId]);
 
   const handleEditRecipeIcon = (recipe: RecipeLink) => {
     setEditingIconRecipe(recipe);
@@ -411,11 +579,11 @@ export function MealPlannerWidget({ householdId, viewMode, onViewModeChange, onF
           <div className="bg-orange-50 rounded-2xl w-full h-full max-w-5xl max-h-[92vh] overflow-hidden shadow-2xl flex flex-col">
             <div className="bg-gradient-to-br from-orange-500 to-orange-600 px-6 py-5 flex-shrink-0">
               <div className="flex items-center justify-between mb-4">
-                <div className="flex items-center gap-3">
-                  <div className="w-12 h-12 bg-white/20 backdrop-blur rounded-xl flex items-center justify-center">
+                <div className="flex items-center gap-3 flex-1 min-w-0">
+                  <div className="w-12 h-12 bg-white/20 backdrop-blur rounded-xl flex items-center justify-center flex-shrink-0">
                     <UtensilsCrossed size={24} className="text-white" />
                   </div>
-                  <div>
+                  <div className="flex-1 min-w-0">
                     <h2 className="text-2xl font-bold text-white">Meal Planner</h2>
                     <p className="text-orange-100 text-sm">
                       {activeTab === 'week' ? `${getTotalMeals()} meals planned this week` :
@@ -425,17 +593,37 @@ export function MealPlannerWidget({ householdId, viewMode, onViewModeChange, onF
                     </p>
                   </div>
                 </div>
-                <button
-                  onClick={() => {
-                    setShowFullView(false);
-                    onViewModeChange?.('large');
-                    onFullscreenChange?.(false);
-                  }}
-                  className="text-white hover:bg-white/20 rounded-xl p-2.5 transition-colors"
-                  aria-label="Close meal planner"
-                >
-                  <X size={28} />
-                </button>
+                <div className="flex items-center gap-2 flex-shrink-0">
+                  <button
+                    onClick={() => setShowMakeableRecipes(true)}
+                    className="hidden sm:flex items-center gap-2 px-3 py-2 bg-white/20 hover:bg-white/30 text-white rounded-lg transition-colors text-sm font-medium"
+                    title="What can I make?"
+                  >
+                    <ChefHat size={16} />
+                    What can I make?
+                  </button>
+                  {availableSpaces.length > 1 && !spacesLoading && (
+                    <div className="hidden sm:block">
+                      <SpaceContextSwitcher
+                        currentSpaceId={currentSpaceId}
+                        onSpaceChange={setCurrentSpace}
+                        availableSpaces={availableSpaces}
+                        className="[&_button]:bg-white/20 [&_button]:border-white/30 [&_button]:text-white [&_button:hover]:bg-white/30"
+                      />
+                    </div>
+                  )}
+                  <button
+                    onClick={() => {
+                      setShowFullView(false);
+                      onViewModeChange?.('large');
+                      onFullscreenChange?.(false);
+                    }}
+                    className="text-white hover:bg-white/20 rounded-xl p-2.5 transition-colors"
+                    aria-label="Close meal planner"
+                  >
+                    <X size={28} />
+                  </button>
+                </div>
               </div>
 
               <div className="flex gap-2">
@@ -563,8 +751,42 @@ export function MealPlannerWidget({ householdId, viewMode, onViewModeChange, onF
 
               {activeTab === 'library' && (
                 <div className="p-6">
+                  {/* Pantry Suggestions Banner */}
+                  {pantrySuggestions.length > 0 && (
+                    <div className="mb-4 p-4 bg-gradient-to-r from-orange-50 to-amber-50 border-2 border-orange-200 rounded-xl">
+                      <div className="flex items-center justify-between mb-2">
+                        <div className="flex items-center gap-2">
+                          <Sparkles size={20} className="text-orange-600" />
+                          <h3 className="font-bold text-orange-900">Recipes You Can Make</h3>
+                        </div>
+                        <button
+                          onClick={() => setShowPantrySuggestions(!showPantrySuggestions)}
+                          className="text-sm text-orange-700 hover:text-orange-800 font-medium"
+                        >
+                          {showPantrySuggestions ? 'Hide' : 'Show'} ({pantrySuggestions.length})
+                        </button>
+                      </div>
+                      {showPantrySuggestions && (
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mt-3">
+                          {pantrySuggestions.slice(0, 4).map((suggestion) => (
+                            <div key={suggestion.recipe.id} className="bg-white rounded-lg p-2 border border-orange-200">
+                              <p className="text-sm font-medium text-gray-900">{suggestion.recipe.name}</p>
+                              <p className="text-xs text-gray-600">
+                                {suggestion.availableCount}/{suggestion.availableCount + suggestion.missingCount} ingredients
+                              </p>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                  
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                    {allMeals.map(meal => (
+                    {allMeals.map(meal => {
+                      const pantryMatch = recipePantryMatches.get(meal.id);
+                      const availabilityMessage = pantryMatch ? getRecipeAvailabilityMessage(pantryMatch) : null;
+                      
+                      return (
                       <div key={meal.id} className="bg-white rounded-xl p-4 border-2 border-orange-100 hover:border-orange-300 transition-all shadow-sm">
                         <div className="flex items-start justify-between mb-2">
                           <h4 className="font-bold text-gray-900">{meal.name}</h4>
@@ -588,15 +810,58 @@ export function MealPlannerWidget({ householdId, viewMode, onViewModeChange, onF
                             </>
                           )}
                         </div>
-                        <div className="flex flex-wrap gap-1">
+                        <div className="flex flex-wrap gap-1 mb-3">
                           {meal.categories.slice(0, 3).map(cat => (
                             <span key={cat} className="text-xs px-2 py-0.5 bg-orange-200 text-orange-800 rounded font-medium">
                               {cat.replace(/_/g, ' ')}
                             </span>
                           ))}
                         </div>
+                        
+                        {/* Subtle Pantry Awareness */}
+                        {pantryMatch && (
+                          <div className="mt-2 flex items-center gap-2 text-xs text-gray-500">
+                            {pantryMatch.matchPercentage === 100 ? (
+                              <>
+                                <CheckCircle2 size={12} className="text-green-500" />
+                                <span>All ingredients in pantry</span>
+                              </>
+                            ) : pantryMatch.missingCount > 0 ? (
+                              <>
+                                <Package size={12} className="text-gray-400" />
+                                <span>{pantryMatch.missingCount} missing</span>
+                                <button
+                                  onClick={() => handleAddMissingIngredientsToGrocery(meal)}
+                                  className="ml-auto text-gray-600 hover:text-gray-800 underline text-xs"
+                                >
+                                  Add to list
+                                </button>
+                              </>
+                            ) : null}
+                          </div>
+                        )}
+                        
+                        <button
+                          onClick={async () => {
+                            if (!user) return;
+                            const { data: profile } = await supabase
+                              .from('profiles')
+                              .select('id')
+                              .eq('user_id', user.id)
+                              .maybeSingle();
+                            if (profile) {
+                              await addMealToPlan(currentSpaceId, meal.id, null, meal.meal_type as any, 0, weekStartDate, profile.id);
+                              await loadMealPlans();
+                              setActiveTab('week');
+                            }
+                          }}
+                          className="w-full mt-3 px-3 py-2 bg-blue-100 hover:bg-blue-200 text-blue-700 font-medium rounded-lg transition-colors text-sm"
+                        >
+                          Add to This Week
+                        </button>
                       </div>
-                    ))}
+                    );
+                  })}
                   </div>
                 </div>
               )}
@@ -872,7 +1137,7 @@ export function MealPlannerWidget({ householdId, viewMode, onViewModeChange, onF
                                   .eq('user_id', user.id)
                                   .maybeSingle();
                                 if (profile) {
-                                  await addMealToPlan(householdId, meal.id, null, meal.meal_type as any, 0, weekStartDate, profile.id);
+                                  await addMealToPlan(currentSpaceId, meal.id, null, meal.meal_type as any, 0, weekStartDate, profile.id);
                                   await loadMealPlans();
                                   setActiveTab('week');
                                 }
@@ -901,6 +1166,7 @@ export function MealPlannerWidget({ householdId, viewMode, onViewModeChange, onF
             }}
             onSave={handleSaveRecipe}
             existingRecipe={editingRecipe}
+            householdId={currentSpaceId}
           />
         )}
 
@@ -938,7 +1204,7 @@ export function MealPlannerWidget({ householdId, viewMode, onViewModeChange, onF
                           .eq('user_id', user.id)
                           .maybeSingle();
                         if (profile) {
-                          await addMealToPlan(householdId, null, selectedRecipe.title, 'dinner', index, weekStartDate, profile.id);
+                          await addMealToPlan(currentSpaceId, null, selectedRecipe.title, 'dinner', index, weekStartDate, profile.id);
                           await loadMealPlans();
                           setSelectedRecipe(null);
                           setActiveTab('week');
@@ -980,6 +1246,18 @@ export function MealPlannerWidget({ householdId, viewMode, onViewModeChange, onF
             onSave={handleSaveRecipeIcon}
           />
         )}
+
+        {/* Makeable Recipes Modal */}
+        <MakeableRecipesModal
+          isOpen={showMakeableRecipes}
+          onClose={() => setShowMakeableRecipes(false)}
+          spaceId={currentSpaceId}
+          onAddToMealPlan={(recipe) => {
+            setShowMakeableRecipes(false);
+            // Optionally reload meal plans
+            loadMealPlans();
+          }}
+        />
       </>
     );
 
@@ -1211,7 +1489,7 @@ export function MealPlannerWidget({ householdId, viewMode, onViewModeChange, onF
             setSelectedSlot(null);
           }}
           onSelectMeal={handleSelectMeal}
-          householdId={householdId}
+          householdId={currentSpaceId}
           dayName={selectedSlot.day}
           mealType={selectedSlot.mealType}
         />

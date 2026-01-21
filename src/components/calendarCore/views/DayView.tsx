@@ -521,7 +521,7 @@ export function DayView({
       {/* Scrollable Hourly Grid - ONLY this scrolls */}
       <div 
         ref={scrollContainerRef}
-        className="flex-1 overflow-y-auto overscroll-contain min-h-0"
+        className="flex-1 overflow-y-auto overscroll-contain min-h-0 pb-[100px] md:pb-0"
       >
         <div className="flex">
           {/* Time Column */}
@@ -694,7 +694,7 @@ export function DayView({
       </div>
 
       {/* Tasks Section - Always visible below the hourly grid, separate from scrollable area */}
-      <div className="border-t-2 border-gray-300 bg-white flex-shrink-0 relative z-50 pointer-events-auto">
+      <div className="border-t-2 border-gray-300 bg-white flex-shrink-0 relative z-50 pointer-events-auto pb-[100px] md:pb-0">
         {/* Tasks Header - Always visible with Add Task button */}
         <div className="bg-white border-b border-gray-200 px-4 py-3 flex items-center justify-between">
           <h3 className="text-sm font-semibold text-gray-900">Tasks</h3>

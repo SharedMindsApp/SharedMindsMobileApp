@@ -8,12 +8,16 @@
  */
 
 import { useState, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { Home, Users, User, ChevronDown } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { useActiveData } from '../../contexts/ActiveDataContext';
-import { SharedSpaceMenu } from './SharedSpaceMenu';
 import type { SpaceContextType } from '../../lib/spaceTypes';
 import { supabase } from '../../lib/supabase';
+
+// Space Mode: Personal is a mode, not a space
+type SpaceMode = 'personal' | 'shared';
 
 export interface SharedSpace {
   id: string;
@@ -21,6 +25,9 @@ export interface SharedSpace {
   type: SpaceContextType;
   icon: typeof Home | typeof Users | typeof User;
 }
+
+// Import after type definition to avoid circular dependency
+import { SharedSpaceMenu } from './SharedSpaceMenu';
 
 interface SharedSpaceSwitcherProps {
   onManageSpaces?: () => void;
@@ -31,9 +38,14 @@ interface SharedSpaceSwitcherProps {
 export function SharedSpaceSwitcher({ onManageSpaces, onCreateHousehold, onCreateTeam }: SharedSpaceSwitcherProps = {}) {
   const { user, profile } = useAuth();
   const { state: adcState, setSpaceContext } = useActiveData();
+  const navigate = useNavigate();
+  const location = useLocation();
   const [isOpen, setIsOpen] = useState(false);
   const [spaces, setSpaces] = useState<SharedSpace[]>([]);
-  const [currentSpace, setCurrentSpace] = useState<SharedSpace | null>(null);
+  const [personalSpace, setPersonalSpace] = useState<SharedSpace | null>(null);
+  const [sharedSpaces, setSharedSpaces] = useState<SharedSpace[]>([]);
+  const [currentMode, setCurrentMode] = useState<SpaceMode>('personal');
+  const [currentSharedSpace, setCurrentSharedSpace] = useState<SharedSpace | null>(null);
   const [loading, setLoading] = useState(true);
   const triggerRef = useRef<HTMLButtonElement>(null);
 
@@ -44,10 +56,28 @@ export function SharedSpaceSwitcher({ onManageSpaces, onCreateHousehold, onCreat
     }
   }, [user, profile?.id]);
 
-  // Update current space when ADC state changes
+  // Update current mode and space based on route and ADC state
   useEffect(() => {
-    updateCurrentSpace();
-  }, [adcState.activeSpaceType, adcState.activeSpaceId, spaces]);
+    updateCurrentModeAndSpace();
+  }, [adcState.activeSpaceType, adcState.activeSpaceId, spaces, location.pathname]);
+
+  // Proof logging: Track isOpen state changes
+  useEffect(() => {
+    console.log('[SpaceSwitcher] isOpen changed:', isOpen, {
+      pathname: location.pathname,
+      time: Date.now(),
+    });
+  }, [isOpen, location.pathname]);
+
+  // Proof logging: Track when sheet should render
+  useEffect(() => {
+    if (isOpen) {
+      console.log('[SpaceSwitcher] Sheet should render via portal', {
+        pathname: location.pathname,
+        time: Date.now(),
+      });
+    }
+  }, [isOpen, location.pathname]);
 
   const loadSpaces = async () => {
     if (!user) return;
@@ -142,13 +172,16 @@ export function SharedSpaceSwitcher({ onManageSpaces, onCreateHousehold, onCreat
           }));
       }
 
-      const allSpaces: SharedSpace[] = [
-        ...personalSpaces.map(s => ({ ...s, icon: User })),
+      // Separate Personal from Shared spaces
+      const personal = personalSpaces.length > 0 ? personalSpaces.map(s => ({ ...s, icon: User }))[0] : null;
+      const shared: SharedSpace[] = [
         ...householdSpaces.map(s => ({ ...s, icon: Home })),
         ...teamSpaces.map(s => ({ ...s, icon: Users })),
       ];
 
-      setSpaces(allSpaces);
+      setPersonalSpace(personal);
+      setSharedSpaces(shared);
+      setSpaces(personal ? [personal, ...shared] : shared);
     } catch (error) {
       console.error('Error loading spaces:', error);
     } finally {
@@ -156,115 +189,201 @@ export function SharedSpaceSwitcher({ onManageSpaces, onCreateHousehold, onCreat
     }
   };
 
-  const updateCurrentSpace = () => {
-    if (spaces.length === 0) {
-      setCurrentSpace(null);
-      return;
-    }
-
-    // If ADC has an active space, use it
-    if (adcState.activeSpaceId) {
-      const space = spaces.find(s => s.id === adcState.activeSpaceId);
-      if (space) {
-        setCurrentSpace(space);
-        return;
-      }
-    }
-
-    // Otherwise, default to first household or personal space
-    const firstHousehold = spaces.find(s => s.type === 'household');
-    const firstPersonal = spaces.find(s => s.type === 'personal');
-    const defaultSpace = firstHousehold || firstPersonal || spaces[0];
-    setCurrentSpace(defaultSpace);
+  // Determine current mode from route and update state accordingly
+  const updateCurrentModeAndSpace = () => {
+    const path = location.pathname;
     
-    // Also update ADC if it's not set
-    if (defaultSpace && !adcState.activeSpaceId) {
-      const spaceType = defaultSpace.type === 'personal' ? 'personal' : 'shared';
-      setSpaceContext(spaceType, defaultSpace.id);
+    // Check route to determine mode
+    if (path === '/spaces/personal' || path.startsWith('/spaces/personal/')) {
+      // Personal Mode
+      setCurrentMode('personal');
+      setCurrentSharedSpace(null);
+      
+      // Update ADC to personal mode (clear spaceId)
+      if (adcState.activeSpaceType !== 'personal' || adcState.activeSpaceId !== null) {
+        setSpaceContext('personal', null);
+      }
+    } else if (path.startsWith('/spaces/') && path !== '/spaces/shared') {
+      // Shared Mode - extract spaceId from route
+      const match = path.match(/^\/spaces\/([^/]+)/);
+      const spaceIdFromRoute = match ? match[1] : null;
+      
+      if (spaceIdFromRoute && spaceIdFromRoute !== 'personal' && spaceIdFromRoute !== 'shared') {
+        // Find space in all spaces (includes both personal and shared)
+        const space = spaces.find(s => s.id === spaceIdFromRoute && s.type !== 'personal');
+        if (space) {
+          setCurrentMode('shared');
+          setCurrentSharedSpace(space);
+          
+          // Update ADC to shared mode
+          if (adcState.activeSpaceType !== 'shared' || adcState.activeSpaceId !== spaceIdFromRoute) {
+            setSpaceContext('shared', spaceIdFromRoute);
+          }
+          return;
+        }
+      }
+      
+      // Fallback: if we're on a shared route but space not found, default to personal
+      setCurrentMode('personal');
+      setCurrentSharedSpace(null);
+      setSpaceContext('personal', null);
+    } else {
+      // Default to personal mode
+      setCurrentMode('personal');
+      setCurrentSharedSpace(null);
+      
+      if (adcState.activeSpaceType !== 'personal' || adcState.activeSpaceId !== null) {
+        setSpaceContext('personal', null);
+      }
     }
   };
 
   const handleSpaceSelect = (space: SharedSpace) => {
-    // Update ActiveDataContext
-    const spaceType = space.type === 'personal' ? 'personal' : 'shared';
-    setSpaceContext(spaceType, space.id);
-    
-    setCurrentSpace(space);
     setIsOpen(false);
     
-    // Trigger reload by emitting space change event
-    // (existing context providers will handle the reload)
+    // Explicit mode-aware selection (but gesture-agnostic)
+    if (space.type === 'personal') {
+      // Personal Space: Mode switch, not space selection
+      // Clear shared context and switch to Personal Mode
+      setSpaceContext('personal', null);
+      setCurrentMode('personal');
+      setCurrentSharedSpace(null);
+      navigate('/spaces/personal');
+      return;
+    }
+    
+    // Shared Space: Set shared mode and space
+    setSpaceContext('shared', space.id);
+    setCurrentMode('shared');
+    setCurrentSharedSpace(space);
+    navigate(`/spaces/${space.id}`);
   };
 
-  if (loading || !currentSpace) {
-    // Show loading or fallback - make it clickable too
-    return (
-      <>
-        <button
-          ref={triggerRef}
-          onClick={(e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            setIsOpen(true);
-          }}
-          className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 active:bg-gray-100 transition-colors min-h-[44px] cursor-pointer relative z-10"
-          aria-label="Switch shared space"
-          aria-haspopup="listbox"
-          aria-expanded={isOpen}
-          type="button"
-        >
-          <User size={18} className="text-gray-600 flex-shrink-0" />
-          <span className="truncate max-w-[200px] sm:max-w-none">{profile?.full_name || 'Loading...'}</span>
-          <ChevronDown size={16} className={`text-gray-500 transition-transform flex-shrink-0 ${isOpen ? 'rotate-180' : ''}`} />
-        </button>
-        <SharedSpaceMenu
-          isOpen={isOpen}
-          onClose={() => setIsOpen(false)}
-          spaces={spaces}
-          currentSpace={null}
-          onSelect={handleSpaceSelect}
-          onManageSpaces={onManageSpaces}
-          onCreateHousehold={onCreateHousehold}
-          onCreateTeam={onCreateTeam}
-          triggerRef={triggerRef}
-        />
-      </>
-    );
-  }
+  // Determine display name and icon based on current mode
+  const getDisplayInfo = () => {
+    if (loading) {
+      return {
+        icon: User,
+        name: profile?.full_name || 'Loading...',
+        label: 'Switch Space'
+      };
+    }
+    
+    if (currentMode === 'personal') {
+      return {
+        icon: User,
+        name: personalSpace?.name || profile?.full_name || 'Personal Space',
+        label: 'Switch Space'
+      };
+    } else {
+      return {
+        icon: currentSharedSpace?.icon || Home,
+        name: currentSharedSpace?.name || 'Shared Space',
+        label: `Switch Space: ${currentSharedSpace?.name || 'Shared'}`
+      };
+    }
+  };
 
-  const Icon = currentSpace.icon;
+  const displayInfo = getDisplayInfo();
+  const Icon = displayInfo.icon;
+
+  // Proof logging: Open function with logging
+  const open = () => {
+    console.log('[SpaceSwitcher] open() called', {
+      pathname: location.pathname,
+      currentMode,
+      time: Date.now(),
+    });
+    setIsOpen(true);
+  };
 
   return (
-    <div className="relative">
+    <div 
+      className="relative" 
+      data-gesture-exempt="true"
+      data-space-switcher="true"
+      style={{ 
+        pointerEvents: 'auto', 
+        zIndex: 41,
+        touchAction: 'manipulation'
+      }}
+    >
       <button
         ref={triggerRef}
-        onClick={(e) => {
+        onPointerDownCapture={(e) => {
+          console.log('[SpaceSwitcher] pointerDownCapture', {
+            target: e.target,
+            currentTarget: e.currentTarget,
+            time: Date.now(),
+          });
+          e.stopPropagation();
+        }}
+        onPointerDown={(e) => {
+          console.log('[SpaceSwitcher] pointerDown', {
+            target: e.target,
+            currentTarget: e.currentTarget,
+            time: Date.now(),
+          });
           e.preventDefault();
           e.stopPropagation();
-          setIsOpen(!isOpen);
+          open();
+        }}
+        onClick={(e) => {
+          console.log('[SpaceSwitcher] click fallback', {
+            target: e.target,
+            currentTarget: e.currentTarget,
+            time: Date.now(),
+          });
+          e.preventDefault();
+          e.stopPropagation();
+          open();
         }}
         className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 active:bg-gray-100 transition-colors min-h-[44px] cursor-pointer relative z-[41]"
-        aria-label={`Switch shared space: ${currentSpace.name}`}
+        style={{ 
+          pointerEvents: 'auto', 
+          WebkitTapHighlightColor: 'transparent',
+          touchAction: 'manipulation'
+        }}
+        aria-label={displayInfo.label}
         aria-haspopup="listbox"
         aria-expanded={isOpen}
         type="button"
       >
         <Icon size={18} className="text-gray-600 flex-shrink-0" />
-        <span className="truncate max-w-[200px] sm:max-w-none">{currentSpace.name}</span>
+        <span className="truncate max-w-[200px] sm:max-w-none">{displayInfo.name}</span>
         <ChevronDown size={16} className={`text-gray-500 transition-transform flex-shrink-0 ${isOpen ? 'rotate-180' : ''}`} />
       </button>
 
-      <SharedSpaceMenu
-        isOpen={isOpen}
-        onClose={() => setIsOpen(false)}
-        spaces={spaces}
-        currentSpace={currentSpace}
-        onSelect={handleSpaceSelect}
-        onManageSpaces={onManageSpaces}
-        onCreateHousehold={onCreateHousehold}
-        onCreateTeam={onCreateTeam}
-        triggerRef={triggerRef}
-      />
+      {/* Render sheet via portal to document.body to avoid overflow/clipping issues */}
+      {isOpen && typeof document !== 'undefined' && createPortal(
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            zIndex: 99999,
+            pointerEvents: 'auto',
+          }}
+          data-space-switcher-portal="true"
+        >
+          <SharedSpaceMenu
+            isOpen={isOpen}
+            onClose={() => {
+              console.log('[SpaceSwitcher] close() called');
+              setIsOpen(false);
+            }}
+            personalSpace={personalSpace}
+            sharedSpaces={sharedSpaces}
+            currentMode={currentMode}
+            currentSharedSpace={currentSharedSpace}
+            onSelect={handleSpaceSelect}
+            onManageSpaces={currentMode === 'shared' ? onManageSpaces : undefined}
+            onCreateHousehold={currentMode === 'shared' ? onCreateHousehold : undefined}
+            onCreateTeam={currentMode === 'shared' ? onCreateTeam : undefined}
+            triggerRef={triggerRef}
+          />
+        </div>,
+        document.body
+      )}
     </div>
   );
 }

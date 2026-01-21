@@ -1,10 +1,18 @@
 import { PlannerShell } from '../PlannerShell';
-import { CheckSquare, Plus, Trash2, Share2, Calendar, Flag, X, ChevronDown } from 'lucide-react';
+import { CheckSquare, Plus, Trash2, Share2, Calendar, Flag, X, ChevronDown, Sparkles } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import * as todosService from '../../../lib/todosService';
 import { createTodo } from '../../../lib/todosServiceOffline';
 import { showToast } from '../../Toast';
 import type { PersonalTodo, TodoPriority } from '../../../lib/todosService';
+import { TodoBreakdownModal } from './TodoBreakdownModal';
+import {
+  getTaskBreakdown,
+  completeMicroStep,
+  uncompleteMicroStep,
+  type MicroStep,
+} from '../../../lib/intelligentTodoService';
+import { supabase } from '../../../lib/supabase';
 
 export function UnifiedTodoList() {
   const [loading, setLoading] = useState(true);
@@ -19,6 +27,9 @@ export function UnifiedTodoList() {
   const [availableSpaces, setAvailableSpaces] = useState<Array<{ id: string; name: string; type: string }>>([]);
   const [filter, setFilter] = useState<'all' | 'active' | 'completed'>('all');
   const [expandedTodos, setExpandedTodos] = useState<Set<string>>(new Set());
+  const [breakdownTodoId, setBreakdownTodoId] = useState<string | null>(null);
+  const [microSteps, setMicroSteps] = useState<Record<string, MicroStep[]>>({});
+  const [userId, setUserId] = useState<string | null>(null);
 
   useEffect(() => {
     loadData();
@@ -26,12 +37,15 @@ export function UnifiedTodoList() {
 
   const loadData = async () => {
     try {
+      // Get user ID
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) setUserId(user.id);
+
       const spaceId = await todosService.getPersonalSpace();
       setPersonalSpaceId(spaceId);
 
-      if (spaceId) {
-        await loadTodos(spaceId);
-      }
+      // Load personal todos (household_id IS NULL)
+      await loadTodos(null);
 
       const spaces = await todosService.getAvailableSpaces();
       setAvailableSpaces(spaces);
@@ -42,19 +56,55 @@ export function UnifiedTodoList() {
     }
   };
 
-  const loadTodos = async (spaceId: string) => {
+  const loadTodos = async (spaceId: string | null) => {
     try {
-      const data = await todosService.getTodos(spaceId);
+      // For personal todos, pass null (household_id IS NULL)
+      const data = await todosService.getTodos(null);
       setTodos(data);
+      
+      // Load micro-steps for todos with breakdowns
+      const todosWithBreakdowns = data.filter(t => t.has_breakdown);
+      const stepsMap: Record<string, MicroStep[]> = {};
+      
+      for (const todo of todosWithBreakdowns) {
+        try {
+          const steps = await getTaskBreakdown(todo.id);
+          stepsMap[todo.id] = steps;
+        } catch (error) {
+          console.error(`Error loading micro-steps for todo ${todo.id}:`, error);
+        }
+      }
+      
+      setMicroSteps(stepsMap);
     } catch (error) {
       console.error('Error loading todos:', error);
+    }
+  };
+  
+  const handleBreakdownSaved = async () => {
+    await loadTodos(null); // Personal todos have household_id = NULL
+  };
+  
+  const handleToggleMicroStep = async (microStepId: string, completed: boolean) => {
+    try {
+      if (completed) {
+        await completeMicroStep(microStepId);
+      } else {
+        await uncompleteMicroStep(microStepId);
+      }
+      
+      // Reload micro-steps
+      await loadTodos(null); // Personal todos have household_id = NULL
+    } catch (error) {
+      console.error('Error toggling micro-step:', error);
+      showToast('error', 'Failed to update step. Please try again.');
     }
   };
 
   const handleToggle = async (todo: PersonalTodo) => {
     try {
       await todosService.updateTodo(todo.id, { completed: !todo.completed });
-      if (personalSpaceId) await loadTodos(personalSpaceId);
+      await loadTodos(null); // Personal todos have household_id = NULL
     } catch (error) {
       console.error('Error updating todo:', error);
     }
@@ -64,7 +114,7 @@ export function UnifiedTodoList() {
     if (!confirm('Delete this task?')) return;
     try {
       await todosService.deleteTodo(id);
-      if (personalSpaceId) await loadTodos(personalSpaceId);
+      await loadTodos(null); // Personal todos have household_id = NULL
     } catch (error) {
       console.error('Error deleting todo:', error);
     }
@@ -75,12 +125,14 @@ export function UnifiedTodoList() {
     if (!newTodoTitle.trim() || !personalSpaceId) return;
 
     try {
+      // Personal todos: householdId must be null (personal spaces are NOT households)
       await createTodo({
-        householdId: personalSpaceId,
+        householdId: null, // Personal todos must have household_id = NULL
         title: newTodoTitle,
         description: newTodoDescription || undefined,
         dueDate: newTodoDueDate || undefined,
         priority: newTodoPriority,
+        spaceMode: 'personal', // Personal todos only require user_id = auth.uid()
       });
 
       setNewTodoTitle('');
@@ -89,7 +141,7 @@ export function UnifiedTodoList() {
       setNewTodoPriority('medium');
       setShowAddForm(false);
 
-      await loadTodos(personalSpaceId);
+      await loadTodos(null); // Personal todos have household_id = NULL
     } catch (error) {
       console.error('Error creating todo:', error);
       showToast('error', 'Failed to create task. Please try again.');
@@ -99,7 +151,7 @@ export function UnifiedTodoList() {
   const handleShareToSpace = async (todoId: string, spaceId: string) => {
     try {
       await todosService.shareToSpace(todoId, spaceId);
-      if (personalSpaceId) await loadTodos(personalSpaceId);
+      await loadTodos(null); // Personal todos have household_id = NULL
       setSharingTodoId(null);
     } catch (error) {
       console.error('Error sharing todo:', error);
@@ -109,17 +161,18 @@ export function UnifiedTodoList() {
   const handleUnshare = async (shareId: string) => {
     try {
       await todosService.unshareFromSpace(shareId);
-      if (personalSpaceId) await loadTodos(personalSpaceId);
+      await loadTodos(null); // Personal todos have household_id = NULL
     } catch (error) {
       console.error('Error unsharing todo:', error);
     }
   };
 
   const handleClearCompleted = async () => {
-    if (!personalSpaceId || !confirm('Clear all completed tasks?')) return;
+    if (!confirm('Clear all completed tasks?')) return;
     try {
-      await todosService.clearCompleted(personalSpaceId);
-      await loadTodos(personalSpaceId);
+      // Personal todos have household_id = NULL
+      await todosService.clearCompleted(null);
+      await loadTodos(null); // Personal todos have household_id = NULL
     } catch (error) {
       console.error('Error clearing completed:', error);
     }
@@ -331,7 +384,7 @@ export function UnifiedTodoList() {
                         </span>
                       </div>
 
-                      {hasDetails && isExpanded && (
+                      {(hasDetails || todo.has_breakdown) && isExpanded && (
                         <div className="mt-3 space-y-2">
                           {todo.description && (
                             <p className="text-sm text-slate-600">{todo.description}</p>
@@ -340,6 +393,34 @@ export function UnifiedTodoList() {
                             <div className="flex items-center gap-2 text-sm text-slate-600">
                               <Calendar className="w-4 h-4" />
                               <span>Due: {new Date(todo.due_date).toLocaleDateString()}</span>
+                            </div>
+                          )}
+                          {todo.has_breakdown && microSteps[todo.id] && (
+                            <div className="mt-3 pt-3 border-t border-slate-200">
+                              <div className="flex items-center gap-2 mb-2">
+                                <Target className="w-4 h-4 text-purple-600" />
+                                <span className="text-sm font-medium text-slate-700">
+                                  Micro-steps ({microSteps[todo.id].filter(s => s.completed).length} of {microSteps[todo.id].length})
+                                </span>
+                              </div>
+                              <div className="space-y-1.5">
+                                {microSteps[todo.id].map((step) => (
+                                  <label
+                                    key={step.id}
+                                    className="flex items-start gap-2 p-2 rounded-lg hover:bg-slate-50 cursor-pointer"
+                                  >
+                                    <input
+                                      type="checkbox"
+                                      checked={step.completed}
+                                      onChange={(e) => handleToggleMicroStep(step.id, e.target.checked)}
+                                      className="mt-1 w-4 h-4 text-purple-600 border-gray-300 rounded focus:ring-purple-500"
+                                    />
+                                    <span className={`text-sm flex-1 ${step.completed ? 'line-through text-slate-400' : 'text-slate-700'}`}>
+                                      {step.title}
+                                    </span>
+                                  </label>
+                                ))}
+                              </div>
                             </div>
                           )}
                           {todo.shared_spaces && todo.shared_spaces.length > 0 && (
@@ -360,9 +441,28 @@ export function UnifiedTodoList() {
                           )}
                         </div>
                       )}
+                      {todo.has_breakdown && !isExpanded && (
+                        <div className="mt-2 text-xs text-purple-600 flex items-center gap-1">
+                          <Target className="w-3 h-3" />
+                          <span>
+                            {microSteps[todo.id] 
+                              ? `${microSteps[todo.id].filter(s => s.completed).length} of ${microSteps[todo.id].length} steps`
+                              : 'Has breakdown'}
+                          </span>
+                        </div>
+                      )}
                     </div>
 
                     <div className="flex-shrink-0 flex items-center gap-1">
+                      {!todo.has_breakdown && (
+                        <button
+                          onClick={() => setBreakdownTodoId(todo.id)}
+                          className="p-2 text-slate-400 hover:text-purple-600 hover:bg-purple-50 rounded-lg transition-colors"
+                          title="Break this down"
+                        >
+                          <Sparkles className="w-4 h-4" />
+                        </button>
+                      )}
                       {hasDetails && (
                         <button
                           onClick={() => toggleExpanded(todo.id)}
@@ -415,6 +515,18 @@ export function UnifiedTodoList() {
             })
           )}
         </div>
+
+        {/* Breakdown Modal */}
+        {breakdownTodoId && userId && (
+          <TodoBreakdownModal
+            isOpen={!!breakdownTodoId}
+            onClose={() => setBreakdownTodoId(null)}
+            taskTitle={todos.find(t => t.id === breakdownTodoId)?.title || ''}
+            taskId={breakdownTodoId}
+            userId={userId}
+            onBreakdownSaved={handleBreakdownSaved}
+          />
+        )}
       </div>
     </PlannerShell>
   );

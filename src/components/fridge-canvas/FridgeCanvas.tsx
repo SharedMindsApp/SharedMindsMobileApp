@@ -13,6 +13,7 @@ import { MicroWidgetIcon } from "./MicroWidgetIcon";
 import { FullscreenGroupView } from "./FullscreenGroupView";
 import { ConfirmDialog } from "../ConfirmDialog";
 import { UploadSVGModal } from "./UploadSVGModal";
+import { MobileNavigationPanel } from "../spaces/MobileNavigationPanel";
 
 // Individual widget components
 import { NoteWidget } from "./widgets/NoteWidget";
@@ -29,6 +30,7 @@ import { FilesCanvasWidget } from "./widgets/FilesCanvasWidget";
 import { CollectionsCanvasWidget } from "./widgets/CollectionsCanvasWidget";
 import { TablesCanvasWidget } from "./widgets/TablesCanvasWidget";
 import { TodoCanvasWidget } from "./widgets/TodoCanvasWidget";
+import { PantryWidget } from "./widgets/PantryWidget";
 import { SelectTrackerModal } from "./widgets/SelectTrackerModal";
 import { CanvasSVGObject } from "./CanvasSVGObject";
 
@@ -120,6 +122,9 @@ export function FridgeCanvas({ householdId }: FridgeCanvasProps) {
   // Tracker selection modal state
   const [showTrackerSelect, setShowTrackerSelect] = useState(false);
   const [pendingTrackerWidgetType, setPendingTrackerWidgetType] = useState<WidgetType | null>(null);
+
+  // Mobile navigation panel state
+  const [showNavigationPanel, setShowNavigationPanel] = useState(false);
 
   // Phase 6A: Mobile canvas disclaimer state (must be before any early returns)
   const [showMobileDisclaimer, setShowMobileDisclaimer] = useState(() => {
@@ -928,6 +933,14 @@ const handleAddWidget = async (type: WidgetType) => {
           />
         );
 
+      case "pantry":
+        return (
+          <PantryWidget
+            householdId={householdId}
+            viewMode={viewMode}
+          />
+        );
+
       case "todos":
         return (
           <TodoCanvasWidget
@@ -1042,7 +1055,11 @@ const handleAddWidget = async (type: WidgetType) => {
   // ----------------------------
   return (
     <>
-      <CanvasHeader householdName={householdName} />
+      <CanvasHeader 
+        householdName={householdName} 
+        onMenuClick={() => setShowNavigationPanel(true)}
+        isMobile={isMobile}
+      />
 
       {/* Phase 6A: Mobile canvas disclaimer - dismissible notice */}
       {showMobileDisclaimer && isMobile && (
@@ -1282,6 +1299,13 @@ const handleAddWidget = async (type: WidgetType) => {
         confirmText="Delete Group"
         cancelText="Cancel"
         variant="warning"
+      />
+
+      {/* Mobile Navigation Panel */}
+      <MobileNavigationPanel
+        isOpen={showNavigationPanel}
+        onClose={() => setShowNavigationPanel(false)}
+        currentSpaceName={householdName}
       />
     </>
   );

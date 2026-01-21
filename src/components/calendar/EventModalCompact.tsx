@@ -95,18 +95,29 @@ export function EventModalCompact({
 
   const loadMembers = async () => {
     try {
-      const { data, error } = await supabase
+      // Query space_members and profiles separately to avoid ambiguity
+      // space_members has both user_id and invited_by referencing profiles
+      const { data: membersData, error: membersError } = await supabase
         .from('space_members')
-        .select('id, user_id, email, profiles(id, full_name)')
+        .select('id, user_id, email')
         .eq('space_id', householdId)
         .eq('status', 'active');
 
-      if (error) throw error;
+      if (membersError) throw membersError;
 
-      setMembers((data || []).map((m: any) => ({
+      // Get profile info separately
+      const userIds = (membersData || []).filter(m => m.user_id).map(m => m.user_id);
+      const { data: profilesData } = userIds.length > 0 ? await supabase
+        .from('profiles')
+        .select('id, full_name')
+        .in('id', userIds) : { data: [] };
+
+      const profilesMap = new Map((profilesData || []).map(p => [p.id, p]));
+
+      setMembers((membersData || []).map((m: any) => ({
         id: m.id,
         user_id: m.user_id,
-        full_name: m.profiles?.full_name || m.email,
+        full_name: profilesMap.get(m.user_id)?.full_name || m.email,
         email: m.email
       })));
     } catch (err) {
@@ -208,7 +219,7 @@ export function EventModalCompact({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4" style={{ zIndex: 300 }}>
       <div className="bg-white rounded-xl shadow-2xl w-full max-w-md max-h-[90vh] overflow-y-auto">
         <div className="sticky top-0 bg-white border-b border-gray-200 px-4 py-3 flex items-center justify-between">
           <h2 className="text-lg font-bold text-gray-900">

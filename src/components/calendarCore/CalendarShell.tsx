@@ -154,6 +154,15 @@ export function CalendarShell({
   };
 
   const handleDayDoubleClick = (date: Date) => {
+    // Double-click in month view: navigate to day view for that date
+    if (navigation.view === 'month') {
+      navigation.setCurrentDate(date);
+      navigation.setView('day');
+      // Clear selection when navigating
+      setSelectedDate(null);
+      return;
+    }
+    
     // Permission check: Double-click creates events, requires write access
     // This is a mutation operation, so read-only mode must block it
     if (readOnly) return;
@@ -363,7 +372,7 @@ export function CalendarShell({
       )}
 
       <main className="flex-1 overflow-hidden flex flex-col">
-        <div className="flex-1 overflow-hidden">
+        <div className="flex-1 overflow-hidden pb-[100px] md:pb-0">
           {renderView()}
         </div>
 

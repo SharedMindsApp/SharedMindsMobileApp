@@ -65,6 +65,10 @@ export function MonthView({
   const [isMonthExpanded, setIsMonthExpanded] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
   const gridRef = useRef<HTMLDivElement>(null);
+  
+  // Double-tap detection for mobile
+  const lastTapRef = useRef<{ date: Date; time: number } | null>(null);
+  const tapTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // Check if mobile on mount and resize
   useEffect(() => {
@@ -84,6 +88,15 @@ export function MonthView({
       // Component unmounting - state will reset naturally
     };
   }, [currentDate.getFullYear(), currentDate.getMonth()]);
+
+  // Cleanup tap timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (tapTimeoutRef.current) {
+        clearTimeout(tapTimeoutRef.current);
+      }
+    };
+  }, []);
 
   // Swipe gesture for expanding/collapsing month view and horizontal navigation (mobile only)
   // Attach to the grid container so it only triggers when swiping within the calendar grid
@@ -130,6 +143,8 @@ export function MonthView({
 
   const handleDayClick = (date: Date, e: React.MouseEvent) => {
     // Single click: select day (only in month view)
+    // Note: On mobile, touch handler may also fire, but that's okay
+    // The touch handler will handle double-tap detection
     if (onDaySelect) {
       onDaySelect(date);
     }
@@ -144,6 +159,54 @@ export function MonthView({
     if (onDaySelect) {
       onDaySelect(null);
     }
+  };
+
+  // Handle touch for double-tap detection (mobile)
+  // This provides better double-tap detection on mobile devices
+  const handleDayTouchEnd = (date: Date, e: React.TouchEvent) => {
+    // Only handle touch events, not mouse events
+    if (e.type !== 'touchend') return;
+    
+    const now = Date.now();
+    const lastTap = lastTapRef.current;
+
+    // Check if this is a double-tap (within 300ms and same date)
+    if (
+      lastTap &&
+      lastTap.date.getTime() === date.getTime() &&
+      now - lastTap.time < 300
+    ) {
+      // Clear timeout for single tap
+      if (tapTimeoutRef.current) {
+        clearTimeout(tapTimeoutRef.current);
+        tapTimeoutRef.current = null;
+      }
+      // Prevent default click behavior
+      e.preventDefault();
+      // Trigger double-click handler
+      handleDayDoubleClick(date);
+      lastTapRef.current = null;
+      return;
+    }
+
+    // Store this tap for potential double-tap
+    lastTapRef.current = { date, time: now };
+
+    // Set timeout for single tap (if no second tap comes)
+    if (tapTimeoutRef.current) {
+      clearTimeout(tapTimeoutRef.current);
+    }
+    tapTimeoutRef.current = setTimeout(() => {
+      // Single tap - select day (only if still the last tap)
+      if (lastTapRef.current && lastTapRef.current.date.getTime() === date.getTime()) {
+        if (onDaySelect) {
+          onDaySelect(date);
+        }
+        onDayClick(date);
+      }
+      lastTapRef.current = null;
+      tapTimeoutRef.current = null;
+    }, 300);
   };
 
   // Check if a day is selected
@@ -178,7 +241,7 @@ export function MonthView({
           isMobile && isMonthExpanded 
             ? 'auto-rows-[minmax(120px,1fr)]' 
             : 'auto-rows-fr'
-        }`}
+        } pb-[100px] md:pb-0`}
         style={{
           minHeight: isMobile && isMonthExpanded ? '600px' : undefined,
         }}
@@ -207,6 +270,7 @@ export function MonthView({
               } ${isSelectedDate && isTodayDate ? 'bg-blue-100/50' : ''}`}
               onClick={(e) => handleDayClick(date, e)}
               onDoubleClick={() => handleDayDoubleClick(date)}
+              onTouchEnd={(e) => handleDayTouchEnd(date, e)}
             >
               <div className="flex items-center justify-between mb-1">
                 <div className="flex items-center gap-1">

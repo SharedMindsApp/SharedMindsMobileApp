@@ -254,6 +254,10 @@ export function WorkspaceWidget({ content, householdId, pageId, viewMode = 'larg
   const [activeId, setActiveId] = useState<string | null>(null);
   const [collapsedUnits, setCollapsedUnits] = useState<Set<string>>(new Set());
   const [showUnitMenu, setShowUnitMenu] = useState<string | null>(null);
+  
+  // Layer behavior: Track z-index for items (last interacted moves to top)
+  const [itemZIndices, setItemZIndices] = useState<Map<string, number>>(new Map());
+  const zIndexCounterRef = useRef(1);
   const [showReferencePicker, setShowReferencePicker] = useState<{ unitId?: string; type: WorkspaceReferenceType } | null>(null);
   const [showMobileAddMenu, setShowMobileAddMenu] = useState(false);
   const [savingUnits, setSavingUnits] = useState<Set<string>>(new Set());
@@ -1463,10 +1467,124 @@ export function WorkspaceWidget({ content, householdId, pageId, viewMode = 'larg
     }
   };
 
+  // Helper to get content preview from units
+  const getContentPreview = useCallback(() => {
+    if (flatUnits.length === 0) return null;
+    
+    // Get first few non-empty units for preview
+    const previewUnits = flatUnits
+      .filter(unit => {
+        if (isTextUnit(unit)) return unit.content.text?.trim();
+        if (isBulletUnit(unit)) return unit.content.items?.length > 0;
+        if (isChecklistUnit(unit)) return unit.content.items?.length > 0;
+        if (isGroupUnit(unit)) return unit.content.title?.trim();
+        if (isCalloutUnit(unit)) return unit.content.text?.trim();
+        return false;
+      })
+      .slice(0, 3);
+    
+    return previewUnits.map(unit => {
+      if (isTextUnit(unit)) {
+        const text = unit.content.text?.trim() || '';
+        return { type: 'text', content: text.substring(0, 60) };
+      }
+      if (isBulletUnit(unit)) {
+        const firstItem = unit.content.items?.[0] || '';
+        return { type: 'bullet', content: firstItem.substring(0, 50) };
+      }
+      if (isChecklistUnit(unit)) {
+        const firstItem = unit.content.items?.[0]?.text || '';
+        return { type: 'checklist', content: firstItem.substring(0, 50) };
+      }
+      if (isGroupUnit(unit)) {
+        return { type: 'group', content: unit.content.title || 'Group' };
+      }
+      if (isCalloutUnit(unit)) {
+        const text = unit.content.text?.trim() || '';
+        return { type: 'callout', content: text.substring(0, 50) };
+      }
+      return null;
+    }).filter(Boolean);
+  }, [flatUnits]);
+
+  // Helper to get unit type counts
+  const getUnitTypeCounts = useCallback(() => {
+    const counts = {
+      text: 0,
+      bullet: 0,
+      checklist: 0,
+      group: 0,
+      callout: 0,
+      code: 0,
+      reference: 0,
+    };
+    
+    flatUnits.forEach(unit => {
+      if (isTextUnit(unit)) counts.text++;
+      else if (isBulletUnit(unit)) counts.bullet++;
+      else if (isChecklistUnit(unit)) counts.checklist++;
+      else if (isGroupUnit(unit)) counts.group++;
+      else if (isCalloutUnit(unit)) counts.callout++;
+      else if (isCodeUnit(unit)) counts.code++;
+      else if (isReferenceUnit(unit)) counts.reference++;
+    });
+    
+    return counts;
+  }, [flatUnits]);
+
   if (viewMode === 'icon') {
+    const preview = getContentPreview();
+    const displayTitle = page?.title || 'Workspace';
+    const unitCount = flatUnits.length;
+    
     return (
-      <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-slate-50 to-blue-50 border-2 border-slate-200 rounded-2xl">
-        <FileText size={32} className="text-slate-600" />
+      <div className="w-full h-full flex flex-col items-center justify-center bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50 border-2 border-slate-200 rounded-2xl p-3 relative overflow-hidden">
+        {/* Decorative background pattern */}
+        <div className="absolute inset-0 opacity-5">
+          <div className="absolute top-2 left-2 w-8 h-8 border border-slate-400 rounded"></div>
+          <div className="absolute top-6 left-6 w-4 h-4 border border-slate-400 rounded"></div>
+          <div className="absolute bottom-4 right-4 w-6 h-6 border border-slate-400 rounded"></div>
+        </div>
+        
+        {/* Main icon */}
+        <div className="relative z-10 flex items-center justify-center mb-2">
+          <div className="bg-white/80 backdrop-blur-sm rounded-xl p-3 shadow-sm">
+            <Layers size={28} className="text-slate-700" />
+          </div>
+        </div>
+        
+        {/* Page title or workspace name */}
+        {displayTitle && (
+          <p className="text-[10px] font-semibold text-slate-800 text-center line-clamp-1 mb-1 relative z-10 max-w-full px-1">
+            {displayTitle}
+          </p>
+        )}
+        
+        {/* Content preview or unit count */}
+        {preview && preview.length > 0 ? (
+          <div className="relative z-10 w-full mt-1 space-y-0.5">
+            {preview.slice(0, 2).map((item, idx) => (
+              item && (
+                <div key={idx} className="flex items-start gap-1 px-1">
+                  <span className="text-[8px] text-slate-500 mt-0.5 flex-shrink-0">
+                    {item.type === 'bullet' ? '•' : item.type === 'checklist' ? '☐' : item.type === 'group' ? '▸' : '—'}
+                  </span>
+                  <p className="text-[8px] text-slate-600 line-clamp-1 flex-1 min-w-0">
+                    {item.content}
+                  </p>
+                </div>
+              )
+            ))}
+          </div>
+        ) : unitCount > 0 ? (
+          <p className="text-[9px] text-slate-500 text-center relative z-10">
+            {unitCount} {unitCount === 1 ? 'block' : 'blocks'}
+          </p>
+        ) : (
+          <p className="text-[9px] text-slate-400 italic text-center relative z-10">
+            Empty
+          </p>
+        )}
       </div>
     );
   }
@@ -1474,23 +1592,91 @@ export function WorkspaceWidget({ content, householdId, pageId, viewMode = 'larg
   if (viewMode === 'mini') {
     const unitCount = flatUnits.length;
     const displayTitle = page?.title || 'Workspace';
+    const preview = getContentPreview();
+    const typeCounts = getUnitTypeCounts();
+    const totalTypes = Object.values(typeCounts).filter(c => c > 0).length;
+    
     return (
-      <div className="w-full h-full p-4 flex flex-col bg-gradient-to-br from-slate-50 to-blue-50 border-2 border-slate-200 rounded-2xl">
-        <div className="flex items-center gap-2 mb-2">
-          <FileText size={18} className="text-slate-600" />
-          <span className="text-sm font-semibold text-slate-900">Workspace</span>
-        </div>
-        {page ? (
-          <div className="flex-1 overflow-hidden">
-            <p className="text-xs text-slate-700 line-clamp-2">
+      <div className="w-full h-full p-4 flex flex-col bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50 border-2 border-slate-200 rounded-2xl shadow-sm hover:shadow-md transition-shadow">
+        {/* Header */}
+        <div className="flex items-center gap-2 mb-3">
+          <div className="bg-white/80 backdrop-blur-sm rounded-lg p-1.5 shadow-sm">
+            <Layers size={16} className="text-slate-700" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <span className="text-sm font-semibold text-slate-900 block truncate">
               {displayTitle}
+            </span>
+            {page && page.title !== displayTitle && (
+              <span className="text-[10px] text-slate-500">Workspace</span>
+            )}
+          </div>
+        </div>
+        
+        {/* Content Preview */}
+        {preview && preview.length > 0 ? (
+          <div className="flex-1 overflow-hidden space-y-1.5 mb-3">
+            {preview.map((item, idx) => (
+              item && (
+                <div key={idx} className="flex items-start gap-2 text-xs">
+                  <span className="text-slate-400 mt-0.5 flex-shrink-0 text-[10px]">
+                    {item.type === 'bullet' ? '•' : 
+                     item.type === 'checklist' ? '☐' : 
+                     item.type === 'group' ? '▸' : 
+                     item.type === 'callout' ? 'ℹ' : '—'}
+                  </span>
+                  <p className="text-xs text-slate-700 line-clamp-2 flex-1 min-w-0 leading-relaxed">
+                    {item.content}
+                  </p>
+                </div>
+              )
+            ))}
+          </div>
+        ) : unitCount > 0 ? (
+          <div className="flex-1 flex items-center justify-center mb-3">
+            <p className="text-xs text-slate-500 italic text-center">
+              {unitCount} {unitCount === 1 ? 'block' : 'blocks'} • {totalTypes} {totalTypes === 1 ? 'type' : 'types'}
             </p>
           </div>
         ) : (
-          <p className="text-xs text-slate-600 italic">No page</p>
+          <div className="flex-1 flex items-center justify-center mb-3">
+            <p className="text-xs text-slate-400 italic text-center">
+              Empty workspace
+            </p>
+          </div>
         )}
-        <div className="mt-2 text-xs text-slate-600">
-          {unitCount} {unitCount === 1 ? 'unit' : 'units'}
+        
+        {/* Footer with stats */}
+        <div className="flex items-center justify-between pt-2 border-t border-slate-200/50">
+          <div className="flex items-center gap-3 text-[10px] text-slate-600">
+            {typeCounts.text > 0 && (
+              <span className="flex items-center gap-1">
+                <Type size={10} />
+                {typeCounts.text}
+              </span>
+            )}
+            {typeCounts.bullet > 0 && (
+              <span className="flex items-center gap-1">
+                <List size={10} />
+                {typeCounts.bullet}
+              </span>
+            )}
+            {typeCounts.checklist > 0 && (
+              <span className="flex items-center gap-1">
+                <CheckSquare size={10} />
+                {typeCounts.checklist}
+              </span>
+            )}
+            {typeCounts.group > 0 && (
+              <span className="flex items-center gap-1">
+                <Layers size={10} />
+                {typeCounts.group}
+              </span>
+            )}
+          </div>
+          <div className="text-[10px] text-slate-500">
+            {unitCount} {unitCount === 1 ? 'unit' : 'units'}
+          </div>
         </div>
       </div>
     );
@@ -1767,9 +1953,9 @@ export function WorkspaceWidget({ content, householdId, pageId, viewMode = 'larg
         setDragOverId(null);
       }}
     >
-      <div className="flex-1 min-h-0 bg-gray-50 flex flex-col">
+      <div className="flex-1 min-h-0 bg-gradient-to-br from-stone-50 via-neutral-50 to-stone-100 flex flex-col">
         {/* Header */}
-        <div className="sticky top-0 z-10 bg-white/95 backdrop-blur-sm border-b border-gray-200 shadow-sm transition-shadow flex-shrink-0">
+        <div className="sticky top-0 z-10 bg-white/95 backdrop-blur-sm border-b border-stone-200 shadow-sm transition-shadow flex-shrink-0">
           {/* Save Status Indicator */}
           <div className="px-2 sm:px-4 py-1 flex items-center justify-end gap-2 text-xs">
             {saveStatus === 'saving' && (
@@ -1815,13 +2001,14 @@ export function WorkspaceWidget({ content, householdId, pageId, viewMode = 'larg
                 >
                   <ArrowLeft size={20} />
                 </button>
-                <div className="p-1.5 bg-slate-100 rounded-lg flex-shrink-0">
-                  <FileText size={20} className="text-slate-600" />
+                <div className="p-1.5 bg-stone-100 rounded-lg flex-shrink-0">
+                  <Layers size={20} className="text-stone-700" />
                 </div>
                 <div className="min-w-0 flex-1">
-                  <h1 className="text-base font-bold text-gray-900 truncate">
+                  <h1 className="text-base font-bold text-stone-900 truncate">
                     {currentTitle}
                   </h1>
+                  <p className="text-xs text-stone-500">Your working surface</p>
                 </div>
               </div>
               <div className="flex items-center gap-1 flex-shrink-0">

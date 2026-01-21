@@ -8,7 +8,6 @@ import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { Loader2 } from 'lucide-react';
 import { FridgeCanvas } from './fridge-canvas/FridgeCanvas';
 import { SpacesOSLauncher } from './spaces/SpacesOSLauncher';
-import { PagesNavigation } from './pages/PagesNavigation';
 import { getSpaceById, Household } from '../lib/household';
 import { isStandaloneApp } from '../lib/appContext';
 import { loadHouseholdWidgets } from '../lib/fridgeCanvas';
@@ -159,24 +158,10 @@ export function SpaceViewPage() {
       errorMessage="An error occurred while loading the canvas view."
       resetOnPropsChange={true}
     >
-    <div className="min-h-screen bg-gradient-to-br from-amber-50 via-orange-50 to-rose-50 flex">
-      {/* Pages Navigation Sidebar */}
-      {household && (
-        <div className="w-64 border-r border-gray-200 bg-white hidden md:block">
-          <PagesNavigation
-            spaceId={household.id}
-            onPageSelect={(pageId) => {
-              navigate(`/spaces/${household.id}/pages/${pageId}`);
-            }}
-          />
-        </div>
-      )}
-      
+    <div className="min-h-screen bg-gradient-to-br from-amber-50 via-orange-50 to-rose-50">
       {/* Main Canvas Area */}
-      <div className="flex-1 min-w-0">
-        <FridgeCanvas householdId={household.id} />
-        {/* AI chat widget disabled for shared spaces */}
-      </div>
+      <FridgeCanvas householdId={household.id} />
+      {/* AI chat widget disabled for shared spaces */}
     </div>
     </ErrorBoundary>
   );

@@ -25,6 +25,7 @@ import {
   Activity,
   BookOpen,
   CheckCircle2,
+  Package,
 } from 'lucide-react';
 import { WidgetType, TrackerAppContent } from '../../lib/fridgeCanvasTypes';
 import { createWidget, getDefaultWidgetContent } from '../../lib/fridgeCanvas';
@@ -139,6 +140,15 @@ const widgetOptions: WidgetOption[] = [
     iconColor: 'text-teal-600',
     category: 'Planning',
     description: 'Shopping list',
+  },
+  {
+    type: 'pantry',
+    icon: Package,
+    label: 'Pantry',
+    color: 'bg-stone-50',
+    iconColor: 'text-stone-600',
+    category: 'Planning',
+    description: 'Track what you have at home',
   },
   {
     type: 'todos',

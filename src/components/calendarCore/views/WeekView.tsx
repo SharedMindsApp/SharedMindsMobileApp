@@ -216,7 +216,7 @@ export function WeekView({
         </div>
 
         {/* Scrollable Time Grid */}
-        <div ref={scrollContainerRef} className="flex-1 overflow-y-auto overscroll-contain">
+        <div ref={scrollContainerRef} className="flex-1 overflow-y-auto overscroll-contain pb-[100px] md:pb-0">
           <div className="flex">
             {/* Time Column - Narrow on mobile */}
             <div className="w-12 flex-shrink-0 border-r border-gray-200 bg-gray-50/50">

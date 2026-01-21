@@ -253,11 +253,11 @@ export function PlannerTasks() {
       <div className="flex flex-col h-full bg-white">
         {/* Read-only banner for shared task lists */}
         {activeContext.kind === 'shared' && (
-          <div className="px-4 py-2 bg-blue-50 border-b border-blue-200 flex items-center gap-2 text-sm safe-top">
+          <div className="px-4 py-2 bg-blue-50 border-b border-blue-200 flex items-center gap-2 text-xs sm:text-sm safe-top flex-wrap">
             <span className="text-blue-700 font-medium">
               Viewing {activeContext.ownerName}'s Tasks
             </span>
-            <span className="text-blue-600">•</span>
+            <span className="text-blue-600 hidden sm:inline">•</span>
             <span className="text-blue-600">
               {getTaskPermissionLabel(activeContext) || 'Write access'}
             </span>
@@ -265,7 +265,7 @@ export function PlannerTasks() {
         )}
 
         {/* Header */}
-        <div className="px-4 py-4 sm:px-6 sm:py-5 border-b border-gray-200 bg-white">
+        <div className="px-4 py-3 sm:py-4 md:px-6 md:py-5 border-b border-gray-200 bg-white">
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-3 flex-1 min-w-0">
               {/* Back Button */}
@@ -278,8 +278,8 @@ export function PlannerTasks() {
                 <ArrowLeft size={20} className="text-gray-700" />
               </button>
               <div className="flex-1 min-w-0">
-                <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">Tasks</h1>
-                <p className="text-sm sm:text-base text-gray-600 mt-1">
+                <h1 className="text-xl sm:text-2xl md:text-3xl font-bold text-gray-900">Tasks</h1>
+                <p className="text-xs sm:text-sm md:text-base text-gray-600 mt-1 leading-relaxed">
                   Manage what you need to do
                 </p>
               </div>
@@ -292,15 +292,15 @@ export function PlannerTasks() {
                 onRevokedAccess={handleRevokedAccess}
               />
               {/* Add Task Button - Hidden in read-only mode */}
-              {!isReadOnly && (
-                <button
-                  onClick={() => setIsTaskModalOpen(true)}
-                  className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2"
-                >
-                  <Plus size={16} />
-                  <span className="hidden sm:inline">Add Task</span>
-                </button>
-              )}
+            {!isReadOnly && (
+              <button
+                onClick={() => setIsTaskModalOpen(true)}
+                className="px-3 py-2 sm:px-4 text-xs sm:text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-1.5 sm:gap-2 min-h-[44px]"
+              >
+                <Plus size={14} className="sm:w-4 sm:h-4" />
+                <span className="hidden sm:inline">Add Task</span>
+              </button>
+            )}
             </div>
           </div>
 
@@ -308,7 +308,7 @@ export function PlannerTasks() {
         <div className="flex gap-2 overflow-x-auto pb-2 -mx-4 px-4 sm:mx-0 sm:px-0 scrollbar-hide">
           <button
             onClick={() => setFilter('today')}
-            className={`px-4 py-2 text-sm font-medium rounded-lg whitespace-nowrap transition-colors flex-shrink-0 min-h-[44px] flex items-center justify-center ${
+            className={`px-3 sm:px-4 py-2 text-xs sm:text-sm font-medium rounded-lg whitespace-nowrap transition-colors flex-shrink-0 min-h-[44px] flex items-center justify-center ${
               filter === 'today'
                 ? 'bg-blue-600 text-white'
                 : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
@@ -318,7 +318,7 @@ export function PlannerTasks() {
           </button>
           <button
             onClick={() => setFilter('upcoming')}
-            className={`px-4 py-2 text-sm font-medium rounded-lg whitespace-nowrap transition-colors flex-shrink-0 min-h-[44px] flex items-center justify-center ${
+            className={`px-3 sm:px-4 py-2 text-xs sm:text-sm font-medium rounded-lg whitespace-nowrap transition-colors flex-shrink-0 min-h-[44px] flex items-center justify-center ${
               filter === 'upcoming'
                 ? 'bg-blue-600 text-white'
                 : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
@@ -328,7 +328,7 @@ export function PlannerTasks() {
           </button>
           <button
             onClick={() => setFilter('completed')}
-            className={`px-4 py-2 text-sm font-medium rounded-lg whitespace-nowrap transition-colors flex-shrink-0 min-h-[44px] flex items-center justify-center ${
+            className={`px-3 sm:px-4 py-2 text-xs sm:text-sm font-medium rounded-lg whitespace-nowrap transition-colors flex-shrink-0 min-h-[44px] flex items-center justify-center ${
               filter === 'completed'
                 ? 'bg-blue-600 text-white'
                 : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
@@ -346,21 +346,21 @@ export function PlannerTasks() {
             <Loader2 className="w-8 h-8 animate-spin text-gray-400" />
           </div>
         ) : error ? (
-          <div className="flex flex-col items-center justify-center py-12">
-            <AlertCircle className="w-12 h-12 text-red-400 mb-3" />
-            <p className="text-sm text-gray-600">{error}</p>
+          <div className="flex flex-col items-center justify-center py-12 px-4">
+            <AlertCircle className="w-10 h-10 sm:w-12 sm:h-12 text-red-400 mb-3" />
+            <p className="text-xs sm:text-sm text-gray-600 text-center max-w-sm">{error}</p>
             <button
               onClick={loadTasks}
-              className="mt-4 px-4 py-2 text-sm font-medium text-blue-600 bg-blue-50 rounded-lg hover:bg-blue-100 transition-colors"
+              className="mt-4 px-4 py-2 text-xs sm:text-sm font-medium text-blue-600 bg-blue-50 rounded-lg hover:bg-blue-100 transition-colors min-h-[44px]"
             >
               Try Again
             </button>
           </div>
         ) : tasks.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-12">
-            <CheckSquare className="w-16 h-16 text-gray-300 mb-4" />
-            <p className="text-lg font-medium text-gray-900 mb-1">No tasks here yet</p>
-            <p className="text-sm text-gray-500 mb-6">
+          <div className="flex flex-col items-center justify-center py-12 px-4">
+            <CheckSquare className="w-12 h-12 sm:w-16 sm:h-16 text-gray-300 mb-4" />
+            <p className="text-base sm:text-lg font-medium text-gray-900 mb-1 text-center">No tasks here yet</p>
+            <p className="text-xs sm:text-sm text-gray-500 mb-6 text-center max-w-sm">
               {filter === 'completed' 
                 ? 'Completed tasks will appear here.'
                 : 'Add a task to plan what you need to do.'}
@@ -368,9 +368,9 @@ export function PlannerTasks() {
             {filter !== 'completed' && (
               <button
                 onClick={() => setIsTaskModalOpen(true)}
-                className="px-6 py-3 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2"
+                className="px-5 py-2.5 sm:px-6 sm:py-3 text-xs sm:text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2 min-h-[44px]"
               >
-                <Plus size={18} />
+                <Plus size={16} className="sm:w-[18px] sm:h-[18px]" />
                 Add Task
               </button>
             )}
@@ -384,7 +384,7 @@ export function PlannerTasks() {
               return (
                 <div
                   key={task.id}
-                  className={`p-4 bg-white border rounded-lg hover:border-gray-300 hover:shadow-sm transition-all group ${
+                  className={`p-3 sm:p-4 bg-white border rounded-lg hover:border-gray-300 hover:shadow-sm transition-all group ${
                     isCompleted 
                       ? 'border-gray-100 opacity-75' 
                       : 'border-gray-200'
@@ -414,7 +414,7 @@ export function PlannerTasks() {
                     {/* Task Content */}
                     <div className="flex-1 min-w-0">
                       <div className="flex items-start gap-2 mb-1">
-                        <p className={`text-base font-medium flex-1 ${
+                        <p className={`text-sm sm:text-base font-medium flex-1 ${
                           isCompleted 
                             ? 'text-gray-500 line-through' 
                             : 'text-gray-900'
@@ -435,7 +435,7 @@ export function PlannerTasks() {
                       </div>
                       
                       {/* Task Date & Time & Event Info */}
-                      <div className="flex items-center gap-2 text-sm mb-2">
+                      <div className="flex items-center gap-1.5 sm:gap-2 text-xs sm:text-sm mb-2 flex-wrap">
                         {task.event_id && task.event_title && (
                           <span className={`font-medium ${
                             isCompleted ? 'text-gray-400' : 'text-gray-600'

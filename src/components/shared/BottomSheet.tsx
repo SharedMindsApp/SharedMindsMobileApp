@@ -53,7 +53,12 @@ export function BottomSheet({
   // Detect mobile vs desktop
   useEffect(() => {
     const checkMobile = () => {
-      setIsMobile(window.innerWidth < 768);
+      // Check viewport width, standalone app, and touch capability
+      const isMobileViewport = window.innerWidth < 768;
+      const isStandalone = window.matchMedia('(display-mode: standalone)').matches || (window.navigator as any).standalone === true;
+      const isTouchDevice = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
+      // Prefer mobile detection - if any mobile indicator, use bottom sheet
+      setIsMobile(isMobileViewport || isStandalone || isTouchDevice);
     };
     checkMobile();
     window.addEventListener('resize', checkMobile);
@@ -229,7 +234,18 @@ export function BottomSheet({
         {/* Backdrop */}
         <div
           className="absolute inset-0 bg-black/50 backdrop-blur-sm"
-          onClick={closeOnBackdrop && !preventClose ? onClose : undefined}
+          onClick={(e) => {
+            // Prevent closing if click is on space switcher trigger
+            const target = e.target as HTMLElement;
+            if (target.closest('[data-space-switcher="true"]')) {
+              e.preventDefault();
+              e.stopPropagation();
+              return;
+            }
+            if (closeOnBackdrop && !preventClose) {
+              onClose();
+            }
+          }}
         />
 
         {/* Modal */}
@@ -280,12 +296,23 @@ export function BottomSheet({
   const bottomNavHeight = 80; // Extra buffer for pill nav + safe area
   
   return (
-    <div className="fixed inset-0 z-50 safe-top safe-bottom">
+    <div className="fixed inset-0 z-[60] safe-top safe-bottom">
       {/* Backdrop */}
       <div
         className="absolute inset-0 bg-black/50 backdrop-blur-sm transition-opacity"
         style={{ opacity: dragOpacity }}
-        onClick={closeOnBackdrop && !preventClose ? onClose : undefined}
+        onClick={(e) => {
+          // Prevent closing if click is on space switcher trigger
+          const target = e.target as HTMLElement;
+          if (target.closest('[data-space-switcher="true"]')) {
+            e.preventDefault();
+            e.stopPropagation();
+            return;
+          }
+          if (closeOnBackdrop && !preventClose) {
+            onClose();
+          }
+        }}
       />
 
       {/* Bottom Sheet */}
@@ -334,7 +361,7 @@ export function BottomSheet({
           style={{
             // Ensure content area accounts for keyboard, header, and footer
             maxHeight: `calc(${maxHeight} - ${keyboardHeight}px - ${bottomNavHeight}px - ${title || header || showCloseButton ? '120px' : '60px'} - ${footer ? '80px' : '0px'})`,
-            paddingBottom: '1rem', // Small bottom padding for content
+            paddingBottom: `${bottomNavHeight + 16}px`, // Bottom padding for pill nav + safe area
           }}
         >
           {children}

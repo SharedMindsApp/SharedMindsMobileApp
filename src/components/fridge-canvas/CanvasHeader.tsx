@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
-import { Home, Users, MessageCircle, ChevronUp, Menu, LayoutGrid, Smartphone, User, ChevronDown, Target, Shield, LogOut, Sun, Moon, Zap, Check, BookOpen } from 'lucide-react';
+import { useNavigate, useLocation, useSearchParams } from 'react-router-dom';
+import { Home, Users, MessageCircle, ChevronUp, Menu, LayoutGrid, Smartphone, User, ChevronDown, Target, Shield, LogOut, Sun, Moon, Zap, Check, BookOpen, Grid3x3 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { getUserUIMode, setUserUIMode } from '../../lib/mobileApps';
 import type { UIMode } from '../../lib/mobileTypes';
@@ -10,20 +10,27 @@ import { isStandaloneApp } from '../../lib/appContext';
 
 interface CanvasHeaderProps {
   householdName?: string;
+  onMenuClick?: () => void;
+  isMobile?: boolean;
 }
 
-export function CanvasHeader({ householdName }: CanvasHeaderProps) {
+export function CanvasHeader({ householdName, onMenuClick, isMobile: isMobileProp }: CanvasHeaderProps) {
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [showSpacesMenu, setShowSpacesMenu] = useState(false);
   const [uiMode, setUIMode] = useState<UIMode>('fridge');
   const [isMobile, setIsMobile] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
+  const [searchParams, setSearchParams] = useSearchParams();
   const { user } = useAuth();
   const { appTheme, setAppTheme } = useUIPreferences();
 
   // Phase 9A: Detect mobile/installed app
   useEffect(() => {
+    if (isMobileProp !== undefined) {
+      setIsMobile(isMobileProp);
+      return;
+    }
     const checkMobile = () => {
       const mobile = window.innerWidth < 768 || isStandaloneApp();
       setIsMobile(mobile);
@@ -31,7 +38,7 @@ export function CanvasHeader({ householdName }: CanvasHeaderProps) {
     checkMobile();
     window.addEventListener('resize', checkMobile);
     return () => window.removeEventListener('resize', checkMobile);
-  }, []);
+  }, [isMobileProp]);
 
   useEffect(() => {
     loadUIMode();
@@ -63,6 +70,13 @@ export function CanvasHeader({ householdName }: CanvasHeaderProps) {
         setUIMode(savedMode);
       }
     }
+  };
+
+  // Switch back to app view (OS launcher) on mobile
+  const handleSwitchToAppView = () => {
+    const newParams = new URLSearchParams(searchParams);
+    newParams.delete('view'); // Remove view=canvas to go back to app view
+    setSearchParams(newParams, { replace: true });
   };
 
   const handleUIModeToggle = async (mode: UIMode) => {
@@ -122,7 +136,18 @@ export function CanvasHeader({ householdName }: CanvasHeaderProps) {
 
   if (isCollapsed) {
     return (
-      <div className="fixed top-4 right-4 z-50">
+      <div className="fixed top-4 right-4 z-50 flex items-center gap-2">
+        {/* Mobile app view button in collapsed state */}
+        {isMobile && (location.pathname.startsWith('/spaces/personal') || (location.pathname.startsWith('/spaces/') && location.pathname !== '/spaces/shared' && !location.pathname.endsWith('/shared'))) && (
+          <button
+            onClick={handleSwitchToAppView}
+            className="bg-white/95 backdrop-blur-sm rounded-lg p-3 shadow-lg border border-orange-200 hover:bg-white transition-all hover:scale-105"
+            title="Switch to App View"
+            aria-label="Switch to App View"
+          >
+            <Smartphone size={20} className="text-gray-700" />
+          </button>
+        )}
         <button
           onClick={() => setIsCollapsed(false)}
           className="bg-white/95 backdrop-blur-sm rounded-lg p-3 shadow-lg border border-orange-200 hover:bg-white transition-all hover:scale-105"
@@ -139,6 +164,29 @@ export function CanvasHeader({ householdName }: CanvasHeaderProps) {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between h-14">
           <div className="flex items-center gap-6">
+            {/* Mobile menu button */}
+            {isMobile && onMenuClick && (
+              <button
+                onClick={onMenuClick}
+                className="p-2 text-gray-700 hover:bg-orange-50 rounded-lg transition-colors min-h-[44px] min-w-[44px] flex items-center justify-center"
+                aria-label="Open menu"
+              >
+                <Menu size={20} />
+              </button>
+            )}
+
+            {/* Mobile app view button - switch back to OS launcher */}
+            {isMobile && (location.pathname.startsWith('/spaces/personal') || (location.pathname.startsWith('/spaces/') && location.pathname !== '/spaces/shared' && !location.pathname.endsWith('/shared'))) && (
+              <button
+                onClick={handleSwitchToAppView}
+                className="p-2 text-gray-700 hover:bg-orange-50 rounded-lg transition-colors min-h-[44px] min-w-[44px] flex items-center justify-center"
+                aria-label="Switch to App View"
+                title="Switch to App View"
+              >
+                <Smartphone size={20} />
+              </button>
+            )}
+            
             <div className="flex items-center gap-4">
               {/* Phase 9A: Hide mode toggle on mobile/installed app */}
               {!isMobile && (
@@ -198,7 +246,7 @@ export function CanvasHeader({ householdName }: CanvasHeaderProps) {
                       className="fixed inset-0 z-40"
                       onClick={() => setShowSpacesMenu(false)}
                     ></div>
-                    <div className="absolute left-0 top-full mt-2 w-56 bg-white rounded-lg shadow-xl border border-gray-200 py-2 z-[60]">
+                    <div className="absolute left-0 top-full mt-2 w-56 bg-white rounded-lg shadow-xl border border-gray-200 py-2 z-[500]">
                       <button
                         onClick={() => {
                           setShowSpacesMenu(false);
@@ -218,6 +266,16 @@ export function CanvasHeader({ householdName }: CanvasHeaderProps) {
                       >
                         <Users size={16} />
                         Shared Spaces
+                      </button>
+                      <button
+                        onClick={() => {
+                          setShowSpacesMenu(false);
+                          navigate('/guardrails');
+                        }}
+                        className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2"
+                      >
+                        <Target size={16} />
+                        Teams
                       </button>
                     </div>
                   </>

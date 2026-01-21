@@ -1,12 +1,15 @@
 import { useState, useEffect } from 'react';
 import { X, Plus, Minus } from 'lucide-react';
 import type { MealLibraryItem } from '../../lib/mealPlanner';
+import { FoodPicker } from '../shared/FoodPicker';
+import { getFoodItemName, type FoodItem } from '../../lib/foodItems';
 
 interface RecipeFormModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSave: (recipe: RecipeFormData) => Promise<void>;
   existingRecipe?: MealLibraryItem;
+  householdId?: string; // Required for FoodPicker
 }
 
 export interface RecipeFormData {
@@ -18,7 +21,13 @@ export interface RecipeFormData {
   prepTime: number;
   cookTime: number;
   servings: number;
-  ingredients: Array<{ name: string; quantity: string; unit: string }>;
+  ingredients: Array<{ 
+    food_item_id?: string; // Preferred - use this
+    name?: string; // Deprecated - kept for backward compatibility
+    quantity: string; 
+    unit: string;
+    optional?: boolean;
+  }>;
   instructions: string;
   calories: number | null;
   protein: number | null;
@@ -60,7 +69,7 @@ const COMMON_ALLERGIES = [
   'shellfish'
 ];
 
-export function RecipeFormModal({ isOpen, onClose, onSave, existingRecipe }: RecipeFormModalProps) {
+export function RecipeFormModal({ isOpen, onClose, onSave, existingRecipe, householdId = '' }: RecipeFormModalProps) {
   const [formData, setFormData] = useState<RecipeFormData>({
     name: '',
     mealType: 'dinner',
@@ -80,9 +89,21 @@ export function RecipeFormModal({ isOpen, onClose, onSave, existingRecipe }: Rec
   });
 
   const [saving, setSaving] = useState(false);
+  const [showFoodPicker, setShowFoodPicker] = useState(false);
+  const [editingIngredientIndex, setEditingIngredientIndex] = useState<number | null>(null);
+  const [foodItemNames, setFoodItemNames] = useState<Record<string, string>>({});
 
   useEffect(() => {
     if (existingRecipe) {
+      // Migrate ingredients: if they have food_item_id, use it; otherwise keep name for backward compatibility
+      const migratedIngredients = existingRecipe.ingredients.map((ing: any) => ({
+        food_item_id: ing.food_item_id || undefined,
+        name: ing.name || undefined, // Keep for backward compatibility
+        quantity: ing.quantity || '',
+        unit: ing.unit || '',
+        optional: ing.optional || false,
+      }));
+
       setFormData({
         name: existingRecipe.name,
         mealType: existingRecipe.meal_type,
@@ -92,9 +113,9 @@ export function RecipeFormModal({ isOpen, onClose, onSave, existingRecipe }: Rec
         prepTime: existingRecipe.prep_time || 15,
         cookTime: existingRecipe.cook_time || 30,
         servings: existingRecipe.servings,
-        ingredients: existingRecipe.ingredients.length > 0
-          ? existingRecipe.ingredients
-          : [{ name: '', quantity: '', unit: '' }],
+        ingredients: migratedIngredients.length > 0
+          ? migratedIngredients
+          : [{ quantity: '', unit: '' }],
         instructions: existingRecipe.instructions || '',
         calories: existingRecipe.calories,
         protein: existingRecipe.protein,
@@ -102,6 +123,14 @@ export function RecipeFormModal({ isOpen, onClose, onSave, existingRecipe }: Rec
         fat: existingRecipe.fat,
         allergies: existingRecipe.allergies
       });
+
+      // Load food item names for display
+      const foodItemIds = migratedIngredients.map((ing: any) => ing.food_item_id).filter(Boolean);
+      if (foodItemIds.length > 0) {
+        getFoodItemNames(foodItemIds).then(names => {
+          setFoodItemNames(names);
+        });
+      }
     }
   }, [existingRecipe]);
 
@@ -121,8 +150,11 @@ export function RecipeFormModal({ isOpen, onClose, onSave, existingRecipe }: Rec
   const addIngredient = () => {
     setFormData(prev => ({
       ...prev,
-      ingredients: [...prev.ingredients, { name: '', quantity: '', unit: '' }]
+      ingredients: [...prev.ingredients, { quantity: '', unit: '' }]
     }));
+    // Open FoodPicker for the new ingredient
+    setEditingIngredientIndex(prev.ingredients.length);
+    setShowFoodPicker(true);
   };
 
   const removeIngredient = (index: number) => {
@@ -130,15 +162,41 @@ export function RecipeFormModal({ isOpen, onClose, onSave, existingRecipe }: Rec
       ...prev,
       ingredients: prev.ingredients.filter((_, i) => i !== index)
     }));
+    // Update food item names cache
+    const remainingIds = formData.ingredients
+      .filter((_, i) => i !== index)
+      .map(ing => ing.food_item_id)
+      .filter(Boolean) as string[];
+    if (remainingIds.length > 0) {
+      getFoodItemNames(remainingIds).then(names => setFoodItemNames(names));
+    } else {
+      setFoodItemNames({});
+    }
   };
 
-  const updateIngredient = (index: number, field: 'name' | 'quantity' | 'unit', value: string) => {
+  const updateIngredient = (index: number, field: 'quantity' | 'unit', value: string) => {
     setFormData(prev => ({
       ...prev,
       ingredients: prev.ingredients.map((ing, i) =>
         i === index ? { ...ing, [field]: value } : ing
       )
     }));
+  };
+
+  const handleFoodItemSelect = async (foodItem: FoodItem) => {
+    if (editingIngredientIndex !== null) {
+      setFormData(prev => ({
+        ...prev,
+        ingredients: prev.ingredients.map((ing, i) =>
+          i === editingIngredientIndex 
+            ? { ...ing, food_item_id: foodItem.id, name: foodItem.name } 
+            : ing
+        )
+      }));
+      setFoodItemNames(prev => ({ ...prev, [foodItem.id]: foodItem.name }));
+      setShowFoodPicker(false);
+      setEditingIngredientIndex(null);
+    }
   };
 
   const toggleCategory = (category: string) => {
@@ -317,41 +375,72 @@ export function RecipeFormModal({ isOpen, onClose, onSave, existingRecipe }: Rec
                 </button>
               </div>
               <div className="space-y-2">
-                {formData.ingredients.map((ing, index) => (
-                  <div key={index} className="flex gap-2">
-                    <input
-                      type="text"
-                      value={ing.name}
-                      onChange={(e) => updateIngredient(index, 'name', e.target.value)}
-                      placeholder="Ingredient name"
-                      className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:border-orange-500"
-                    />
-                    <input
-                      type="text"
-                      value={ing.quantity}
-                      onChange={(e) => updateIngredient(index, 'quantity', e.target.value)}
-                      placeholder="Amount"
-                      className="w-24 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:border-orange-500"
-                    />
-                    <input
-                      type="text"
-                      value={ing.unit}
-                      onChange={(e) => updateIngredient(index, 'unit', e.target.value)}
-                      placeholder="Unit"
-                      className="w-24 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:border-orange-500"
-                    />
-                    {formData.ingredients.length > 1 && (
+                {formData.ingredients.map((ing, index) => {
+                  const displayName = ing.food_item_id 
+                    ? (foodItemNames[ing.food_item_id] || ing.name || 'Select food item...')
+                    : (ing.name || 'Select food item...');
+                  
+                  return (
+                    <div key={index} className="flex gap-2">
                       <button
                         type="button"
-                        onClick={() => removeIngredient(index)}
-                        className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                        onClick={() => {
+                          setEditingIngredientIndex(index);
+                          setShowFoodPicker(true);
+                        }}
+                        className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:border-orange-500 text-left bg-white hover:bg-gray-50 transition-colors flex items-center gap-2"
                       >
-                        <Minus size={20} />
+                        {ing.food_item_id && foodItemNames[ing.food_item_id] && (
+                          <span className="text-base">{/* Emoji would come from food_item */}</span>
+                        )}
+                        <span className={displayName === 'Select food item...' ? 'text-gray-400' : 'text-gray-900'}>
+                          {displayName}
+                        </span>
                       </button>
-                    )}
-                  </div>
-                ))}
+                      <input
+                        type="text"
+                        value={ing.quantity}
+                        onChange={(e) => updateIngredient(index, 'quantity', e.target.value)}
+                        placeholder="Amount"
+                        className="w-24 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:border-orange-500"
+                      />
+                      <input
+                        type="text"
+                        value={ing.unit}
+                        onChange={(e) => updateIngredient(index, 'unit', e.target.value)}
+                        placeholder="Unit"
+                        className="w-24 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:border-orange-500"
+                      />
+                      {formData.ingredients.length > 1 && (
+                        <button
+                          type="button"
+                          onClick={() => removeIngredient(index)}
+                          className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                        >
+                          <Minus size={20} />
+                        </button>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
+
+              {/* FoodPicker Modal */}
+              {householdId && (
+                <FoodPicker
+                  isOpen={showFoodPicker}
+                  onClose={() => {
+                    setShowFoodPicker(false);
+                    setEditingIngredientIndex(null);
+                  }}
+                  onSelect={handleFoodItemSelect}
+                  householdId={householdId}
+                  excludeIds={formData.ingredients.map(ing => ing.food_item_id).filter(Boolean) as string[]}
+                  placeholder="Search for a food item..."
+                  title="Select Ingredient"
+                  showAwareness={true}
+                />
+              )}
             </div>
 
             <div>

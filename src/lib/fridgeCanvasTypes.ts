@@ -11,6 +11,7 @@ export type WidgetType =
   | 'agreement'
   | 'meal_planner'
   | 'grocery_list'
+  | 'pantry'
   | 'stack_card'
   | 'files'
   | 'collections'
