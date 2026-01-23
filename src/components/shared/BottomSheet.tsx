@@ -137,15 +137,32 @@ export function BottomSheet({
     }
   }, [isOpen, closeOnRouteChange, location.pathname, onClose]);
 
-  // Prevent body scroll when open
+  // Prevent body scroll when open - CRITICAL: Must restore on unmount
+  // This ensures scroll is restored even if component unmounts unexpectedly
   useEffect(() => {
-    if (!isOpen) return;
+    if (!isOpen) {
+      // Ensure scroll is restored when closed
+      document.body.style.overflow = '';
+      document.body.style.position = '';
+      document.body.style.width = '';
+      return;
+    }
 
+    // Lock body scroll when sheet is open
     const originalOverflow = document.body.style.overflow;
+    const originalPosition = document.body.style.position;
+    const originalWidth = document.body.style.width;
+    
+    // Prevent scroll position jump on mobile
     document.body.style.overflow = 'hidden';
+    document.body.style.position = 'fixed';
+    document.body.style.width = '100%';
 
     return () => {
-      document.body.style.overflow = originalOverflow;
+      // CRITICAL: Always restore scroll on cleanup
+      document.body.style.overflow = originalOverflow || '';
+      document.body.style.position = originalPosition || '';
+      document.body.style.width = originalWidth || '';
     };
   }, [isOpen]);
 
@@ -312,8 +329,13 @@ export function BottomSheet({
             </div>
           )}
 
-          {/* Scrollable Content */}
-          <div className="flex-1 overflow-y-auto p-4">
+          {/* Scrollable Content - Desktop version */}
+          <div 
+            className="flex-1 overflow-y-auto p-4"
+            style={{
+              overscrollBehavior: 'contain', // Prevent scroll chaining
+            }}
+          >
             {children}
           </div>
 
@@ -391,7 +413,7 @@ export function BottomSheet({
           </div>
         )}
 
-        {/* Scrollable Content */}
+        {/* Scrollable Content - Single scroll authority for mobile */}
         <div
           ref={contentRef}
           className="flex-1 overflow-y-auto px-4 py-3"
@@ -399,6 +421,9 @@ export function BottomSheet({
             // Ensure content area accounts for keyboard, header, and footer
             maxHeight: `calc(${maxHeight} - ${keyboardHeight}px - ${bottomNavHeight}px - ${title || header || showCloseButton ? '120px' : '60px'} - ${footer ? '80px' : '0px'})`,
             paddingBottom: `${bottomNavHeight + 16}px`, // Bottom padding for pill nav + safe area
+            overscrollBehavior: 'contain', // Prevent scroll chaining
+            WebkitOverflowScrolling: 'touch', // iOS momentum scrolling
+            touchAction: 'pan-y', // Allow vertical scrolling only
           }}
         >
           {children}

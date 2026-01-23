@@ -2,7 +2,7 @@
  * Phase 1: Critical Load Protection - Added timeout protection
  */
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, startTransition } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   CheckCircle2,
@@ -17,15 +17,24 @@ import { DashboardLayoutRouter } from './dashboard/DashboardLayoutRouter';
 import { COLOR_THEMES } from '../lib/uiPreferencesTypes';
 import { useLoadingState } from '../hooks/useLoadingState';
 import { TimeoutRecovery } from './common/TimeoutRecovery';
+import { DashboardSkeleton } from './common/Skeleton';
+import { DashboardMarks, timeAsync } from '../lib/performance';
 
 export function Dashboard() {
+  // Performance: Mark dashboard start
+  useEffect(() => {
+    DashboardMarks.start();
+  }, []);
+
   const [sections, setSections] = useState<Section[]>([]);
   const [members, setMembers] = useState<Member[]>([]);
   const [progressData, setProgressData] = useState<Progress[]>([]);
   const [household, setHousehold] = useState<Household | null>(null);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
-  const { loading, timedOut, setLoading } = useLoadingState({
-    timeoutMs: 12000, // 12 seconds for dashboard data load
+  const [loadingCritical, setLoadingCritical] = useState(true); // Only for critical auth data
+  const [loadingDeferred, setLoadingDeferred] = useState(true); // For dashboard data
+  const { timedOut } = useLoadingState({
+    timeoutMs: 12000,
   });
   const [error, setError] = useState<string | null>(null);
   const [activeSection, setActiveSection] = useState<string | null>(null);
@@ -33,15 +42,14 @@ export function Dashboard() {
   const { isPremium, role } = useAuth();
   const { config, neurotype } = useUIPreferences();
 
+  // CRITICAL: Render shell immediately, then load data
   useEffect(() => {
-    loadData();
+    loadCriticalData();
   }, []);
 
-  const loadData = async () => {
+  // Load critical auth data first (blocks navigation only)
+  const loadCriticalData = async () => {
     try {
-      setLoading(true);
-      setError(null);
-
       const {
         data: { user },
       } = await supabase.auth.getUser();
@@ -53,7 +61,9 @@ export function Dashboard() {
       }
 
       setCurrentUserId(user.id);
+      DashboardMarks.shellVisible();
 
+      // Load member data (required for navigation)
       const { data: memberData, error: memberError } = await supabase
         .from('members')
         .select('*')
@@ -71,46 +81,77 @@ export function Dashboard() {
         return;
       }
 
-      const householdData = await getUserHousehold();
-      setHousehold(householdData);
+      setLoadingCritical(false);
+      DashboardMarks.skeletonsVisible();
 
-      const { data: householdMembers, error: householdError } = await supabase
-        .from('members')
-        .select('*')
-        .eq('household_id', memberData.household_id);
-
-      if (householdError) throw householdError;
-      setMembers(householdMembers || []);
-
-      const { data: sectionsData, error: sectionsError } = await supabase
-        .from('sections')
-        .select('*')
-        .order('order_index', { ascending: true });
-
-      if (sectionsError) throw sectionsError;
-      setSections(sectionsData || []);
-
-      const { data: progressDataList, error: progressError } = await supabase
-        .from('progress')
-        .select('*')
-        .in(
-          'member_id',
-          householdMembers?.map((m) => m.id) || []
-        );
-
-      if (progressError) throw progressError;
-      setProgressData(progressDataList || []);
+      // Now load dashboard data in parallel (non-blocking)
+      startTransition(() => {
+        loadDashboardData(memberData.household_id);
+      });
     } catch (err) {
-      console.error('Error loading dashboard:', err);
+      console.error('Error loading critical data:', err);
       setError('Failed to load dashboard. Please try again.');
-    } finally {
-      setLoading(false);
+      setLoadingCritical(false);
     }
+  };
+
+  // Load dashboard data in parallel (non-blocking after shell renders)
+  const loadDashboardData = async (householdId: string) => {
+    await timeAsync('dashboard:data:load', async () => {
+      try {
+        // FIXED: Parallel fetching instead of waterfall
+        const [householdData, householdMembersResult, sectionsResult] = await Promise.all([
+          getUserHousehold(),
+          supabase
+            .from('members')
+            .select('*')
+            .eq('household_id', householdId),
+          supabase
+            .from('sections')
+            .select('*')
+            .order('order_index', { ascending: true }),
+        ]);
+
+        if (householdMembersResult.error) throw householdMembersResult.error;
+        if (sectionsResult.error) throw sectionsResult.error;
+
+        const householdMembers = householdMembersResult.data || [];
+        const sectionsData = sectionsResult.data || [];
+
+        setHousehold(householdData);
+        setMembers(householdMembers);
+        setSections(sectionsData);
+        DashboardMarks.criticalDataLoaded();
+
+        // Load progress data after members/sections are available
+        if (householdMembers.length > 0) {
+          const { data: progressDataList, error: progressError } = await supabase
+            .from('progress')
+            .select('*')
+            .in('member_id', householdMembers.map((m) => m.id));
+
+          if (progressError) throw progressError;
+          setProgressData(progressDataList || []);
+        }
+
+        DashboardMarks.allDataLoaded();
+      } catch (err) {
+        console.error('Error loading dashboard data:', err);
+        setError('Failed to load dashboard. Please try again.');
+      } finally {
+        setLoadingDeferred(false);
+        DashboardMarks.interactive();
+      }
+    });
   };
 
   const handleCloseQuestions = () => {
     setActiveSection(null);
-    loadData();
+    if (household) {
+      loadDashboardData(household.id);
+    } else {
+      loadCriticalData();
+    }
   };
 
   const getFirstIncompleteSection = (): Section | null => {
@@ -138,42 +179,78 @@ export function Dashboard() {
     return completedSections === totalSections;
   };
 
-  // Phase 1: Show timeout recovery if data load timed out
-  if (timedOut) {
+  // Show timeout recovery if critical data load timed out
+  if (timedOut && loadingCritical) {
     return (
       <TimeoutRecovery
-        message="Dashboard data is taking longer than expected to load. This may be due to a network issue."
+        message="Dashboard is taking longer than expected to load. This may be due to a network issue."
         timeoutSeconds={12}
-        onRetry={() => loadData()}
+        onRetry={() => loadCriticalData()}
         onReload={() => window.location.reload()}
       />
     );
   }
 
-  // Phase 1: Show timeout recovery if data load timed out
-  if (timedOut) {
-    return (
-      <TimeoutRecovery
-        message="Dashboard data is taking longer than expected to load. This may be due to a network issue."
-        timeoutSeconds={12}
-        onRetry={() => loadData()}
-        onReload={() => window.location.reload()}
-      />
-    );
-  }
+  // CRITICAL: Render shell immediately, show skeletons while data loads
+  // Never block UI render on data - this is the key performance fix
+  const bgTheme = COLOR_THEMES[config.colorTheme];
+  const transitionClass = config.reducedMotion ? '' : 'transition-colors duration-200';
 
-  if (loading) {
-    return (
-      <div className="min-h-[60vh] flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin mb-4 inline-block">
-            <CheckCircle2 size={48} className="text-blue-500" />
+  // Render page shell immediately, even if data is loading
+  return (
+    <div className={`min-h-screen ${bgTheme.bg} ${bgTheme.text} ${transitionClass} -mx-4 -my-8 px-4 py-8 sm:-mx-6 sm:-my-8 sm:px-6 lg:-mx-8 lg:-my-8 lg:px-8`}>
+      {loadingCritical || loadingDeferred ? (
+        // Show skeleton while loading - user sees structure immediately
+        <DashboardSkeleton />
+      ) : error ? (
+        // Error state
+        <div className="min-h-[60vh] flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-lg p-8 max-w-md w-full">
+            <div className="text-center mb-6">
+              <div className="inline-flex items-center justify-center w-16 h-16 bg-red-100 rounded-full mb-4">
+                <AlertCircle size={32} className="text-red-600" />
+              </div>
+              <h2 className="text-2xl font-bold text-gray-900 mb-2">Loading Error</h2>
+              <p className="text-gray-600">{error}</p>
+            </div>
+            <div className="space-y-3">
+              <button
+                onClick={() => {
+                  setLoadingCritical(true);
+                  setLoadingDeferred(true);
+                  loadCriticalData();
+                }}
+                className="w-full bg-blue-600 text-white py-3 px-4 rounded-lg hover:bg-blue-700 transition-colors font-medium"
+              >
+                Try Again
+              </button>
+            </div>
           </div>
-          <p className="text-gray-600 font-medium">Loading your dashboard...</p>
         </div>
-      </div>
-    );
-  }
+      ) : (
+        // Render dashboard with data
+        <DashboardLayoutRouter
+          neurotype={neurotype}
+          sections={sections}
+          members={members}
+          progressData={progressData}
+          household={household}
+          currentMember={members.find((m) => m.user_id === currentUserId) || null}
+          firstIncompleteSection={getFirstIncompleteSection()}
+          reportAvailable={isReportAvailable()}
+          overallProgress={
+            sections.length > 0 && members.length > 0
+              ? Math.round(
+                  (progressData.filter((p) => p.completed).length / (sections.length * members.length)) *
+                    100
+                )
+              : 0
+          }
+          isPremium={isPremium}
+        />
+      )}
+    </div>
+  );
 
   const handleGoToOnboarding = () => {
     navigate('/onboarding/household', { replace: true });
@@ -238,36 +315,29 @@ export function Dashboard() {
     return <QuestionScreen sectionId={activeSection} onClose={handleCloseQuestions} />;
   }
 
-  const firstIncompleteSection = getFirstIncompleteSection();
-  const reportAvailable = isReportAvailable();
+  // Helper functions (moved here to avoid duplication)
+  const getFirstIncompleteSection = (): Section | null => {
+    const currentMember = members.find((m) => m.user_id === currentUserId);
+    if (!currentMember) return null;
 
-  const overallProgress =
-    sections.length > 0 && members.length > 0
-      ? Math.round(
-          (progressData.filter((p) => p.completed).length / (sections.length * members.length)) *
-            100
-        )
-      : 0;
+    const memberProgress = progressData.filter((p) => p.member_id === currentMember.id);
 
-  const currentMember = members.find((m) => m.user_id === currentUserId) || null;
+    for (const section of sections) {
+      const sectionProgress = memberProgress.find((p) => p.section_id === section.id);
+      if (!sectionProgress || !sectionProgress.completed) {
+        return section;
+      }
+    }
 
-  const bgTheme = COLOR_THEMES[config.colorTheme];
-  const transitionClass = config.reducedMotion ? '' : 'transition-colors duration-200';
+    return null;
+  };
 
-  return (
-    <div className={`min-h-screen ${bgTheme.bg} ${bgTheme.text} ${transitionClass} -mx-4 -my-8 px-4 py-8 sm:-mx-6 sm:-my-8 sm:px-6 lg:-mx-8 lg:-my-8 lg:px-8`}>
-      <DashboardLayoutRouter
-        neurotype={neurotype}
-        sections={sections}
-        members={members}
-        progressData={progressData}
-        household={household}
-        currentMember={currentMember}
-        firstIncompleteSection={firstIncompleteSection}
-        reportAvailable={reportAvailable}
-        overallProgress={overallProgress}
-        isPremium={isPremium}
-      />
-    </div>
-  );
+  const isReportAvailable = (): boolean => {
+    if (sections.length === 0 || members.length === 0) return false;
+
+    const totalSections = sections.length * members.length;
+    const completedSections = progressData.filter((p) => p.completed).length;
+
+    return completedSections === totalSections;
+  };
 }

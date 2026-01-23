@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, startTransition } from 'react';
 import { createPortal } from 'react-dom';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { UtensilsCrossed, Coffee, Sun, Moon, X, Plus, Calendar, BookOpen, Heart, ChefHat, Clock, Edit, Trash2, Link as LinkIcon, Star, Search, Filter, ExternalLink, StickyNote, Package, ShoppingCart, CheckCircle2, AlertCircle, Sparkles, ChevronLeft, ChevronRight, Menu } from 'lucide-react';
@@ -37,6 +37,75 @@ import { MealPlannerSettings } from '../../meal-planner/MealPlannerSettings';
 import { getMealAssignments, getPreparedMeals } from '../../../lib/mealPrepService';
 import type { MealAssignment, PreparedMeal } from '../../../lib/mealPrepTypes';
 import { MealAssignmentModal } from '../../meal-planner/MealAssignmentModal';
+import { MealPlannerSkeleton } from '../../common/Skeleton';
+import { MealPlannerMarks } from '../../../lib/performance';
+import { staleWhileRevalidate, CacheKeys } from '../../../lib/dataCache';
+
+/**
+ * Full-screen overlay wrapper for AddMealPanel that properly manages scroll lock
+ * This ensures body scroll is locked when open and restored when closed
+ */
+function AddMealPanelOverlay({
+  onClose,
+  onSelectMeal,
+  spaceId,
+  dayName,
+  mealType,
+}: {
+  onClose: () => void;
+  onSelectMeal: (meal: MealLibraryItem | null, customName?: string, recipeId?: string) => void;
+  spaceId: string;
+  dayName: string;
+  mealType: 'breakfast' | 'lunch' | 'dinner' | 'snack';
+}) {
+  // Lock body scroll when overlay is open
+  useEffect(() => {
+    const originalOverflow = document.body.style.overflow;
+    const originalPosition = document.body.style.position;
+    document.body.style.overflow = 'hidden';
+    // Prevent scroll position jump on mobile
+    document.body.style.position = 'fixed';
+    document.body.style.width = '100%';
+    
+    return () => {
+      // Restore body scroll on unmount/close
+      document.body.style.overflow = originalOverflow;
+      document.body.style.position = originalPosition;
+      document.body.style.width = '';
+    };
+  }, []);
+
+  return (
+    <div 
+      className="fixed inset-0 z-50 bg-white"
+      style={{
+        overscrollBehavior: 'contain',
+        WebkitOverflowScrolling: 'touch',
+        touchAction: 'pan-y',
+      }}
+    >
+      {/* Single scroll container for the entire overlay */}
+      <div 
+        className="h-full overflow-y-auto"
+        style={{
+          overscrollBehavior: 'contain',
+          WebkitOverflowScrolling: 'touch',
+          touchAction: 'pan-y',
+        }}
+      >
+        <div className="max-w-2xl mx-auto">
+          <AddMealPanel
+            onClose={onClose}
+            onSelectMeal={onSelectMeal}
+            spaceId={spaceId}
+            dayName={dayName}
+            mealType={mealType}
+          />
+        </div>
+      </div>
+    </div>
+  );
+}
 
 interface MealPlannerWidgetProps {
   householdId: string;
@@ -104,7 +173,9 @@ export function MealPlannerWidget({ householdId, viewMode, onViewModeChange, onF
   // Load meal schedule for current space
   const { schedule: mealSchedule, getSlotsForDay, loading: scheduleLoading } = useMealSchedule(currentSpaceId);
 
-  const [loading, setLoading] = useState(true);
+  // Performance: Separate loading states for critical vs deferred
+  const [loadingCritical, setLoadingCritical] = useState(true); // Meal plans (critical)
+  const [loadingDeferred, setLoadingDeferred] = useState(false); // Favorites, library (deferred)
   const [mealPlans, setMealPlans] = useState<Record<string, MealPlan>>({});
   const [mealAssignments, setMealAssignments] = useState<Record<string, any>>({}); // date-mealType -> assignment
   const [preparedMeals, setPreparedMeals] = useState<any[]>([]);
@@ -311,7 +382,8 @@ export function MealPlannerWidget({ householdId, viewMode, onViewModeChange, onF
     const expectedSpaceId = contextSpaceIdRef.current;
     const abortSignal = getAbortSignal();
     
-    setLoading(true);
+    MealPlannerMarks.start();
+    setLoadingCritical(true);
     try {
       // Load meal plans for all week_start_dates that the 7 days span
       const allPlans: MealPlan[] = [];
@@ -338,6 +410,7 @@ export function MealPlannerWidget({ householdId, viewMode, onViewModeChange, onF
       });
 
       setMealPlans(plansMap);
+      MealPlannerMarks.dataLoaded();
     } catch (error: any) {
       if (error.name === 'AbortError' || abortSignal?.aborted) {
         return;
@@ -346,7 +419,8 @@ export function MealPlannerWidget({ householdId, viewMode, onViewModeChange, onF
     } finally {
       // Only update loading state if context hasn't changed
       if (contextSpaceIdRef.current === expectedSpaceId) {
-        setLoading(false);
+        setLoadingCritical(false);
+        MealPlannerMarks.interactive();
       }
     }
   };
@@ -1064,7 +1138,9 @@ export function MealPlannerWidget({ householdId, viewMode, onViewModeChange, onF
   if (viewMode === 'xlarge' || showFullView) {
     const fullscreenContent = (
       <>
+        {/* Fullscreen modal - proper scroll container setup */}
         <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-[100] p-0 sm:p-6 safe-top safe-bottom">
+          {/* Main container - overflow-hidden prevents body scroll, inner container handles scrolling */}
           <div className="bg-orange-50 rounded-0 sm:rounded-2xl w-full h-full sm:max-w-5xl sm:max-h-[92vh] overflow-hidden shadow-2xl flex flex-col">
             <div className="bg-gradient-to-br from-orange-500 to-orange-600 px-4 sm:px-6 py-4 sm:py-5 flex-shrink-0 sticky top-0 z-10">
               <div className="flex items-center justify-between mb-3">
@@ -1204,16 +1280,18 @@ export function MealPlannerWidget({ householdId, viewMode, onViewModeChange, onF
               </div>
             </div>
 
+            {/* Main scroll container - only one scroll authority for mobile */}
             <div 
-              className="flex-1 overflow-y-auto bg-gradient-to-b from-orange-50 to-white overscroll-contain"
+              className="flex-1 overflow-y-auto bg-gradient-to-b from-orange-50 to-white"
               style={{
-                touchAction: 'pan-y',
+                overscrollBehavior: 'contain',
                 WebkitOverflowScrolling: 'touch',
+                touchAction: 'pan-y',
               }}
             >
               {activeTab === 'week' && (
                 <div className="p-4 sm:p-6 space-y-4">
-                  {loading ? (
+                  {loadingCritical ? (
                     <div className="flex items-center justify-center h-64">
                       <div className="text-orange-600">Loading meals...</div>
                     </div>
@@ -1249,13 +1327,8 @@ export function MealPlannerWidget({ householdId, viewMode, onViewModeChange, onF
               )}
 
               {activeTab === 'library' && (
-                <div 
-                  className="h-full overflow-y-auto p-6 overscroll-contain"
-                  style={{
-                    touchAction: 'pan-y',
-                    WebkitOverflowScrolling: 'touch',
-                  }}
-                >
+                /* Library tab content - inherits scroll from parent, no nested scroll */
+                <div className="p-6">
                   <RecipeSearchWithAI
                     spaceId={currentSpaceId}
                     // No onSelectRecipe - recipes navigate directly to detail page
@@ -1743,13 +1816,8 @@ export function MealPlannerWidget({ householdId, viewMode, onViewModeChange, onF
                 </button>
               </div>
               
-              <div 
-                className="flex-1 overflow-y-auto p-6 overscroll-contain"
-                style={{
-                  touchAction: 'pan-y',
-                  WebkitOverflowScrolling: 'touch',
-                }}
-              >
+              {/* Recipe detail content - inherits scroll from parent modal container */}
+              <div className="p-6">
                 {/* Recipe Info */}
                 <div className="mb-6">
                   {selectedRecipe.image_url && (
@@ -1871,28 +1939,18 @@ export function MealPlannerWidget({ householdId, viewMode, onViewModeChange, onF
           </div>
         )}
 
-        {/* Add Meal Panel */}
+        {/* Add Meal Panel - Full-screen overlay with proper scroll lock */}
         {showAddMealSheet && selectedSlot && (
-          <div 
-            className="fixed inset-0 z-50 bg-white overflow-y-auto overscroll-contain"
-            style={{
-              touchAction: 'pan-y',
-              WebkitOverflowScrolling: 'touch',
+          <AddMealPanelOverlay
+            onClose={() => {
+              setShowAddMealSheet(false);
+              setSelectedSlot(null);
             }}
-          >
-            <div className="max-w-2xl mx-auto">
-              <AddMealPanel
-                onClose={() => {
-                  setShowAddMealSheet(false);
-                  setSelectedSlot(null);
-                }}
-                onSelectMeal={handleSelectMeal}
-                spaceId={currentSpaceId}
-                dayName={selectedSlot.day}
-                mealType={selectedSlot.mealType}
-              />
-            </div>
-          </div>
+            onSelectMeal={handleSelectMeal}
+            spaceId={currentSpaceId}
+            dayName={selectedSlot.day}
+            mealType={selectedSlot.mealType}
+          />
         )}
 
         {/* Meal Detail Bottom Sheet */}
@@ -2011,7 +2069,7 @@ export function MealPlannerWidget({ householdId, viewMode, onViewModeChange, onF
           </span>
         </div>
 
-        {loading ? (
+        {loadingCritical ? (
           <div className="flex items-center justify-center flex-1">
             <div className="text-xs text-orange-600 italic">Loading...</div>
           </div>
@@ -2045,6 +2103,7 @@ export function MealPlannerWidget({ householdId, viewMode, onViewModeChange, onF
   // Default widget view - Mobile-first vertical card design
   return (
     <>
+      {/* Default widget view - single scroll container for mobile */}
       <div className="w-full h-full bg-gradient-to-b from-orange-50 to-white border-orange-300 border-2 rounded-2xl flex flex-col shadow-lg overflow-hidden">
         {/* Header */}
         <div className="bg-gradient-to-br from-orange-500 to-orange-600 px-4 py-3 flex-shrink-0">
@@ -2157,17 +2216,18 @@ export function MealPlannerWidget({ householdId, viewMode, onViewModeChange, onF
           )}
         </div>
 
-        {/* Content based on active tab */}
+        {/* Content based on active tab - SINGLE scroll authority for mobile */}
         <div 
-          className="flex-1 overflow-y-auto p-3 overscroll-contain"
+          className="flex-1 overflow-y-auto p-3"
           style={{
-            touchAction: 'pan-y',
-            WebkitOverflowScrolling: 'touch',
+            overscrollBehavior: 'contain', // Prevent scroll chaining
+            WebkitOverflowScrolling: 'touch', // iOS momentum scrolling
+            touchAction: 'pan-y', // Allow vertical scrolling only
           }}
         >
           {activeTab === 'week' && (
             <div className="space-y-3">
-              {loading ? (
+              {loadingCritical ? (
                 <div className="flex items-center justify-center h-32">
                   <div className="text-orange-600 text-sm">Loading meals...</div>
                 </div>
@@ -2224,23 +2284,16 @@ export function MealPlannerWidget({ householdId, viewMode, onViewModeChange, onF
           )}
 
           {activeTab === 'library' && (
-            <div 
-              className="h-full overflow-y-auto overscroll-contain"
-              style={{
-                touchAction: 'pan-y',
-                WebkitOverflowScrolling: 'touch',
-              }}
-            >
-              <RecipeSearchWithAI
-                spaceId={currentSpaceId}
-                // No onSelectRecipe - recipes navigate directly to detail page
-              />
-            </div>
+            /* Library tab - inherits scroll from parent, no nested scroll */
+            <RecipeSearchWithAI
+              spaceId={currentSpaceId}
+              // No onSelectRecipe - recipes navigate directly to detail page
+            />
           )}
 
           {activeTab === 'favourites' && (
             <div className="space-y-4">
-              {loading ? (
+              {loadingDeferred ? (
                 <div className="flex items-center justify-center h-32">
                   <div className="text-orange-600 text-sm">Loading...</div>
                 </div>
@@ -2357,7 +2410,7 @@ export function MealPlannerWidget({ householdId, viewMode, onViewModeChange, onF
 
           {activeTab === 'recipes' && (
             <div className="space-y-4">
-              {loading ? (
+              {loadingDeferred ? (
                 <div className="flex items-center justify-center h-32">
                   <div className="text-orange-600 text-sm">Loading...</div>
                 </div>
@@ -2432,27 +2485,18 @@ export function MealPlannerWidget({ householdId, viewMode, onViewModeChange, onF
       </div>
 
       {/* Add Meal Panel */}
+      {/* Add Meal Panel - Full-screen overlay with proper scroll lock */}
       {showAddMealSheet && selectedSlot && (
-        <div 
-          className="fixed inset-0 z-50 bg-white overflow-y-auto overscroll-contain"
-          style={{
-            touchAction: 'pan-y',
-            WebkitOverflowScrolling: 'touch',
+        <AddMealPanelOverlay
+          onClose={() => {
+            setShowAddMealSheet(false);
+            setSelectedSlot(null);
           }}
-        >
-          <div className="max-w-2xl mx-auto">
-            <AddMealPanel
-              onClose={() => {
-                setShowAddMealSheet(false);
-                setSelectedSlot(null);
-              }}
-              onSelectMeal={handleSelectMeal}
-              spaceId={currentSpaceId}
-              dayName={selectedSlot.day}
-              mealType={selectedSlot.mealType}
-            />
-          </div>
-        </div>
+          onSelectMeal={handleSelectMeal}
+          spaceId={currentSpaceId}
+          dayName={selectedSlot.day}
+          mealType={selectedSlot.mealType}
+        />
       )}
 
       {/* Meal Detail Bottom Sheet */}
@@ -2803,12 +2847,13 @@ function WeekPickerModal({
           </button>
         </div>
 
-        {/* Calendar */}
+        {/* Calendar - inherits scroll from parent modal container */}
         <div 
-          className="flex-1 overflow-y-auto p-4 sm:p-6 overscroll-contain"
+          className="flex-1 overflow-y-auto p-4 sm:p-6"
           style={{
-            touchAction: 'pan-y',
-            WebkitOverflowScrolling: 'touch',
+            overscrollBehavior: 'contain', // Prevent scroll chaining
+            WebkitOverflowScrolling: 'touch', // iOS momentum scrolling
+            touchAction: 'pan-y', // Allow vertical scrolling only
           }}
         >
           {/* Month Navigation */}
