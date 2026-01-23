@@ -367,25 +367,15 @@ export function RecipeSearchWithAI({
   const topTags = useMemo(() => getTopTags(ALL_RECIPE_TAGS, 10, rotationIndex), [rotationIndex]);
   const displayedTags = topTags; // Always show top 10 tags in the main view
 
-  // Check if Perplexity API key is available
-  // Note: This check happens at component mount, so if the key is added after server start,
-  // the user will need to refresh the page
+  // Check if Perplexity is available
+  // NOTE: Perplexity uses server-side proxy, so we don't need client-side API key
+  // The server proxy handles authentication. We just need to check if routing is configured.
+  // This flag is kept for backward compatibility but should not block server-proxy calls.
   const hasPerplexityKey = (() => {
-    const key = import.meta.env.VITE_PERPLEXITY_API_KEY;
-    const hasKey = typeof key !== 'undefined' && key !== null && key.trim().length > 0;
-    
-    // Only log warning once per session (use sessionStorage to track)
-    if (import.meta.env.DEV && !hasKey && !sessionStorage.getItem('perplexity_key_warned')) {
-      console.warn('[RecipeSearchWithAI] Perplexity API key not found. To enable AI recipe generation:', {
-        step1: 'Add VITE_PERPLEXITY_API_KEY=pplx-your-key to .env file',
-        step2: 'Restart dev server (stop and start again)',
-        step3: 'Refresh browser',
-        currentEnvKeys: Object.keys(import.meta.env).filter(k => k.startsWith('VITE_') && k.includes('API')),
-      });
-      sessionStorage.setItem('perplexity_key_warned', 'true');
-    }
-    
-    return hasKey;
+    // Perplexity uses server proxy, so client-side key is optional
+    // The server proxy has its own API key configuration
+    // We'll assume Perplexity is available if routing is configured (checked at call time)
+    return true; // Always allow - server proxy will handle authentication
   })();
 
   // Debounce search query to avoid excessive API calls
@@ -1399,7 +1389,7 @@ export function RecipeSearchWithAI({
               <div className="mb-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
                 <p className="text-sm text-yellow-800 font-medium mb-1">AI Generation Not Available</p>
                 <p className="text-xs text-yellow-700">
-                  The Perplexity API key is not configured. Please add VITE_PERPLEXITY_API_KEY to your .env file and restart the server.
+                  Perplexity is configured server-side. If AI recipe generation is not working, please check that the Perplexity proxy Edge Function is deployed and PERPLEXITY_API_KEY is set in Supabase environment variables.
                 </p>
               </div>
             ) : null}

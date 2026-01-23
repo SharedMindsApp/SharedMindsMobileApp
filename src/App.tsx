@@ -40,6 +40,7 @@ import { RequireRole } from './components/RequireRole';
 import { Landing } from './components/Landing';
 import { HowItWorks } from './components/HowItWorks';
 import { isStandaloneApp } from './lib/appContext';
+import { MobileAIDebugOverlay } from './components/debug/MobileAIDebugOverlay';
 import { AppRouteGuard } from './components/AppRouteGuard';
 import { AdminDashboard } from './components/admin/AdminDashboard';
 import { AdminUsers } from './components/admin/AdminUsers';
@@ -2188,6 +2189,8 @@ function AppContent() {
         </NotificationProvider>
       </AuthProvider>
     </BrowserRouter>
+    {/* Mobile AI Debug Overlay - Dev only, mobile only */}
+    <MobileAIDebugOverlay />
     </>
   );
 }

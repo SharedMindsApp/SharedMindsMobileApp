@@ -1150,7 +1150,13 @@ export function MealPlannerWidget({ householdId, viewMode, onViewModeChange, onF
                 </div>
               )}
 
-              <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide">
+              <div 
+                className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide overscroll-contain"
+                style={{
+                  touchAction: 'pan-x',
+                  WebkitOverflowScrolling: 'touch',
+                }}
+              >
                 <button
                   onClick={() => setActiveTab('week')}
                   className={`flex items-center gap-2 px-4 py-2.5 rounded-lg font-medium transition-all flex-shrink-0 touch-manipulation ${
@@ -1198,7 +1204,13 @@ export function MealPlannerWidget({ householdId, viewMode, onViewModeChange, onF
               </div>
             </div>
 
-            <div className="flex-1 overflow-y-auto bg-gradient-to-b from-orange-50 to-white">
+            <div 
+              className="flex-1 overflow-y-auto bg-gradient-to-b from-orange-50 to-white overscroll-contain"
+              style={{
+                touchAction: 'pan-y',
+                WebkitOverflowScrolling: 'touch',
+              }}
+            >
               {activeTab === 'week' && (
                 <div className="p-4 sm:p-6 space-y-4">
                   {loading ? (
@@ -1237,7 +1249,13 @@ export function MealPlannerWidget({ householdId, viewMode, onViewModeChange, onF
               )}
 
               {activeTab === 'library' && (
-                <div className="h-full overflow-y-auto p-6">
+                <div 
+                  className="h-full overflow-y-auto p-6 overscroll-contain"
+                  style={{
+                    touchAction: 'pan-y',
+                    WebkitOverflowScrolling: 'touch',
+                  }}
+                >
                   <RecipeSearchWithAI
                     spaceId={currentSpaceId}
                     // No onSelectRecipe - recipes navigate directly to detail page
@@ -1725,7 +1743,13 @@ export function MealPlannerWidget({ householdId, viewMode, onViewModeChange, onF
                 </button>
               </div>
               
-              <div className="flex-1 overflow-y-auto p-6">
+              <div 
+                className="flex-1 overflow-y-auto p-6 overscroll-contain"
+                style={{
+                  touchAction: 'pan-y',
+                  WebkitOverflowScrolling: 'touch',
+                }}
+              >
                 {/* Recipe Info */}
                 <div className="mb-6">
                   {selectedRecipe.image_url && (
@@ -1849,7 +1873,13 @@ export function MealPlannerWidget({ householdId, viewMode, onViewModeChange, onF
 
         {/* Add Meal Panel */}
         {showAddMealSheet && selectedSlot && (
-          <div className="fixed inset-0 z-50 bg-white overflow-y-auto">
+          <div 
+            className="fixed inset-0 z-50 bg-white overflow-y-auto overscroll-contain"
+            style={{
+              touchAction: 'pan-y',
+              WebkitOverflowScrolling: 'touch',
+            }}
+          >
             <div className="max-w-2xl mx-auto">
               <AddMealPanel
                 onClose={() => {
@@ -2128,7 +2158,13 @@ export function MealPlannerWidget({ householdId, viewMode, onViewModeChange, onF
         </div>
 
         {/* Content based on active tab */}
-        <div className="flex-1 overflow-y-auto p-3">
+        <div 
+          className="flex-1 overflow-y-auto p-3 overscroll-contain"
+          style={{
+            touchAction: 'pan-y',
+            WebkitOverflowScrolling: 'touch',
+          }}
+        >
           {activeTab === 'week' && (
             <div className="space-y-3">
               {loading ? (
@@ -2188,7 +2224,13 @@ export function MealPlannerWidget({ householdId, viewMode, onViewModeChange, onF
           )}
 
           {activeTab === 'library' && (
-            <div className="h-full overflow-y-auto">
+            <div 
+              className="h-full overflow-y-auto overscroll-contain"
+              style={{
+                touchAction: 'pan-y',
+                WebkitOverflowScrolling: 'touch',
+              }}
+            >
               <RecipeSearchWithAI
                 spaceId={currentSpaceId}
                 // No onSelectRecipe - recipes navigate directly to detail page
@@ -2391,7 +2433,13 @@ export function MealPlannerWidget({ householdId, viewMode, onViewModeChange, onF
 
       {/* Add Meal Panel */}
       {showAddMealSheet && selectedSlot && (
-        <div className="fixed inset-0 z-50 bg-white overflow-y-auto">
+        <div 
+          className="fixed inset-0 z-50 bg-white overflow-y-auto overscroll-contain"
+          style={{
+            touchAction: 'pan-y',
+            WebkitOverflowScrolling: 'touch',
+          }}
+        >
           <div className="max-w-2xl mx-auto">
             <AddMealPanel
               onClose={() => {
@@ -2756,7 +2804,13 @@ function WeekPickerModal({
         </div>
 
         {/* Calendar */}
-        <div className="flex-1 overflow-y-auto p-4 sm:p-6">
+        <div 
+          className="flex-1 overflow-y-auto p-4 sm:p-6 overscroll-contain"
+          style={{
+            touchAction: 'pan-y',
+            WebkitOverflowScrolling: 'touch',
+          }}
+        >
           {/* Month Navigation */}
           <div className="flex items-center justify-between mb-4">
             <button

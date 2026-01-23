@@ -18,6 +18,8 @@ import type { ResolvedRoute } from './guardrails/ai/providerRegistryTypes';
 import { normalizeMealCategories, normalizeCuisine, normalizeMealType } from './recipeCategoryNormalizer';
 import { normalizeRecipeIngredients } from './unitNormalization';
 import { supabase } from './supabase';
+import { getRuntimeEnvironment, canMakeBrowserCalls } from './runtimeEnvironment';
+import { showToast } from '../components/Toast';
 
 export interface RecipeVariation {
   name: string;
@@ -225,6 +227,73 @@ function extractJsonFromPerplexity(content: string): any {
 }
 
 /**
+ * Determine if Perplexity should be used and how to route it
+ */
+function shouldUsePerplexity(
+  route: ResolvedRoute | null,
+  env: ReturnType<typeof getRuntimeEnvironment>
+): { ok: boolean; via: 'server-proxy' | 'direct' | null; reason: string } {
+  if (!route) {
+    return { ok: false, via: null, reason: 'no-route' };
+  }
+  
+  if (route.provider !== 'perplexity') {
+    return { ok: false, via: null, reason: 'not-perplexity' };
+  }
+  
+  // CRITICAL: If requiresServerProxy is true, ALWAYS use server proxy
+  if (route.requiresServerProxy === true) {
+    return { ok: true, via: 'server-proxy', reason: 'requires-server-proxy' };
+  }
+  
+  // CRITICAL: If supportsBrowserCalls is false, ALWAYS use server proxy
+  if (route.supportsBrowserCalls === false) {
+    return { ok: true, via: 'server-proxy', reason: 'no-browser-calls' };
+  }
+  
+  // If browser calls are supported, check if we can make them
+  if (canMakeBrowserCalls(route.requiresServerProxy, route.supportsBrowserCalls)) {
+    return { ok: true, via: 'direct', reason: 'browser-calls-supported' };
+  }
+  
+  // Default to server proxy if unsure
+  return { ok: true, via: 'server-proxy', reason: 'default-to-proxy' };
+}
+
+/**
+ * Emit diagnostic event for Perplexity decisions
+ */
+function emitAIDiagnostic(event: {
+  type: string;
+  reason: string;
+  platform: string;
+  provider?: string;
+  model?: string;
+  routeId?: string;
+  via?: string;
+  error?: string;
+}) {
+  // In development, log to console
+  if (import.meta.env.DEV) {
+    console.warn('[AIDiagnostic]', event);
+  }
+  
+  // In production, could send to telemetry service
+  // For now, we'll use the diagnostic in the mobile debug overlay
+  if (typeof window !== 'undefined') {
+    // Store in sessionStorage for mobile debug overlay
+    const diagnostics = JSON.parse(sessionStorage.getItem('ai_diagnostics') || '[]');
+    diagnostics.push({
+      ...event,
+      timestamp: new Date().toISOString(),
+    });
+    // Keep only last 10 diagnostics
+    const recent = diagnostics.slice(-10);
+    sessionStorage.setItem('ai_diagnostics', JSON.stringify(recent));
+  }
+}
+
+/**
  * Call Perplexity AI API to search and extract recipe information
  * Uses AI routing system to route through configured Perplexity models
  */
@@ -234,6 +303,32 @@ export async function callPerplexityAPI(
   userId?: string,
   spaceId?: string
 ): Promise<PerplexityRecipeResponse> {
+  // Get runtime environment
+  const env = getRuntimeEnvironment();
+  
+  // Initialize diagnostic object
+  const perplexityDebug: {
+    platform: string;
+    isMobile: boolean;
+    isBrowser: boolean;
+    isServer: boolean;
+    supportsBrowserCalls: boolean;
+    requiresServerProxy: boolean;
+    routeId?: string;
+    provider?: string;
+    model?: string;
+    decision: string;
+    via?: string;
+  } = {
+    platform: env.platform,
+    isMobile: env.isMobile,
+    isBrowser: env.isBrowser,
+    isServer: env.isServer,
+    supportsBrowserCalls: false,
+    requiresServerProxy: false,
+    decision: 'not-evaluated',
+  };
+  
   // Use AI routing system to get the appropriate Perplexity model
   // This ensures the request goes through the configured route for spaces_recipe_generation
   let route: ResolvedRoute | null = null;
@@ -247,6 +342,18 @@ export async function callPerplexityAPI(
       userId: userId || 'system', // Use system if no user ID provided
     });
 
+    // Populate diagnostic with route info
+    perplexityDebug.routeId = route.routeId;
+    perplexityDebug.provider = route.provider;
+    perplexityDebug.model = route.modelKey;
+    perplexityDebug.requiresServerProxy = route.requiresServerProxy === true;
+    perplexityDebug.supportsBrowserCalls = route.supportsBrowserCalls !== false;
+
+    // Determine if Perplexity should be used and how
+    const shouldUse = shouldUsePerplexity(route, env);
+    perplexityDebug.decision = shouldUse.reason;
+    perplexityDebug.via = shouldUse.via || undefined;
+
     // Check if this is a server-only provider (like Perplexity)
     isServerOnlyProvider = route.requiresServerProxy === true || route.supportsBrowserCalls === false;
 
@@ -257,6 +364,43 @@ export async function callPerplexityAPI(
       requiresServerProxy: route.requiresServerProxy,
       supportsBrowserCalls: route.supportsBrowserCalls,
       isServerOnly: isServerOnlyProvider,
+      decision: shouldUse.reason,
+      via: shouldUse.via,
+      environment: env,
+    });
+    
+    // If Perplexity should not be used, throw error with diagnostic
+    // NOTE: This should rarely happen if routing is configured correctly
+    if (!shouldUse.ok) {
+      perplexityDebug.decision = `skipped-${shouldUse.reason}`;
+      emitAIDiagnostic({
+        type: 'perplexity_skipped',
+        reason: shouldUse.reason,
+        platform: env.platform,
+        provider: route.provider,
+        model: route.modelKey,
+        routeId: route.routeId,
+      });
+      
+      // If route is not Perplexity, that's a configuration issue
+      if (shouldUse.reason === 'not-perplexity') {
+        throw new Error(
+          `Recipe AI route is configured with ${route.provider}, not Perplexity. ` +
+          `Please configure a Perplexity route for recipe generation in Admin → AI Feature Routing.`
+        );
+      }
+      
+      throw new Error(`Perplexity cannot be used: ${shouldUse.reason}`);
+    }
+    
+    // CRITICAL: Log the routing decision for debugging
+    console.log('[RecipeAI] Perplexity routing decision:', {
+      decision: shouldUse.reason,
+      via: shouldUse.via,
+      requiresServerProxy: route.requiresServerProxy,
+      supportsBrowserCalls: route.supportsBrowserCalls,
+      environment: env,
+      debug: perplexityDebug,
     });
 
     // Get the adapter for the routed provider
@@ -381,6 +525,11 @@ export async function callPerplexityAPI(
 
     return parsed;
   } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    
+    // Update diagnostic with error
+    perplexityDebug.decision = `error-${errorMessage.substring(0, 50)}`;
+    
     // If routing fails, check if provider requires server proxy
     // For server-only providers (like Perplexity), NEVER fallback to direct browser calls
     
@@ -394,14 +543,40 @@ export async function callPerplexityAPI(
           userId: userId || 'system',
         });
         isServerOnlyProvider = route.requiresServerProxy === true || route.supportsBrowserCalls === false;
-      } catch {
+        
+        // Update diagnostic
+        perplexityDebug.routeId = route.routeId;
+        perplexityDebug.provider = route.provider;
+        perplexityDebug.model = route.modelKey;
+        perplexityDebug.requiresServerProxy = route.requiresServerProxy === true;
+        perplexityDebug.supportsBrowserCalls = route.supportsBrowserCalls !== false;
+      } catch (routeError) {
         // If we can't resolve route, assume it might be server-only (safer default for Perplexity)
         // Perplexity is the primary use case, so default to server-only
         isServerOnlyProvider = true;
+        perplexityDebug.decision = 'route-resolution-failed';
       }
     }
     
-    const errorMessage = error instanceof Error ? error.message : String(error);
+    // Emit diagnostic for the error
+    emitAIDiagnostic({
+      type: 'perplexity_error',
+      reason: perplexityDebug.decision,
+      platform: env.platform,
+      provider: route?.provider,
+      model: route?.modelKey,
+      routeId: route?.routeId,
+      via: perplexityDebug.via,
+      error: errorMessage,
+    });
+    
+    // Log structured warning
+    console.warn('[PerplexitySkipped]', perplexityDebug);
+    
+    // Show user-visible feedback in dev mode
+    if (import.meta.env.DEV && env.isMobile) {
+      showToast('warning', `Perplexity skipped: ${perplexityDebug.decision}`, 5000);
+    }
     
     // Check if it's a routing configuration issue
     if (errorMessage.includes('No route found') || errorMessage.includes('NoRouteFoundError')) {
@@ -421,9 +596,128 @@ export async function callPerplexityAPI(
       );
     }
     
-    // For server-only providers, NEVER fallback to direct browser API calls
+    // For server-only providers, try to fallback to alternative AI provider
+    // This ensures mobile users always get results even if Perplexity fails
     if (isServerOnlyProvider) {
-      console.error('[RecipeAI] Server-only provider error (no fallback allowed):', error);
+      console.error('[RecipeAI] Server-only provider error, attempting fallback to alternative provider:', error);
+      
+      // Try to get fallback route (routing service will return a different provider if available)
+      try {
+        // The routing service's getFallbackRoute() returns Anthropic as default
+        // We'll try to use that, but first check if we can get any alternative route
+        let fallbackRoute: ResolvedRoute | null = null;
+        
+        // Try to get routes and find a non-Perplexity one
+        try {
+          // This might return the same route, so we'll use the hardcoded fallback if needed
+          const testRoute = await aiRoutingService.resolveRoute({
+            featureKey: 'spaces_recipe_generation',
+            surfaceType: 'shared',
+            intent: 'generate_recipe',
+            userId: userId || 'system',
+          });
+          
+          // Only use if it's a different provider
+          if (testRoute && testRoute.provider !== 'perplexity') {
+            fallbackRoute = testRoute;
+          }
+        } catch {
+          // If route resolution fails, we'll use hardcoded fallback
+        }
+        
+        // Use hardcoded fallback if we don't have a different route
+        if (!fallbackRoute) {
+          fallbackRoute = {
+            provider: 'anthropic',
+            modelKey: 'claude-3-5-sonnet-20241022',
+            providerModelId: 'fallback',
+            routeId: 'fallback',
+            constraints: {
+              maxContextTokens: 100000,
+              maxOutputTokens: 4096,
+            },
+            capabilities: {
+              chat: true,
+              reasoning: true,
+              vision: true,
+              tools: true,
+              longContext: true,
+              search: false,
+            },
+            supportsStreaming: true,
+            requiresServerProxy: false,
+            supportsBrowserCalls: true,
+          };
+        }
+        
+        console.log('[RecipeAI] Attempting fallback to alternative provider:', fallbackRoute.provider);
+        
+        const fallbackAdapter = getProviderAdapter(fallbackRoute.provider);
+        const systemPrompt = 'You are a recipe extraction assistant. Always return valid JSON only, no markdown formatting, no code blocks. Follow the exact JSON schema provided in the user prompt.';
+        
+        const fallbackRequest: NormalizedAIRequest = {
+          provider: fallbackRoute.provider,
+          modelKey: fallbackRoute.modelKey,
+          intent: 'generate_recipe',
+          featureKey: 'spaces_recipe_generation',
+          surfaceType: 'shared',
+          messages: [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: prompt },
+          ],
+          systemPrompt,
+          userPrompt: prompt,
+          budgets: {
+            maxInputTokens: fallbackRoute.constraints.maxContextTokens || 100000,
+            maxOutputTokens: fallbackRoute.constraints.maxOutputTokens || 4096,
+          },
+          temperature: 0.2,
+          maxTokens: 4000,
+        };
+        
+        const fallbackResponse = await fallbackAdapter.generate(fallbackRequest);
+        const rawContent = fallbackResponse.text;
+        
+        if (!rawContent || typeof rawContent !== 'string' || rawContent.trim().length === 0) {
+          throw new Error('Fallback provider response missing message content');
+        }
+        
+        const parsed = extractJsonFromPerplexity(rawContent);
+        if (!validatePerplexityResponse(parsed)) {
+          throw new Error('Fallback provider response validation failed');
+        }
+        
+        // Add metadata about fallback
+        parsed.metadata = parsed.metadata || {};
+        parsed.metadata.routed_provider = fallbackRoute.provider;
+        parsed.metadata.routed_model = fallbackRoute.modelKey;
+        parsed.metadata.route_id = fallbackRoute.routeId;
+        parsed.metadata.fallback_from = 'perplexity';
+        parsed.metadata.fallback_reason = errorMessage;
+        
+        emitAIDiagnostic({
+          type: 'perplexity_fallback_used',
+          reason: 'perplexity-failed',
+          platform: env.platform,
+          provider: fallbackRoute.provider,
+          model: fallbackRoute.modelKey,
+          routeId: fallbackRoute.routeId,
+          via: fallbackRoute.requiresServerProxy ? 'server-proxy' : 'direct',
+        });
+        
+        console.log('[RecipeAI] Successfully used fallback provider:', fallbackRoute.provider);
+        return parsed;
+      } catch (fallbackError) {
+        console.error('[RecipeAI] Fallback to alternative provider also failed:', fallbackError);
+        emitAIDiagnostic({
+          type: 'perplexity_fallback_failed',
+          reason: 'fallback-also-failed',
+          platform: env.platform,
+          error: fallbackError instanceof Error ? fallbackError.message : String(fallbackError),
+        });
+      }
+      
+      // If fallback failed, throw error with diagnostic info
       throw new Error(
         `Recipe generation failed for server-only provider. ` +
         `This provider requires server-side proxy and cannot be called directly from the browser. ` +
@@ -432,6 +726,7 @@ export async function callPerplexityAPI(
     }
     
     // Only allow fallback for browser-capable providers (shouldn't happen for Perplexity)
+    // This should never execute for Perplexity, but kept for other providers
     console.warn('[RecipeAI] Routing failed, falling back to direct API call (browser-capable provider):', error);
     
     // Fallback to original direct API call (only for non-Perplexity providers)
