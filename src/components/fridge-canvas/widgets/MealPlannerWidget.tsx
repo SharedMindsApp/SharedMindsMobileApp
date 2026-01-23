@@ -1102,9 +1102,12 @@ export function MealPlannerWidget({ householdId, viewMode, onViewModeChange, onF
       <div key={slot.id}>
         {plan ? (
           // Filled Meal Card
+          // CRITICAL: Use touch-action: pan-y to allow vertical scrolling while still allowing taps
+          // This ensures users can scroll when dragging on meal cards, but taps still work
           <button
             onClick={() => handleMealCardClick(plan)}
-            className={`w-full text-left ${styles.bg} ${styles.border} border-2 rounded-xl ${isFullscreen ? 'p-4' : 'p-3'} hover:shadow-md active:scale-[0.98] transition-all touch-manipulation`}
+            className={`w-full text-left ${styles.bg} ${styles.border} border-2 rounded-xl ${isFullscreen ? 'p-4' : 'p-3'} hover:shadow-md active:scale-[0.98] transition-all`}
+            style={{ touchAction: 'pan-y' }}
           >
             <div className="flex items-start gap-3">
               {/* Meal Image or Icon */}
@@ -1198,6 +1201,8 @@ export function MealPlannerWidget({ householdId, viewMode, onViewModeChange, onF
           </button>
         ) : (
           // Empty Meal Card
+          // CRITICAL: Use touch-action: pan-y to allow vertical scrolling while still allowing taps
+          // This ensures users can scroll when dragging on empty meal slots, but taps still work
           <button
             onClick={() => {
               if (!isFasting) {
@@ -1205,7 +1210,8 @@ export function MealPlannerWidget({ householdId, viewMode, onViewModeChange, onF
               }
             }}
             disabled={isFasting}
-            className={`w-full text-left ${styles.bg} ${styles.border} border-2 border-dashed rounded-xl ${isFullscreen ? 'p-4' : 'p-3'} hover:shadow-md active:scale-[0.98] transition-all touch-manipulation ${isFasting ? 'opacity-50 cursor-not-allowed' : ''}`}
+            className={`w-full text-left ${styles.bg} ${styles.border} border-2 border-dashed rounded-xl ${isFullscreen ? 'p-4' : 'p-3'} hover:shadow-md active:scale-[0.98] transition-all ${isFasting ? 'opacity-50 cursor-not-allowed' : ''}`}
+            style={{ touchAction: 'pan-y' }}
           >
             <div className="flex items-center gap-3">
               <div className={`${isFullscreen ? 'w-16 h-16' : 'w-12 h-12'} ${styles.bg} ${styles.border} border-2 rounded-lg flex items-center justify-center text-2xl flex-shrink-0`}>
@@ -1440,8 +1446,9 @@ export function MealPlannerWidget({ householdId, viewMode, onViewModeChange, onF
                       {favouriteMeals.map(meal => {
                         const pantryMatch = recipePantryMatches.get(meal.id);
                         
+                        // CRITICAL: Use touch-action: pan-y to allow scrolling when dragging on meal cards
                         return (
-                          <div key={meal.id} className="bg-white rounded-xl p-4 border-2 border-orange-100 hover:border-orange-300 active:scale-[0.98] transition-all shadow-sm touch-manipulation">
+                          <div key={meal.id} className="bg-white rounded-xl p-4 border-2 border-orange-100 hover:border-orange-300 active:scale-[0.98] transition-all shadow-sm" style={{ touchAction: 'pan-y' }}>
                             <div className="flex items-start justify-between mb-2">
                               <h4 className="font-bold text-gray-900 flex-1 pr-2">{meal.name}</h4>
                               <button
@@ -1530,8 +1537,9 @@ export function MealPlannerWidget({ householdId, viewMode, onViewModeChange, onF
                       {favouriteRecipes.map(recipe => {
                         const pantryMatch = recipePantryMatches.get(recipe.id);
                         
+                        // CRITICAL: Use touch-action: pan-y to allow scrolling when dragging on recipe cards
                         return (
-                          <div key={`recipe-${recipe.id}`} className="bg-white rounded-xl p-4 border-2 border-orange-100 hover:border-orange-300 active:scale-[0.98] transition-all shadow-sm touch-manipulation">
+                          <div key={`recipe-${recipe.id}`} className="bg-white rounded-xl p-4 border-2 border-orange-100 hover:border-orange-300 active:scale-[0.98] transition-all shadow-sm" style={{ touchAction: 'pan-y' }}>
                             <div className="flex items-start justify-between mb-2">
                               <h4 className="font-bold text-gray-900 flex-1 pr-2">{recipe.name}</h4>
                               <button
@@ -1674,7 +1682,8 @@ export function MealPlannerWidget({ householdId, viewMode, onViewModeChange, onF
                   ) : (
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                       {recipeLinks.map(recipe => (
-                        <div key={recipe.id} className="bg-white rounded-xl overflow-hidden border-2 border-gray-100 hover:border-orange-300 active:scale-[0.98] transition-all shadow-sm group touch-manipulation">
+                        // CRITICAL: Use touch-action: pan-y to allow scrolling when dragging on recipe cards
+                        <div key={recipe.id} className="bg-white rounded-xl overflow-hidden border-2 border-gray-100 hover:border-orange-300 active:scale-[0.98] transition-all shadow-sm group" style={{ touchAction: 'pan-y' }}>
                           {recipe.image_url && (
                             <div className="relative h-40 bg-gray-100">
                               <img
@@ -1785,10 +1794,12 @@ export function MealPlannerWidget({ householdId, viewMode, onViewModeChange, onF
                     ) : (
                       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                         {recipeMeals.map(meal => (
-                          <div key={meal.id} className="bg-white rounded-xl p-4 border-2 border-blue-100 hover:border-blue-300 active:scale-[0.98] transition-all shadow-sm touch-manipulation">
+                          // CRITICAL: Use touch-action: pan-y to allow scrolling when dragging on meal cards
+                          <div key={meal.id} className="bg-white rounded-xl p-4 border-2 border-blue-100 hover:border-blue-300 active:scale-[0.98] transition-all shadow-sm" style={{ touchAction: 'pan-y' }}>
                             <div className="flex items-start justify-between mb-2">
                               <h4 className="font-bold text-gray-900 flex-1">{meal.name}</h4>
                               <div className="flex gap-1">
+                                {/* Small action buttons: touch-manipulation is OK for discrete actions like edit/delete */}
                                 <button
                                   onClick={(e) => {
                                     e.stopPropagation();
@@ -2406,7 +2417,8 @@ export function MealPlannerWidget({ householdId, viewMode, onViewModeChange, onF
                         setSelectedSlot({ day: 'Monday', dayIndex: 0, mealType: meal.meal_type as any });
                         setShowAddMealSheet(true);
                       }}
-                      className="w-full text-left bg-white rounded-xl p-3 border-2 border-red-100 hover:border-red-300 active:scale-[0.98] transition-all touch-manipulation"
+                      className="w-full text-left bg-white rounded-xl p-3 border-2 border-red-100 hover:border-red-300 active:scale-[0.98] transition-all"
+                      style={{ touchAction: 'pan-y' }}
                     >
                       <div className="flex items-center gap-3">
                         {meal.image_url ? (
@@ -2447,7 +2459,8 @@ export function MealPlannerWidget({ householdId, viewMode, onViewModeChange, onF
                       onClick={() => {
                         navigate(`/recipes/${recipe.id}`);
                       }}
-                      className="w-full text-left bg-white rounded-xl p-3 border-2 border-red-100 hover:border-red-300 active:scale-[0.98] transition-all touch-manipulation"
+                      className="w-full text-left bg-white rounded-xl p-3 border-2 border-red-100 hover:border-red-300 active:scale-[0.98] transition-all"
+                      style={{ touchAction: 'pan-y' }}
                     >
                       <div className="flex items-center gap-3">
                         {recipe.image_url ? (
@@ -2533,7 +2546,8 @@ export function MealPlannerWidget({ householdId, viewMode, onViewModeChange, onF
                         setSelectedSlot({ day: 'Monday', dayIndex: 0, mealType: meal.meal_type as any });
                         setShowAddMealSheet(true);
                       }}
-                      className="w-full text-left bg-white rounded-xl p-3 border-2 border-blue-100 hover:border-blue-300 active:scale-[0.98] transition-all touch-manipulation"
+                      className="w-full text-left bg-white rounded-xl p-3 border-2 border-blue-100 hover:border-blue-300 active:scale-[0.98] transition-all"
+                      style={{ touchAction: 'pan-y' }}
                     >
                       <div className="flex items-center gap-3">
                         <div className="w-12 h-12 bg-gradient-to-br from-blue-50 to-indigo-50 border-2 border-blue-200 rounded-lg flex items-center justify-center text-xl flex-shrink-0">
