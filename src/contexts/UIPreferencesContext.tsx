@@ -44,6 +44,7 @@ const DEFAULT_CONFIG: UIPreferencesConfig = {
   measurementSystem: 'metric',
   recipeLocation: null,
   recipeLocationOverride: null,
+  includeLocationInAI: true, // Default: include location in AI prompts
 };
 
 const UIPreferencesContext = createContext<UIPreferencesContextType | undefined>(undefined);
@@ -138,6 +139,7 @@ export function UIPreferencesProvider({ children }: { children: ReactNode }) {
           measurementSystem: data.measurement_system || 'metric',
           recipeLocation: data.recipe_location || null,
           recipeLocationOverride: data.recipe_location_override || null,
+          includeLocationInAI: data.include_location_in_ai !== false, // Default to true if not set
         });
         setNeurotype(data.neurotype_profiles?.name || null);
       } else {
@@ -180,6 +182,9 @@ export function UIPreferencesProvider({ children }: { children: ReactNode }) {
       }
       if ('recipeLocationOverride' in newConfig) {
         upsertData.recipe_location_override = newConfig.recipeLocationOverride || null;
+      }
+      if ('includeLocationInAI' in newConfig) {
+        upsertData.include_location_in_ai = newConfig.includeLocationInAI !== false; // Default to true
       }
 
       const { data, error } = await supabase

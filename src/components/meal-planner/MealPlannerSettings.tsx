@@ -28,13 +28,15 @@ function LocationSettings() {
   const [defaultLocation, setDefaultLocation] = useState(config.recipeLocation || '');
   const [overrideLocation, setOverrideLocation] = useState(config.recipeLocationOverride || '');
   const [showOverride, setShowOverride] = useState(!!config.recipeLocationOverride);
+  const [includeLocationInAI, setIncludeLocationInAI] = useState(config.includeLocationInAI !== false); // Default to true
 
   // Sync state with config when it changes (e.g., when preferences are loaded)
   useEffect(() => {
     setDefaultLocation(config.recipeLocation || '');
     setOverrideLocation(config.recipeLocationOverride || '');
     setShowOverride(!!config.recipeLocationOverride);
-  }, [config.recipeLocation, config.recipeLocationOverride]);
+    setIncludeLocationInAI(config.includeLocationInAI !== false);
+  }, [config.recipeLocation, config.recipeLocationOverride, config.includeLocationInAI]);
 
   const handleSaveDefaultLocation = async () => {
     try {
@@ -72,6 +74,21 @@ function LocationSettings() {
     } catch (error) {
       console.error('Failed to clear location override:', error);
       showToast('error', 'Failed to clear location override');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleToggleLocationInAI = async () => {
+    const newValue = !includeLocationInAI;
+    try {
+      setSaving(true);
+      await updatePreferences({ includeLocationInAI: newValue });
+      setIncludeLocationInAI(newValue);
+      showToast('success', newValue ? 'Location will be included in AI prompts' : 'Location will not be included in AI prompts');
+    } catch (error) {
+      console.error('Failed to update location AI setting:', error);
+      showToast('error', 'Failed to update setting');
     } finally {
       setSaving(false);
     }
@@ -136,7 +153,7 @@ function LocationSettings() {
         </div>
 
         {/* Location Override */}
-        <div>
+        <div className="mb-4 sm:mb-6">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-0 mb-2">
             <label className="block text-sm sm:text-base font-medium text-gray-700">
               Temporary Location Override
@@ -181,6 +198,43 @@ function LocationSettings() {
                   Clear Override
                 </button>
               )}
+            </div>
+          )}
+        </div>
+
+        {/* Include Location in AI Toggle */}
+        <div className="bg-gray-50 rounded-lg p-4 sm:p-5 border border-gray-200">
+          <div className="flex items-start justify-between gap-4 mb-2">
+            <div className="flex-1">
+              <label className="block text-sm sm:text-base font-medium text-gray-900 mb-1">
+                Include Location in AI Prompts
+              </label>
+              <p className="text-xs sm:text-sm text-gray-600">
+                When enabled, your location will be included in AI recipe searches to get culturally relevant recipes with local ingredients. When disabled, location information will not be sent to the AI.
+              </p>
+            </div>
+            <button
+              onClick={handleToggleLocationInAI}
+              disabled={saving}
+              className={`relative inline-flex h-6 w-11 sm:h-7 sm:w-12 flex-shrink-0 cursor-pointer rounded-full transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-orange-500 focus:ring-offset-2 touch-manipulation ${
+                includeLocationInAI ? 'bg-orange-500' : 'bg-gray-300'
+              } ${saving ? 'opacity-50 cursor-not-allowed' : ''}`}
+              role="switch"
+              aria-checked={includeLocationInAI}
+              aria-label="Include location in AI prompts"
+            >
+              <span
+                className={`pointer-events-none inline-block h-5 w-5 sm:h-6 sm:w-6 transform rounded-full bg-white shadow-lg ring-0 transition duration-200 ease-in-out ${
+                  includeLocationInAI ? 'translate-x-5 sm:translate-x-6' : 'translate-x-0'
+                }`}
+              />
+            </button>
+          </div>
+          {!includeLocationInAI && (
+            <div className="mt-3 p-3 bg-amber-50 border border-amber-200 rounded-lg">
+              <p className="text-xs sm:text-sm text-amber-800">
+                <strong>Note:</strong> Location information will not be included in AI recipe searches. Recipes will be more generic and may not reflect local ingredients or cultural preferences.
+              </p>
             </div>
           )}
         </div>

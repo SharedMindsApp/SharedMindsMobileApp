@@ -36,6 +36,7 @@ export interface UserUIPreferences {
   measurement_system?: MeasurementSystem;
   recipe_location?: string | null; // User's default location for recipe searches (e.g., "United Kingdom")
   recipe_location_override?: string | null; // Optional temporary override (e.g., when on holiday)
+  include_location_in_ai?: boolean; // Whether to include location in AI prompts (default: true)
   custom_overrides: Record<string, any>;
   created_at: string;
   updated_at: string;
@@ -121,6 +122,7 @@ export interface UIPreferencesConfig {
   measurementSystem?: MeasurementSystem;
   recipeLocation?: string | null; // User's default location for recipe searches
   recipeLocationOverride?: string | null; // Optional temporary override (e.g., when on holiday)
+  includeLocationInAI?: boolean; // Whether to include location in AI prompts (default: true)
   widgetColors?: WidgetColorPreferences;
   favouriteNavTabs?: NavigationTabId[];
 }

@@ -191,6 +191,11 @@ export function Dashboard() {
     );
   }
 
+  // Handle active section (question screen) - must be before main render
+  if (activeSection) {
+    return <QuestionScreen sectionId={activeSection} onClose={handleCloseQuestions} />;
+  }
+
   // CRITICAL: Render shell immediately, show skeletons while data loads
   // Never block UI render on data - this is the key performance fix
   const bgTheme = COLOR_THEMES[config.colorTheme];
@@ -251,93 +256,4 @@ export function Dashboard() {
       )}
     </div>
   );
-
-  const handleGoToOnboarding = () => {
-    navigate('/onboarding/household', { replace: true });
-  };
-
-  const handleGoToSettings = () => {
-    navigate('/settings', { replace: true });
-  };
-
-  const handleSignOut = async () => {
-    await supabase.auth.signOut();
-    navigate('/', { replace: true });
-  };
-
-  if (error) {
-    return (
-      <div className="min-h-[60vh] flex items-center justify-center p-4">
-        <div className="bg-white rounded-2xl shadow-lg p-8 max-w-md w-full">
-          <div className="text-center mb-6">
-            <div className="inline-flex items-center justify-center w-16 h-16 bg-red-100 rounded-full mb-4">
-              <AlertCircle size={32} className="text-red-600" />
-            </div>
-            <h2 className="text-2xl font-bold text-gray-900 mb-2">Loading Error</h2>
-            <p className="text-gray-600">{error}</p>
-          </div>
-
-          <div className="space-y-3">
-            <button
-              onClick={() => loadData()}
-              className="w-full bg-blue-600 text-white py-3 px-4 rounded-lg hover:bg-blue-700 transition-colors font-medium"
-            >
-              Try Again
-            </button>
-            <button
-              onClick={handleGoToOnboarding}
-              className="w-full bg-gray-100 text-gray-700 py-3 px-4 rounded-lg hover:bg-gray-200 transition-colors font-medium"
-            >
-              Reset Household Setup
-            </button>
-            <button
-              onClick={handleGoToSettings}
-              className="w-full bg-gray-100 text-gray-700 py-3 px-4 rounded-lg hover:bg-gray-200 transition-colors font-medium"
-            >
-              Go to Settings
-            </button>
-          </div>
-
-          <div className="mt-6 pt-6 border-t border-gray-200">
-            <button
-              onClick={handleSignOut}
-              className="w-full inline-flex items-center justify-center px-4 py-2 text-sm text-gray-600 hover:text-gray-900 transition-colors"
-            >
-              Sign Out
-            </button>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  if (activeSection) {
-    return <QuestionScreen sectionId={activeSection} onClose={handleCloseQuestions} />;
-  }
-
-  // Helper functions (moved here to avoid duplication)
-  const getFirstIncompleteSection = (): Section | null => {
-    const currentMember = members.find((m) => m.user_id === currentUserId);
-    if (!currentMember) return null;
-
-    const memberProgress = progressData.filter((p) => p.member_id === currentMember.id);
-
-    for (const section of sections) {
-      const sectionProgress = memberProgress.find((p) => p.section_id === section.id);
-      if (!sectionProgress || !sectionProgress.completed) {
-        return section;
-      }
-    }
-
-    return null;
-  };
-
-  const isReportAvailable = (): boolean => {
-    if (sections.length === 0 || members.length === 0) return false;
-
-    const totalSections = sections.length * members.length;
-    const completedSections = progressData.filter((p) => p.completed).length;
-
-    return completedSections === totalSections;
-  };
 }

@@ -101,7 +101,8 @@ export function RecipeSearchWithAI({
   mealType,
 }: RecipeSearchWithAIProps) {
   const { user } = useAuth();
-  const { recipeLocation } = useUIPreferences();
+  const { recipeLocation, config } = useUIPreferences();
+  const includeLocationInAI = config.includeLocationInAI !== false; // Default to true
   const [searchQuery, setSearchQuery] = useState(initialQuery);
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [recipes, setRecipes] = useState<Recipe[]>([]);
@@ -297,7 +298,9 @@ export function RecipeSearchWithAI({
       const generatedRecipe = await generateRecipeFromQuery(
         request,
         user.id,
-        spaceId
+        spaceId,
+        undefined,
+        includeLocationInAI
       );
 
       setGeneratedRecipe(generatedRecipe);
@@ -439,7 +442,9 @@ export function RecipeSearchWithAI({
         user.id,
         spaceId,
         foodProfile, // Pass food profile to respect constraints
-        recipeLocation // Pass location for culturally relevant recipes
+        includeLocationInAI ? recipeLocation : null, // Only pass location if enabled
+        undefined, // selectedTags
+        includeLocationInAI // Pass preference to control location in prompt
       );
 
       // Cache the results
@@ -718,7 +723,9 @@ export function RecipeSearchWithAI({
         user?.id,
         spaceId,
         foodProfile, // Pass food profile
-        recipeLocation // Pass location for culturally relevant recipes
+        includeLocationInAI ? recipeLocation : null, // Only pass location if enabled
+        selectedTags.length > 0 ? selectedTags : undefined, // Pass selected tags
+        includeLocationInAI // Pass preference to control location in prompt
       );
       
       // Cache the results
@@ -754,10 +761,10 @@ export function RecipeSearchWithAI({
         meal_type: mealType,
         selected_tags: selectedTags.length > 0 ? selectedTags : undefined, // Pass selected tags to ensure they're assigned to generated recipes
         food_profile: foodProfile, // Pass food profile to respect constraints
-        location: recipeLocation, // Pass location for culturally relevant recipes
+        location: includeLocationInAI ? recipeLocation : null, // Only pass location if enabled
       };
 
-      const generated = await generateRecipeFromQuery(request, user.id, spaceId);
+      const generated = await generateRecipeFromQuery(request, user.id, spaceId, undefined, includeLocationInAI);
       setGeneratedRecipe(generated);
       // Show inline instead of modal
       setShowPreview(false);
@@ -808,10 +815,10 @@ export function RecipeSearchWithAI({
         meal_type: mealType,
         selected_tags: selectedTags.length > 0 ? selectedTags : undefined, // Pass selected tags to ensure they're assigned to generated recipes
         food_profile: foodProfile, // Pass food profile to respect constraints
-        location: recipeLocation, // Pass location for culturally relevant recipes
+        location: includeLocationInAI ? recipeLocation : null, // Only pass location if enabled
       };
 
-      const generated = await generateRecipeFromQuery(request, user.id, spaceId);
+      const generated = await generateRecipeFromQuery(request, user.id, spaceId, undefined, includeLocationInAI);
       setGeneratedRecipe(generated);
     } catch (err) {
       console.error('Error regenerating recipe:', err);
@@ -983,7 +990,9 @@ export function RecipeSearchWithAI({
               user.id,
               spaceId,
               foodProfile, // Pass food profile
-              recipeLocation // Pass location for culturally relevant recipes
+              includeLocationInAI ? recipeLocation : null, // Only pass location if enabled
+              undefined, // selectedTags
+              includeLocationInAI // Pass preference to control location in prompt
             );
             
             // Cache the results

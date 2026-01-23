@@ -836,7 +836,8 @@ export async function generateRecipeFromQuery(
   request: RecipeGenerationRequest,
   userId: string,
   spaceId?: string, // Space ID (personal/household/team)
-  perplexityConfig?: PerplexityConfig
+  perplexityConfig?: PerplexityConfig,
+  includeLocationInAI: boolean = true // Whether to include location in AI prompts (default: true)
 ): Promise<Recipe> {
   // Convert spaceId to household_id
   // spaceId is spaces.id, but household_id must reference households.id
@@ -888,8 +889,8 @@ export async function generateRecipeFromQuery(
     }
   }
 
-  // Generate the prompt
-  const prompt = generatePerplexityPrompt(request);
+  // Generate the prompt - location inclusion is controlled by user preference
+  const prompt = generatePerplexityPrompt(request, includeLocationInAI);
   
   console.log('[recipeAIService] Generated prompt for Perplexity:', {
     promptLength: prompt.length,
@@ -1032,11 +1033,12 @@ export async function generateRecipeVariations(
   spaceId?: string,
   foodProfile?: import('./foodProfileTypes').UserFoodProfile | null,
   location?: string | null,
-  selectedTags?: string[] // Tags selected by user for this meal type (e.g., ["quick-meal", "vegetarian"])
+  selectedTags?: string[], // Tags selected by user for this meal type (e.g., ["quick-meal", "vegetarian"])
+  includeLocationInAI: boolean = true // Whether to include location in AI prompts (default: true)
 ): Promise<RecipeVariation[]> {
   // Generate prompt for variations (food profile constraints will be applied when generating actual recipes)
   // Include selected tags in the prompt to tailor suggestions
-  const prompt = generateRecipeVariationsPrompt(baseQuery, mealType, cuisine, dietaryRequirements, location, selectedTags);
+  const prompt = generateRecipeVariationsPrompt(baseQuery, mealType, cuisine, dietaryRequirements, location, selectedTags, includeLocationInAI);
 
   try {
     // Use AI routing to get Perplexity adapter

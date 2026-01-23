@@ -8,7 +8,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Heart, Clock, Sparkles, CheckCircle2, Package, X, Tag } from 'lucide-react';
+import { Heart, Clock, Sparkles, CheckCircle2, Package, X, Tag, ShoppingBag, Utensils, Search } from 'lucide-react';
 import { getMealLibrary, getHouseholdFavourites, getCurrentUserFavourites, type MealLibraryItem } from '../../lib/mealPlanner';
 import { compareRecipeAgainstPantry, type RecipePantryMatch } from '../../lib/foodIntelligence';
 import type { Recipe } from '../../lib/recipeGeneratorTypes';
@@ -25,6 +25,13 @@ import { getPreferredTags, batchUpsertTagPreferences, type TagPreferenceInput } 
 
 interface AddMealPanelProps {
   onSelectMeal: (meal: MealLibraryItem | null, customName?: string, recipeId?: string) => void;
+  onSelectExternalMeal?: (params: {
+    name: string;
+    vendor?: string | null;
+    type: 'restaurant' | 'shop' | 'cafe' | 'takeaway' | 'other';
+    scheduledAt?: string | null;
+    notes?: string | null;
+  }) => void;
   spaceId: string;
   dayName: string;
   mealType: 'breakfast' | 'lunch' | 'dinner' | 'snack';
@@ -41,6 +48,7 @@ const MEAL_TYPE_ICONS = {
 
 export function AddMealPanel({
   onSelectMeal,
+  onSelectExternalMeal,
   spaceId,
   dayName,
   mealType,
@@ -48,9 +56,13 @@ export function AddMealPanel({
   onClose,
 }: AddMealPanelProps) {
   const navigate = useNavigate();
-  const [activeSection, setActiveSection] = useState<'quick' | 'search' | 'custom' | 'favourites'>('quick');
+  const [activeSection, setActiveSection] = useState<'quick' | 'search' | 'favourites' | 'external'>('quick');
   const [searchQuery] = useState(''); // Kept for potential future use with RecipeSearchWithAI
-  const [customMealName, setCustomMealName] = useState('');
+  // External meal form state
+  const [externalMealName, setExternalMealName] = useState('');
+  const [externalVendor, setExternalVendor] = useState('');
+  const [externalType, setExternalType] = useState<'restaurant' | 'shop' | 'cafe' | 'takeaway' | 'other'>('shop');
+  const [externalNotes, setExternalNotes] = useState('');
   const [recentMeals, setRecentMeals] = useState<(MealLibraryItem & { source?: 'meal_library' | 'recipe' })[]>([]);
   const [favourites, setFavourites] = useState<(MealLibraryItem & { source?: 'meal_library' | 'recipe' })[]>([]);
   const [favouriteMeals, setFavouriteMeals] = useState<(MealLibraryItem & { source?: 'meal_library' })[]>([]);
@@ -62,7 +74,8 @@ export function AddMealPanel({
   const [pantryMatches, setPantryMatches] = useState<Map<string, RecipePantryMatch>>(new Map());
   const [loading, setLoading] = useState(false);
   const { user } = useAuth();
-  const { recipeLocation } = useUIPreferences();
+  const { recipeLocation, config } = useUIPreferences();
+  const includeLocationInAI = config.includeLocationInAI !== false; // Default to true
   const [foodProfile, setFoodProfile] = useState<UserFoodProfile | null>(null);
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   
@@ -368,8 +381,9 @@ export function AddMealPanel({
         user.id,
         spaceId,
         foodProfile, // Pass food profile to respect constraints
-        recipeLocation, // Pass location for culturally relevant recipes
-        tagsToUse // Pass selected tags or user's preferred tags for this meal type
+        includeLocationInAI ? recipeLocation : null, // Only pass location if enabled
+        tagsToUse, // Pass selected tags or user's preferred tags for this meal type
+        includeLocationInAI // Pass preference to control location in prompt
       );
 
       // Cache the results
@@ -402,10 +416,10 @@ export function AddMealPanel({
         query: variation.query,
         meal_type: mealType,
         food_profile: foodProfile, // Pass food profile
-        location: recipeLocation, // Pass location for culturally relevant recipes
+        location: includeLocationInAI ? recipeLocation : null, // Only pass location if enabled
       };
 
-      const generatedRecipe = await generateRecipeFromQuery(request, user.id, spaceId);
+      const generatedRecipe = await generateRecipeFromQuery(request, user.id, spaceId, undefined, includeLocationInAI);
       
       // Convert to MealLibraryItem and select it
       // AI-generated recipes are from recipes table, so mark as 'recipe' source
@@ -578,9 +592,14 @@ export function AddMealPanel({
     navigate(`/recipes/${recipe.id}`);
   };
 
-  const handleCustomMeal = () => {
-    if (customMealName.trim()) {
-      onSelectMeal(null, customMealName.trim());
+  const handleExternalMeal = () => {
+    if (externalMealName.trim() && onSelectExternalMeal) {
+      onSelectExternalMeal({
+        name: externalMealName.trim(),
+        vendor: externalVendor.trim() || null,
+        type: externalType,
+        notes: externalNotes.trim() || null,
+      });
       if (onClose) onClose();
     }
   };
@@ -602,28 +621,28 @@ export function AddMealPanel({
       <button
         key={meal.id}
         onClick={() => handleSelectMeal(meal)}
-        className="w-full text-left bg-white rounded-xl p-4 border-2 border-gray-100 hover:border-gray-300 active:scale-[0.98] transition-all touch-manipulation"
+        className="w-full text-left bg-white rounded-xl p-3 sm:p-4 border-2 border-gray-100 active:border-gray-300 active:scale-[0.98] transition-all touch-manipulation min-h-[80px] sm:min-h-0"
       >
         <div className="flex items-start gap-3">
           {meal.image_url ? (
             <img
               src={meal.image_url}
               alt={meal.name}
-              className="w-16 h-16 rounded-lg object-cover flex-shrink-0"
+              className="w-14 h-14 sm:w-16 sm:h-16 rounded-lg object-cover flex-shrink-0"
               onError={(e) => {
                 (e.target as HTMLImageElement).style.display = 'none';
               }}
             />
           ) : (
-            <div className={`w-16 h-16 rounded-lg ${getMealTypeColor()} flex items-center justify-center text-2xl flex-shrink-0`}>
+            <div className={`w-14 h-14 sm:w-16 sm:h-16 rounded-lg ${getMealTypeColor()} flex items-center justify-center text-xl sm:text-2xl flex-shrink-0`}>
               {MEAL_TYPE_ICONS[mealType]}
             </div>
           )}
           
           <div className="flex-1 min-w-0">
-            <h4 className="font-semibold text-gray-900 mb-1 line-clamp-1">{meal.name}</h4>
+            <h4 className="font-semibold text-sm sm:text-base text-gray-900 mb-1 line-clamp-2 sm:line-clamp-1">{meal.name}</h4>
             
-            <div className="flex items-center gap-3 text-xs text-gray-500 mb-2">
+            <div className="flex items-center flex-wrap gap-2 sm:gap-3 text-xs text-gray-500 mb-2">
               {meal.prep_time ? (
                 <div className="flex items-center gap-1" title="Preparation time">
                   <Clock size={12} />
@@ -678,16 +697,16 @@ export function AddMealPanel({
   // Recipe cards are now rendered by RecipeSearchWithAI component
 
   return (
-    <div className="bg-white rounded-lg border border-gray-200 shadow-lg">
+    <div className="bg-white rounded-lg border border-gray-200 shadow-lg max-h-[85vh] sm:max-h-none flex flex-col">
       {/* Header */}
-      <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200">
-        <h2 className="text-lg font-semibold text-gray-900">
+      <div className="flex items-center justify-between px-4 sm:px-6 py-3 sm:py-4 border-b border-gray-200 flex-shrink-0 bg-white z-10">
+        <h2 className="text-base sm:text-lg font-semibold text-gray-900">
           {replacingMealId ? `Replace ${mealType}` : `Add ${mealType}`}
         </h2>
         {onClose && (
           <button
             onClick={onClose}
-            className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+            className="p-2 hover:bg-gray-100 active:bg-gray-200 rounded-lg transition-colors touch-manipulation min-w-[44px] min-h-[44px] flex items-center justify-center"
             aria-label="Close"
           >
             <X size={20} className="text-gray-500" />
@@ -695,62 +714,98 @@ export function AddMealPanel({
         )}
       </div>
 
-      {/* Content */}
-      <div className="p-4">
-        {/* Section Tabs */}
-        <div className="flex gap-2 mb-4 border-b border-gray-200">
-          <button
-            onClick={() => setActiveSection('quick')}
-            className={`px-4 py-2 text-sm font-medium transition-colors border-b-2 ${
-              activeSection === 'quick'
-                ? 'border-orange-500 text-orange-600'
-                : 'border-transparent text-gray-500 hover:text-gray-700'
-            }`}
+      {/* Content - Scrollable on mobile */}
+      <div 
+        className="flex-1 overflow-y-auto p-4 sm:p-6"
+        style={{
+          WebkitOverflowScrolling: 'touch',
+          overscrollBehavior: 'contain',
+        }}
+      >
+        {/* Section Tabs - Horizontally scrollable on mobile */}
+        <div className="mb-4 sm:mb-6">
+          <div 
+            className="overflow-x-auto -mx-4 sm:mx-0 px-4 sm:px-0 pb-2 sm:pb-0"
+            style={{
+              WebkitOverflowScrolling: 'touch',
+              scrollbarWidth: 'none', // Firefox
+              msOverflowStyle: 'none', // IE/Edge
+            }}
           >
-            Quick
-          </button>
-          <button
-            onClick={() => setActiveSection('search')}
-            className={`px-4 py-2 text-sm font-medium transition-colors border-b-2 ${
-              activeSection === 'search'
-                ? 'border-orange-500 text-orange-600'
-                : 'border-transparent text-gray-500 hover:text-gray-700'
-            }`}
-          >
-            Search
-          </button>
-          <button
-            onClick={() => setActiveSection('custom')}
-            className={`px-4 py-2 text-sm font-medium transition-colors border-b-2 ${
-              activeSection === 'custom'
-                ? 'border-orange-500 text-orange-600'
-                : 'border-transparent text-gray-500 hover:text-gray-700'
-            }`}
-          >
-            Simple
-          </button>
-          <button
-            onClick={() => setActiveSection('favourites')}
-            className={`px-4 py-2 text-sm font-medium transition-colors border-b-2 ${
-              activeSection === 'favourites'
-                ? 'border-orange-500 text-orange-600'
-                : 'border-transparent text-gray-500 hover:text-gray-700'
-            }`}
-          >
-            Favourites
-          </button>
+            <div 
+              className="flex gap-2 sm:gap-3 min-w-max sm:min-w-0 border-b border-gray-200"
+              style={{
+                scrollbarWidth: 'none', // Firefox
+              }}
+            >
+              <button
+                onClick={() => setActiveSection('quick')}
+                className={`flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2.5 sm:py-2 text-sm font-medium transition-colors border-b-2 min-w-[60px] sm:min-w-0 touch-manipulation ${
+                  activeSection === 'quick'
+                    ? 'border-orange-500 text-orange-600'
+                    : 'border-transparent text-gray-500 active:text-gray-700'
+                }`}
+                style={{ minHeight: '44px' }}
+              >
+                <Sparkles size={16} className="sm:w-4 sm:h-4 flex-shrink-0" />
+                <span className="whitespace-nowrap">Quick</span>
+              </button>
+              <button
+                onClick={() => setActiveSection('search')}
+                className={`flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2.5 sm:py-2 text-sm font-medium transition-colors border-b-2 min-w-[60px] sm:min-w-0 touch-manipulation ${
+                  activeSection === 'search'
+                    ? 'border-orange-500 text-orange-600'
+                    : 'border-transparent text-gray-500 active:text-gray-700'
+                }`}
+                style={{ minHeight: '44px' }}
+              >
+                <Search size={16} className="sm:w-4 sm:h-4 flex-shrink-0" />
+                <span className="whitespace-nowrap">Search</span>
+              </button>
+              <button
+                onClick={() => setActiveSection('favourites')}
+                className={`flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2.5 sm:py-2 text-sm font-medium transition-colors border-b-2 min-w-[60px] sm:min-w-0 touch-manipulation ${
+                  activeSection === 'favourites'
+                    ? 'border-orange-500 text-orange-600'
+                    : 'border-transparent text-gray-500 active:text-gray-700'
+                }`}
+                style={{ minHeight: '44px' }}
+              >
+                <Heart size={16} className="sm:w-4 sm:h-4 flex-shrink-0" />
+                <span className="whitespace-nowrap">Favourites</span>
+              </button>
+              <button
+                onClick={() => setActiveSection('external')}
+                className={`flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2.5 sm:py-2 text-sm font-medium transition-colors border-b-2 min-w-[60px] sm:min-w-0 touch-manipulation ${
+                  activeSection === 'external'
+                    ? 'border-orange-500 text-orange-600'
+                    : 'border-transparent text-gray-500 active:text-gray-700'
+                }`}
+                style={{ minHeight: '44px' }}
+              >
+                <ShoppingBag size={16} className="sm:w-4 sm:h-4 flex-shrink-0" />
+                <span className="whitespace-nowrap">Bought</span>
+              </button>
+            </div>
+          </div>
+          {/* Hide scrollbar for webkit browsers */}
+          <style>{`
+            div[style*="overflow-x-auto"]::-webkit-scrollbar {
+              display: none;
+            }
+          `}</style>
         </div>
 
         {/* Quick Suggestions */}
         {activeSection === 'quick' && (
-          <div className="space-y-6">
+          <div className="space-y-4 sm:space-y-6">
             {/* Top 5 Suggested Tags Section - Always show for Quick tab */}
-            <div className="bg-gradient-to-br from-orange-50 to-orange-100 border border-orange-200 rounded-xl p-4">
+            <div className="bg-gradient-to-br from-orange-50 to-orange-100 border border-orange-200 rounded-xl p-4 sm:p-5">
               <div className="flex items-center gap-2 mb-3">
-                <Tag size={16} className="text-orange-600" />
-                <h3 className="font-semibold text-gray-900">Refine your search</h3>
+                <Tag size={16} className="text-orange-600 flex-shrink-0" />
+                <h3 className="font-semibold text-sm sm:text-base text-gray-900">Refine your search</h3>
               </div>
-              <p className="text-xs text-gray-600 mb-3">
+              <p className="text-xs sm:text-sm text-gray-600 mb-3">
                 Select tags to find more personalized {mealType} suggestions
               </p>
               <div className="flex flex-wrap gap-2">
@@ -761,10 +816,10 @@ export function AddMealPanel({
                       key={tag}
                       type="button"
                       onClick={() => handleTagToggle(tag)}
-                      className={`px-3 py-1.5 rounded-full text-xs font-medium transition-all ${
+                      className={`px-3 sm:px-4 py-2 sm:py-1.5 rounded-full text-xs sm:text-sm font-medium transition-all touch-manipulation active:scale-[0.98] min-h-[36px] sm:min-h-0 ${
                         isSelected
                           ? 'bg-orange-500 text-white shadow-sm'
-                          : 'bg-white border border-orange-200 text-gray-700 hover:border-orange-300 hover:bg-orange-50'
+                          : 'bg-white border border-orange-200 text-gray-700 active:border-orange-300 active:bg-orange-50'
                       }`}
                     >
                       {tag.replace(/-/g, ' ')}
@@ -786,7 +841,7 @@ export function AddMealPanel({
                       cacheKeysToDelete.forEach(key => variationsCacheRef.current.delete(key));
                       loadAISuggestions();
                     }}
-                    className="px-3 py-1.5 rounded-full text-xs font-medium text-gray-500 hover:text-gray-700 border border-gray-200 hover:border-gray-300 bg-white"
+                    className="px-3 sm:px-4 py-2 sm:py-1.5 rounded-full text-xs sm:text-sm font-medium text-gray-500 active:text-gray-700 border border-gray-200 active:border-gray-300 bg-white touch-manipulation active:scale-[0.98] min-h-[36px] sm:min-h-0"
                   >
                     Clear
                   </button>
@@ -803,10 +858,10 @@ export function AddMealPanel({
             {favourites.length > 0 && (
               <div>
                 <div className="flex items-center gap-2 mb-3">
-                  <Heart size={16} className="text-red-500" />
-                  <h3 className="font-semibold text-gray-900">Favourites</h3>
+                  <Heart size={16} className="text-red-500 flex-shrink-0" />
+                  <h3 className="font-semibold text-sm sm:text-base text-gray-900">Favourites</h3>
                 </div>
-                <div className="space-y-2">
+                <div className="space-y-2 sm:space-y-3">
                   {favourites.map(meal => renderMealCard(meal, true))}
                 </div>
               </div>
@@ -816,10 +871,10 @@ export function AddMealPanel({
             {recentMeals.length > 0 && (
               <div>
                 <div className="flex items-center gap-2 mb-3">
-                  <Clock size={16} className="text-gray-500" />
-                  <h3 className="font-semibold text-gray-900">Recent</h3>
+                  <Clock size={16} className="text-gray-500 flex-shrink-0" />
+                  <h3 className="font-semibold text-sm sm:text-base text-gray-900">Recent</h3>
                 </div>
-                <div className="space-y-2">
+                <div className="space-y-2 sm:space-y-3">
                   {recentMeals.map(meal => renderMealCard(meal))}
                 </div>
               </div>
@@ -829,10 +884,10 @@ export function AddMealPanel({
             {Array.from(pantryMatches.values()).filter(m => m.matchPercentage === 100).length > 0 && (
               <div>
                 <div className="flex items-center gap-2 mb-3">
-                  <Sparkles size={16} className="text-orange-500" />
-                  <h3 className="font-semibold text-gray-900">What you can make</h3>
+                  <Sparkles size={16} className="text-orange-500 flex-shrink-0" />
+                  <h3 className="font-semibold text-sm sm:text-base text-gray-900">What you can make</h3>
                 </div>
-                <div className="space-y-2">
+                <div className="space-y-2 sm:space-y-3">
                   {favourites
                     .filter(meal => pantryMatches.get(meal.id)?.matchPercentage === 100)
                     .map(meal => renderMealCard(meal, true))}
@@ -844,10 +899,10 @@ export function AddMealPanel({
             {recipeSuggestions.length > 0 && (
               <div>
                 <div className="flex items-center gap-2 mb-3">
-                  <Sparkles size={16} className="text-orange-500" />
-                  <h3 className="font-semibold text-gray-900">Suggestions</h3>
+                  <Sparkles size={16} className="text-orange-500 flex-shrink-0" />
+                  <h3 className="font-semibold text-sm sm:text-base text-gray-900">Suggestions</h3>
                 </div>
-                <div className="space-y-2">
+                <div className="space-y-2 sm:space-y-3">
                   {recipeSuggestions.map(meal => renderMealCard(meal))}
                 </div>
               </div>
@@ -868,7 +923,7 @@ export function AddMealPanel({
                         key={index}
                         onClick={() => handleSelectAISuggestion(variation, index)}
                         disabled={loading}
-                        className="w-full text-left bg-white rounded-xl p-4 border-2 border-orange-200 hover:border-orange-300 active:scale-[0.98] transition-all touch-manipulation disabled:opacity-50 disabled:cursor-not-allowed relative"
+                        className="w-full text-left bg-white rounded-xl p-3 sm:p-4 border-2 border-orange-200 active:border-orange-300 active:scale-[0.98] transition-all touch-manipulation disabled:opacity-50 disabled:cursor-not-allowed relative min-h-[80px] sm:min-h-0"
                       >
                         {isGeneratingThis && (
                           <div className="absolute top-2 right-2">
@@ -876,13 +931,13 @@ export function AddMealPanel({
                           </div>
                         )}
                         <div className="flex items-start gap-3">
-                          <div className={`w-16 h-16 rounded-lg ${getMealTypeColor()} flex items-center justify-center text-2xl flex-shrink-0`}>
+                          <div className={`w-14 h-14 sm:w-16 sm:h-16 rounded-lg ${getMealTypeColor()} flex items-center justify-center text-xl sm:text-2xl flex-shrink-0`}>
                             {MEAL_TYPE_ICONS[mealType]}
                           </div>
                           <div className="flex-1 min-w-0">
-                            <h4 className="font-semibold text-gray-900 mb-1">{variation.name}</h4>
+                            <h4 className="font-semibold text-sm sm:text-base text-gray-900 mb-1 line-clamp-2">{variation.name}</h4>
                             {variation.description && (
-                              <p className="text-xs text-gray-600 line-clamp-2">{variation.description}</p>
+                              <p className="text-xs sm:text-sm text-gray-600 line-clamp-2">{variation.description}</p>
                             )}
                             {isGeneratingThis && (
                               <div className="flex items-center gap-2 mt-2 text-xs text-orange-600">
@@ -905,17 +960,17 @@ export function AddMealPanel({
              aiSuggestions.length === 0 && 
              !loading && 
              !loadingAiSuggestions && (
-              <div className="text-center py-8 text-gray-500">
-                <p className="text-sm">No suggestions yet</p>
-                <p className="text-xs mt-1">Try searching or adding a simple meal</p>
+              <div className="text-center py-8 sm:py-12 px-4 text-gray-500">
+                <p className="text-sm sm:text-base">No suggestions yet</p>
+                <p className="text-xs sm:text-sm mt-1">Try searching or adding a simple meal</p>
               </div>
             )}
 
             {loadingAiSuggestions && (
-              <div className="text-center py-8">
+              <div className="text-center py-8 sm:py-12">
                 <div className="flex items-center justify-center gap-2 text-gray-500">
                   <Sparkles size={16} className="animate-pulse text-orange-500" />
-                  <p className="text-sm">Finding great {mealType} ideas...</p>
+                  <p className="text-sm sm:text-base">Finding great {mealType} ideas...</p>
                 </div>
               </div>
             )}
@@ -924,7 +979,7 @@ export function AddMealPanel({
 
         {/* Search - Using RecipeSearchWithAI for Library integration */}
         {activeSection === 'search' && (
-          <div className="space-y-4">
+          <div className="space-y-4 sm:space-y-6">
             <RecipeSearchWithAI
               spaceId={spaceId}
               onSelectRecipe={handleSelectRecipe}
@@ -934,52 +989,124 @@ export function AddMealPanel({
           </div>
         )}
 
-        {/* Custom Meal */}
-        {activeSection === 'custom' && (
-          <div className="space-y-4">
+        {/* External Meal (Bought/Restaurant) */}
+        {activeSection === 'external' && (
+          <div className="space-y-4 sm:space-y-6">
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 sm:p-4">
+              <p className="text-xs sm:text-sm text-blue-800">
+                Add meals you're buying or eating out. No cooking required!
+              </p>
+            </div>
+
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                What are you having?
+              <label className="block text-sm sm:text-base font-medium text-gray-700 mb-2">
+                Meal Name <span className="text-red-500">*</span>
               </label>
               <input
                 type="text"
-                value={customMealName}
-                onChange={(e) => setCustomMealName(e.target.value)}
-                placeholder="e.g., Pizza, Leftovers, Takeout..."
-                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent"
+                value={externalMealName}
+                onChange={(e) => setExternalMealName(e.target.value)}
+                placeholder="e.g., Chicken Caesar Sandwich, Pad Thai, Meal Deal"
+                className="w-full px-4 py-3.5 sm:py-3 text-base sm:text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent touch-manipulation"
                 autoFocus
                 onKeyDown={(e) => {
-                  if (e.key === 'Enter' && customMealName.trim()) {
-                    handleCustomMeal();
+                  if (e.key === 'Enter' && externalMealName.trim()) {
+                    handleExternalMeal();
                   }
                 }}
               />
             </div>
+
+            <div>
+              <label className="block text-sm sm:text-base font-medium text-gray-700 mb-2">
+                Source Type
+              </label>
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 sm:gap-3">
+                {(['shop', 'restaurant', 'cafe', 'takeaway', 'other'] as const).map((type) => {
+                  const icons = {
+                    shop: <ShoppingBag size={18} className="sm:w-4 sm:h-4" />,
+                    restaurant: <Utensils size={18} className="sm:w-4 sm:h-4" />,
+                    cafe: <Package size={18} className="sm:w-4 sm:h-4" />,
+                    takeaway: <Package size={18} className="sm:w-4 sm:h-4" />,
+                    other: <Package size={18} className="sm:w-4 sm:h-4" />,
+                  };
+                  const labels = {
+                    shop: 'Shop',
+                    restaurant: 'Restaurant',
+                    cafe: 'Café',
+                    takeaway: 'Takeaway',
+                    other: 'Other',
+                  };
+                  return (
+                    <button
+                      key={type}
+                      type="button"
+                      onClick={() => setExternalType(type)}
+                      className={`px-3 sm:px-4 py-3 sm:py-2.5 rounded-lg text-sm font-medium transition-all flex items-center justify-center gap-1.5 sm:gap-2 touch-manipulation active:scale-[0.98] min-h-[44px] sm:min-h-0 ${
+                        externalType === type
+                          ? 'bg-orange-500 text-white shadow-sm'
+                          : 'bg-white border border-gray-300 text-gray-700 active:border-orange-300 active:bg-orange-50'
+                      }`}
+                    >
+                      {icons[type]}
+                      <span>{labels[type]}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-sm sm:text-base font-medium text-gray-700 mb-2">
+                Vendor (Optional)
+              </label>
+              <input
+                type="text"
+                value={externalVendor}
+                onChange={(e) => setExternalVendor(e.target.value)}
+                placeholder="e.g., Tesco, Nando's, Local Cafe"
+                className="w-full px-4 py-3.5 sm:py-3 text-base sm:text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent touch-manipulation"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm sm:text-base font-medium text-gray-700 mb-2">
+                Notes (Optional)
+              </label>
+              <textarea
+                value={externalNotes}
+                onChange={(e) => setExternalNotes(e.target.value)}
+                placeholder="Any additional notes..."
+                rows={3}
+                className="w-full px-4 py-3.5 sm:py-3 text-base sm:text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent resize-none touch-manipulation"
+              />
+            </div>
+
             <button
-              onClick={handleCustomMeal}
-              disabled={!customMealName.trim()}
-              className="w-full px-4 py-3 bg-orange-500 hover:bg-orange-600 disabled:bg-gray-200 disabled:text-gray-400 text-white font-medium rounded-lg transition-colors touch-manipulation"
+              onClick={handleExternalMeal}
+              disabled={!externalMealName.trim() || !onSelectExternalMeal}
+              className="w-full px-4 py-3.5 sm:py-3 bg-orange-500 hover:bg-orange-600 active:bg-orange-700 disabled:bg-gray-200 disabled:text-gray-400 text-white font-medium rounded-lg transition-colors touch-manipulation min-h-[44px] text-base sm:text-sm"
             >
               Add to {dayName}
             </button>
-            <p className="text-xs text-gray-500 text-center">
-              Just a simple name is fine. No pressure.
+            <p className="text-xs sm:text-sm text-gray-500 text-center">
+              Perfect for meal deals, takeaways, and restaurant meals.
             </p>
           </div>
         )}
 
         {/* Favourites */}
         {activeSection === 'favourites' && (
-          <div className="space-y-6">
+          <div className="space-y-4 sm:space-y-6">
             {loading ? (
               <div className="flex items-center justify-center py-12">
-                <div className="text-gray-500">Loading favourites...</div>
+                <div className="text-sm sm:text-base text-gray-500">Loading favourites...</div>
               </div>
             ) : favouriteMeals.length === 0 && favouriteRecipes.length === 0 ? (
-              <div className="flex flex-col items-center justify-center py-12 text-center">
+              <div className="flex flex-col items-center justify-center py-12 text-center px-4">
                 <Heart size={48} className="text-gray-300 mb-4" />
-                <h3 className="font-semibold text-gray-900 mb-2">No favourites yet</h3>
-                <p className="text-sm text-gray-500">
+                <h3 className="font-semibold text-base sm:text-lg text-gray-900 mb-2">No favourites yet</h3>
+                <p className="text-sm sm:text-base text-gray-500">
                   Add meals or recipes to your favourites from the Library or Recipes tab
                 </p>
               </div>
@@ -989,10 +1116,10 @@ export function AddMealPanel({
                 {favouriteMeals.length > 0 && (
                   <div>
                     <div className="flex items-center gap-2 mb-3">
-                      <Heart size={16} className="text-red-500" />
-                      <h3 className="font-semibold text-gray-900">Meal Favourites</h3>
+                      <Heart size={16} className="text-red-500 flex-shrink-0" />
+                      <h3 className="font-semibold text-sm sm:text-base text-gray-900">Meal Favourites</h3>
                     </div>
-                    <div className="space-y-2">
+                    <div className="space-y-2 sm:space-y-3">
                       {favouriteMeals.map(meal => renderMealCard(meal, true))}
                     </div>
                   </div>
@@ -1002,10 +1129,10 @@ export function AddMealPanel({
                 {favouriteRecipes.length > 0 && (
                   <div>
                     <div className="flex items-center gap-2 mb-3">
-                      <Heart size={16} className="text-red-500" />
-                      <h3 className="font-semibold text-gray-900">Recipe Favourites</h3>
+                      <Heart size={16} className="text-red-500 flex-shrink-0" />
+                      <h3 className="font-semibold text-sm sm:text-base text-gray-900">Recipe Favourites</h3>
                     </div>
-                    <div className="space-y-2">
+                    <div className="space-y-2 sm:space-y-3">
                       {favouriteRecipes.map(recipe => {
                         // Convert recipe to MealLibraryItem format for renderMealCard
                         const mealItem: MealLibraryItem & { source?: 'recipe' } = {

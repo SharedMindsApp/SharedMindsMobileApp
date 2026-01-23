@@ -37,6 +37,12 @@ export interface MealPlan {
   meal_id: string | null;
   recipe_id: string | null; // New: support for recipe_id
   custom_meal_name: string | null;
+  meal_source?: 'recipe' | 'meal_library' | 'external' | 'custom'; // Source type
+  external_name?: string | null; // Name of external meal (shop/restaurant)
+  external_vendor?: string | null; // Vendor/source (e.g., "Tesco", "Nando's")
+  external_type?: 'restaurant' | 'shop' | 'cafe' | 'takeaway' | 'other' | null; // Type of external meal
+  is_prepared?: boolean; // Whether meal requires preparation (false for external)
+  scheduled_at?: string | null; // Optional specific time for meal
   meal_type: 'breakfast' | 'lunch' | 'dinner' | 'snack';
   day_of_week: number;
   week_start_date: string;
@@ -316,6 +322,105 @@ export async function removeMealFromPlan(mealPlanId: string): Promise<void> {
     .eq('id', mealPlanId);
 
   if (error) throw error;
+}
+
+/**
+ * Add an external meal (bought/restaurant) to meal plan
+ */
+export async function addExternalMealToPlan({
+  name,
+  vendor,
+  type,
+  mealType,
+  dayOfWeek,
+  weekStartDate,
+  profileId,
+  householdId,
+  scheduledAt,
+  notes,
+}: {
+  name: string;
+  vendor?: string | null;
+  type: 'restaurant' | 'shop' | 'cafe' | 'takeaway' | 'other';
+  mealType: 'breakfast' | 'lunch' | 'dinner' | 'snack';
+  dayOfWeek: number;
+  weekStartDate: string;
+  profileId: string;
+  householdId: string;
+  scheduledAt?: string | null; // Optional specific time
+  notes?: string | null;
+}): Promise<MealPlan> {
+  if (!name || name.trim() === '') {
+    throw new Error('External meal name is required');
+  }
+
+  // Check for existing meal at this slot
+  const { data: existing } = await supabase
+    .from('meal_plans')
+    .select('id')
+    .eq('space_id', householdId)
+    .eq('week_start_date', weekStartDate)
+    .eq('day_of_week', dayOfWeek)
+    .eq('meal_type', mealType)
+    .maybeSingle();
+
+  const mealData: any = {
+    space_id: householdId,
+    meal_source: 'external',
+    external_name: name.trim(),
+    external_vendor: vendor?.trim() || null,
+    external_type: type,
+    is_prepared: false, // External meals are not prepared by user
+    meal_type: mealType,
+    day_of_week: dayOfWeek,
+    week_start_date: weekStartDate,
+    scheduled_at: scheduledAt || null,
+    notes: notes || null,
+    created_by: profileId,
+    // Explicitly set other fields to null for external meals
+    meal_id: null,
+    recipe_id: null,
+    custom_meal_name: null,
+    updated_at: new Date().toISOString(),
+  };
+
+  if (existing) {
+    // Update existing meal
+    const { data, error } = await supabase
+      .from('meal_plans')
+      .update(mealData)
+      .eq('id', existing.id)
+      .select(`
+        *,
+        meal:meal_id (*),
+        recipe:recipe_id (*)
+      `)
+      .single();
+
+    if (error) throw error;
+    return data;
+  }
+
+  // Insert new meal
+  const { data, error } = await supabase
+    .from('meal_plans')
+    .insert(mealData)
+    .select(`
+      *,
+      meal:meal_id (*),
+      recipe:recipe_id (*)
+    `)
+    .single();
+
+  if (error) {
+    console.error('[addExternalMealToPlan] Insert failed:', {
+      error,
+      mealData,
+    });
+    throw error;
+  }
+
+  return data;
 }
 
 export async function getHouseholdFavourites(householdId: string): Promise<MealFavourite[]> {

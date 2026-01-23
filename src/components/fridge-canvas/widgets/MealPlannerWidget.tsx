@@ -11,6 +11,7 @@ import { RecipeFormModal, type RecipeFormData } from '../../meal-planner/RecipeF
 import { AddRecipeFromURLModal } from '../../meal-planner/AddRecipeFromURLModal';
 import { RecipeIconPickerModal } from '../../meal-planner/RecipeIconPickerModal';
 import { AddMealPanel } from '../../meal-planner/AddMealBottomSheet';
+import { addExternalMealToPlan } from '../../../lib/mealPlanner';
 import { MealDetailBottomSheet } from '../../meal-planner/MealDetailBottomSheet';
 import { useAuth } from '../../../contexts/AuthContext';
 import { supabase } from '../../../lib/supabase';
@@ -48,12 +49,20 @@ import { staleWhileRevalidate, CacheKeys } from '../../../lib/dataCache';
 function AddMealPanelOverlay({
   onClose,
   onSelectMeal,
+  onSelectExternalMeal,
   spaceId,
   dayName,
   mealType,
 }: {
   onClose: () => void;
   onSelectMeal: (meal: MealLibraryItem | null, customName?: string, recipeId?: string) => void;
+  onSelectExternalMeal?: (params: {
+    name: string;
+    vendor?: string | null;
+    type: 'restaurant' | 'shop' | 'cafe' | 'takeaway' | 'other';
+    scheduledAt?: string | null;
+    notes?: string | null;
+  }) => void;
   spaceId: string;
   dayName: string;
   mealType: 'breakfast' | 'lunch' | 'dinner' | 'snack';
@@ -97,6 +106,7 @@ function AddMealPanelOverlay({
           <AddMealPanel
             onClose={onClose}
             onSelectMeal={onSelectMeal}
+            onSelectExternalMeal={onSelectExternalMeal}
             spaceId={spaceId}
             dayName={dayName}
             mealType={mealType}
@@ -674,6 +684,55 @@ export function MealPlannerWidget({ householdId, viewMode, onViewModeChange, onF
     }
   };
 
+  const handleSelectExternalMeal = async (params: {
+    name: string;
+    vendor?: string | null;
+    type: 'restaurant' | 'shop' | 'cafe' | 'takeaway' | 'other';
+    scheduledAt?: string | null;
+    notes?: string | null;
+  }) => {
+    if (!selectedSlot || !user) return;
+
+    try {
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('id')
+        .eq('user_id', user.id)
+        .maybeSingle();
+
+      if (!profile) return;
+
+      const dayInfo = displayDays[selectedSlot.dayIndex];
+      if (!dayInfo) {
+        showToast('error', 'Invalid day selected');
+        return;
+      }
+      const weekStartDate = selectedSlot.weekStartDate || dayInfo.weekStartDate;
+      const dayOfWeek = selectedSlot.dayOfWeek !== undefined ? selectedSlot.dayOfWeek : dayInfo.dayOfWeek;
+
+      await addExternalMealToPlan({
+        name: params.name,
+        vendor: params.vendor,
+        type: params.type,
+        mealType: selectedSlot.mealType,
+        dayOfWeek,
+        weekStartDate,
+        profileId: profile.id,
+        householdId: currentSpaceId,
+        scheduledAt: params.scheduledAt,
+        notes: params.notes,
+      });
+
+      await loadMealPlans();
+      setShowAddMealSheet(false);
+      setSelectedSlot(null);
+      showToast('success', 'External meal added to plan');
+    } catch (error) {
+      console.error('Failed to add external meal:', error);
+      showToast('error', 'Failed to add external meal to plan');
+    }
+  };
+
   const handleRemoveMeal = async (mealPlanId: string) => {
     try {
       await removeMealFromPlan(mealPlanId);
@@ -968,8 +1027,21 @@ export function MealPlannerWidget({ householdId, viewMode, onViewModeChange, onF
     const mealType = slot.mealTypeMapping || slot.id;
     const assignment = getMealAssignment(dayIndex, mealType);
     const plan = getMealPlan(dayIndex, mealType);
-    const mealName = assignment?.preparedMeal.recipe_name || plan?.meal?.name || plan?.recipe?.name || plan?.custom_meal_name;
+    const isExternalMeal = plan?.meal_source === 'external';
+    const mealName = isExternalMeal 
+      ? plan.external_name 
+      : assignment?.preparedMeal.recipe_name || plan?.meal?.name || plan?.recipe?.name || plan?.custom_meal_name;
     const isPreparedMeal = !!assignment;
+    
+    // External meal type icons and labels
+    const externalTypeConfig = {
+      shop: { icon: '🛍️', label: 'Shop', color: 'bg-blue-100 text-blue-700' },
+      restaurant: { icon: '🍽️', label: 'Restaurant', color: 'bg-purple-100 text-purple-700' },
+      cafe: { icon: '☕', label: 'Café', color: 'bg-amber-100 text-amber-700' },
+      takeaway: { icon: '🥡', label: 'Takeaway', color: 'bg-orange-100 text-orange-700' },
+      other: { icon: '📦', label: 'Bought', color: 'bg-gray-100 text-gray-700' },
+    };
+    const externalConfig = plan?.external_type ? externalTypeConfig[plan.external_type] : externalTypeConfig.other;
 
     // Color scheme per meal type (ADHD-first: calm, soft)
     const mealTypeStyles: Record<string, any> = {
@@ -1036,7 +1108,11 @@ export function MealPlannerWidget({ householdId, viewMode, onViewModeChange, onF
           >
             <div className="flex items-start gap-3">
               {/* Meal Image or Icon */}
-              {plan.meal?.image_url || plan.recipe?.image_url ? (
+              {isExternalMeal ? (
+                <div className={`${isFullscreen ? 'w-20 h-20' : 'w-16 h-16'} ${styles.bg} ${styles.border} border-2 rounded-lg flex items-center justify-center text-3xl flex-shrink-0`}>
+                  {externalConfig.icon}
+                </div>
+              ) : plan.meal?.image_url || plan.recipe?.image_url ? (
                 <img
                   src={(plan.meal?.image_url || plan.recipe?.image_url) || undefined}
                   alt={mealName || undefined}
@@ -1057,12 +1133,26 @@ export function MealPlannerWidget({ householdId, viewMode, onViewModeChange, onF
                   <h4 className={`font-semibold text-gray-900 ${isFullscreen ? 'text-base' : 'text-sm'} line-clamp-2`}>
                     {mealName}
                   </h4>
-                  {isPreparedMeal && (
-                    <span className="px-2 py-0.5 bg-orange-100 text-orange-700 text-xs font-medium rounded-full flex-shrink-0">
-                      🥘 Prep
-                    </span>
-                  )}
+                  <div className="flex items-center gap-1.5 flex-shrink-0">
+                    {isExternalMeal && (
+                      <span className={`px-2 py-0.5 ${externalConfig.color} text-xs font-medium rounded-full`}>
+                        {externalConfig.icon} {externalConfig.label}
+                      </span>
+                    )}
+                    {isPreparedMeal && (
+                      <span className="px-2 py-0.5 bg-orange-100 text-orange-700 text-xs font-medium rounded-full">
+                        🥘 Prep
+                      </span>
+                    )}
+                  </div>
                 </div>
+
+                {/* External meal vendor */}
+                {isExternalMeal && plan.external_vendor && (
+                  <p className="text-xs text-gray-600 mb-1">
+                    {plan.external_vendor}
+                  </p>
+                )}
 
                 {/* Metadata Row */}
                 <div className="flex items-center gap-3 text-xs text-gray-500 mb-2">
@@ -1079,7 +1169,7 @@ export function MealPlannerWidget({ householdId, viewMode, onViewModeChange, onF
                       )}
                     </>
                   )}
-                  {!isPreparedMeal && (plan?.meal?.prep_time || plan?.recipe?.prep_time) && (
+                  {!isPreparedMeal && !isExternalMeal && (plan?.meal?.prep_time || plan?.recipe?.prep_time) && (
                     <>
                       <span>•</span>
                       <div className="flex items-center gap-1">
@@ -1947,6 +2037,7 @@ export function MealPlannerWidget({ householdId, viewMode, onViewModeChange, onF
               setSelectedSlot(null);
             }}
             onSelectMeal={handleSelectMeal}
+            onSelectExternalMeal={handleSelectExternalMeal}
             spaceId={currentSpaceId}
             dayName={selectedSlot.day}
             mealType={selectedSlot.mealType}

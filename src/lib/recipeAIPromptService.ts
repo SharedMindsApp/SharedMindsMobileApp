@@ -88,12 +88,13 @@ export function generateRecipeVariationsPrompt(
   cuisine?: CuisineType,
   dietaryRequirements?: string[],
   location?: string | null,
-  selectedTags?: string[] // Tags selected by user for this meal type (e.g., ["quick-meal", "vegetarian"])
+  selectedTags?: string[], // Tags selected by user for this meal type (e.g., ["quick-meal", "vegetarian"])
+  includeLocationInAI: boolean = true // Whether to include location in prompt (default: true)
 ): string {
   let prompt = `Find 5 different FOOD OR DRINK recipe variations for: ${baseQuery}`;
   
-  // Add location to the base query for culturally relevant variations
-  if (location) {
+  // Add location to the base query for culturally relevant variations (only if enabled)
+  if (location && includeLocationInAI) {
     prompt += ` in ${location}`;
   }
   prompt += `\n\n`;
@@ -160,7 +161,8 @@ export function generateRecipeVariationsPrompt(
   prompt += `- Have a specific search query that would find that exact recipe variation\n`;
   prompt += `- Be different enough from other variations to provide variety\n`;
   
-  if (location) {
+  // Add location context only if enabled
+  if (location && includeLocationInAI) {
     prompt += `- Be culturally relevant to ${location} (use local ingredients, traditional methods, and regional variations where appropriate)\n`;
   }
   
@@ -173,7 +175,10 @@ export function generateRecipeVariationsPrompt(
 /**
  * Generate a prompt for Perplexity AI to search and extract recipe information
  */
-export function generatePerplexityPrompt(request: RecipeGenerationRequest): string {
+export function generatePerplexityPrompt(
+  request: RecipeGenerationRequest,
+  includeLocationInAI: boolean = true // Whether to include location in prompt (default: true)
+): string {
   const {
     query,
     meal_type,
@@ -249,8 +254,8 @@ export function generatePerplexityPrompt(request: RecipeGenerationRequest): stri
     searchTerms.push(`${difficulty} difficulty`);
   }
   
-  // Add location to search terms for culturally relevant recipes
-  if (location) {
+  // Add location to search terms for culturally relevant recipes (only if enabled)
+  if (location && includeLocationInAI) {
     searchTerms.push(`in ${location}`);
   }
 
@@ -326,8 +331,8 @@ export function generatePerplexityPrompt(request: RecipeGenerationRequest): stri
     requirements.push(`Difficulty level should be ${difficulty}`);
   }
   
-  // Add location requirement for culturally relevant recipes
-  if (location) {
+  // Add location requirement for culturally relevant recipes (only if enabled)
+  if (location && includeLocationInAI) {
     requirements.push(`Recipe should be culturally relevant to ${location} (use local ingredients, traditional methods, and regional variations where appropriate)`);
   }
 
