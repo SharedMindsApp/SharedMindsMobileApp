@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import { Settings, Plus, Trash2, Edit, MessageSquare, FileEdit, FileText, Clock, Brain, ListTodo, UtensilsCrossed, FileType, CheckSquare, Lightbulb, ChevronDown, ChevronRight, Target, Layers } from 'lucide-react';
+import { Settings, Plus, Trash2, Edit, MessageSquare, FileEdit, FileText, Clock, Brain, ListTodo, UtensilsCrossed, FileType, CheckSquare, Lightbulb, ChevronDown, ChevronRight, Target, Layers, ShoppingCart, RefreshCw } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { AdminLayout } from './AdminLayout';
 import type { AIFeatureRoute, AIProviderModel, RouteConstraints, SurfaceType, FeatureKey } from '../../lib/guardrails/ai/providerRegistryTypes';
@@ -28,12 +28,15 @@ function getFeatureIcon(featureKey: string) {
     'taskflow_assist': ListTodo,
     'spaces_meal_planner': UtensilsCrossed,
     'spaces_notes_assist': FileType,
+    'spaces_recipe_generation': UtensilsCrossed,
+    'spaces_grocery_assist': ShoppingCart,
     'reality_check_assist': CheckSquare,
     'offshoot_analysis': Lightbulb,
     'reality_check_initial': CheckSquare,
     'reality_check_secondary': CheckSquare,
     'reality_check_detailed': CheckSquare,
-    'reality_check_reframe': Settings,
+    'reality_check_reframe': RefreshCw,
+    'intelligent_todo': ListTodo,
   };
   return iconMap[featureKey] || Target;
 }
@@ -48,12 +51,15 @@ function getFeatureLabel(featureKey: string): string {
     'taskflow_assist': 'Task Flow Assist',
     'spaces_meal_planner': 'Meal Planner',
     'spaces_notes_assist': 'Notes Assist',
+    'spaces_recipe_generation': 'Recipe Generation',
+    'spaces_grocery_assist': 'Grocery List Assistant',
     'reality_check_assist': 'Reality Check',
     'offshoot_analysis': 'Offshoot Analysis',
     'reality_check_initial': 'Initial Reality Check',
     'reality_check_secondary': 'Secondary Reality Check',
     'reality_check_detailed': 'Detailed Reality Check',
     'reality_check_reframe': 'Reality Check Reframe',
+    'intelligent_todo': 'Intelligent Todo Breakdown',
   };
   return labelMap[featureKey] || featureKey;
 }
@@ -188,6 +194,7 @@ export function AdminAIRoutingPage() {
               providerId: r.provider_model.provider_id,
               modelKey: r.provider_model.model_key,
               displayName: r.provider_model.display_name,
+              modelType: (r.provider_model.model_type || 'language_model') as 'language_model' | 'search_ai',
               capabilities: r.provider_model.capabilities || {},
               contextWindowTokens: r.provider_model.context_window_tokens,
               maxOutputTokens: r.provider_model.max_output_tokens,
@@ -235,6 +242,7 @@ export function AdminAIRoutingPage() {
           providerId: m.provider_id,
           modelKey: (m.model_key || '').trim(),
           displayName: m.display_name,
+          modelType: (m.model_type || 'language_model') as 'language_model' | 'search_ai',
           capabilities: normalizedCapabilities,
           contextWindowTokens: m.context_window_tokens,
           maxOutputTokens: m.max_output_tokens,
@@ -339,7 +347,8 @@ export function AdminAIRoutingPage() {
     setTimeout(() => setSuccess(null), 3000);
   }
 
-  const featureKeys = Object.values(FEATURE_KEYS);
+  // Get all feature keys from the registry (ensures all features are shown)
+  const featureKeys = Object.keys(FEATURE_REGISTRY) as FeatureKey[];
   const routesByFeature = routes.reduce(
     (acc, route) => {
       if (!acc[route.featureKey]) {
@@ -663,16 +672,15 @@ function AddRouteModal({ models, onClose, onSave }: AddRouteModalProps) {
   const selectedFeature = useMemo(() => FEATURE_REGISTRY[featureKey], [featureKey]);
 
   const compatibleModels = useMemo(() => {
-    const required = selectedFeature.requiredCapabilities ?? [];
-
+    // Use validateModelForFeature which handles both AND and OR logic
+    // (e.g., spaces_meal_planner accepts chat OR search)
     return models
       .filter(m => m.isEnabled)
       .filter(m => {
         const validation = validateModelForFeature(m.capabilities, featureKey);
         return validation.valid;
-      })
-      .filter(m => required.every(cap => m.capabilities?.[cap] === true));
-  }, [models, featureKey, selectedFeature]);
+      });
+  }, [models, featureKey]);
 
   const selectedModel = useMemo(() => {
     return models.find(m => m.id === selectedModelId);
@@ -814,8 +822,14 @@ function AddRouteModal({ models, onClose, onSave }: AddRouteModalProps) {
 
             {selectedModel && (
               <p className="text-xs text-gray-500 mt-1">
-                Context: {(selectedModel.contextWindowTokens / 1000).toFixed(0)}K tokens,
-                Output: {(selectedModel.maxOutputTokens / 1000).toFixed(0)}K tokens
+                {selectedModel.modelType === 'search_ai' ? (
+                  <span>Search / Retrieval AI (no token limits)</span>
+                ) : (
+                  <>
+                    Context: {selectedModel.contextWindowTokens ? `${(selectedModel.contextWindowTokens / 1000).toFixed(0)}K tokens` : 'N/A'},
+                    Output: {selectedModel.maxOutputTokens ? `${(selectedModel.maxOutputTokens / 1000).toFixed(0)}K tokens` : 'N/A'}
+                  </>
+                )}
               </p>
             )}
           </div>
@@ -849,13 +863,13 @@ function AddRouteModal({ models, onClose, onSave }: AddRouteModalProps) {
                   type="number"
                   value={maxContextTokens || ''}
                   onChange={(e) => setMaxContextTokens(e.target.value ? Number(e.target.value) : null)}
-                  placeholder={selectedModel ? `Default: ${selectedModel.contextWindowTokens}` : "Override model limit"}
+                  placeholder={selectedModel ? `Default: ${selectedModel.contextWindowTokens || 'N/A'}` : "Override model limit"}
                   min="1000"
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
                 />
                 <p className="text-xs text-gray-500 mt-1">
                   Leave empty to use model default
-                  {selectedModel && ` (${selectedModel.contextWindowTokens})`}
+                  {selectedModel && selectedModel.contextWindowTokens && ` (${selectedModel.contextWindowTokens})`}
                 </p>
               </div>
               <div>
@@ -866,13 +880,13 @@ function AddRouteModal({ models, onClose, onSave }: AddRouteModalProps) {
                   type="number"
                   value={maxOutputTokens || ''}
                   onChange={(e) => setMaxOutputTokens(e.target.value ? Number(e.target.value) : null)}
-                  placeholder={selectedModel ? `Default: ${selectedModel.maxOutputTokens}` : "Override model limit"}
+                  placeholder={selectedModel ? `Default: ${selectedModel.maxOutputTokens || 'N/A'}` : "Override model limit"}
                   min="100"
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
                 />
                 <p className="text-xs text-gray-500 mt-1">
                   Leave empty to use model default
-                  {selectedModel && ` (${selectedModel.maxOutputTokens})`}
+                  {selectedModel && selectedModel.maxOutputTokens && ` (${selectedModel.maxOutputTokens})`}
                 </p>
               </div>
             </div>
@@ -918,16 +932,15 @@ function EditRouteModal({ route, models, onClose, onSave }: EditRouteModalProps)
   const selectedFeature = useMemo(() => FEATURE_REGISTRY[featureKey], [featureKey]);
 
   const compatibleModels = useMemo(() => {
-    const required = selectedFeature.requiredCapabilities ?? [];
-
+    // Use validateModelForFeature which handles both AND and OR logic
+    // (e.g., spaces_meal_planner accepts chat OR search)
     return models
       .filter(m => m.isEnabled)
       .filter(m => {
         const validation = validateModelForFeature(m.capabilities, featureKey);
         return validation.valid;
-      })
-      .filter(m => required.every(cap => m.capabilities?.[cap] === true));
-  }, [models, featureKey, selectedFeature]);
+      });
+  }, [models, featureKey]);
 
   const selectedModel = useMemo(() => {
     return models.find(m => m.id === selectedModelId);
@@ -1052,8 +1065,14 @@ function EditRouteModal({ route, models, onClose, onSave }: EditRouteModalProps)
 
             {selectedModel && (
               <p className="text-xs text-gray-500 mt-1">
-                Context: {(selectedModel.contextWindowTokens / 1000).toFixed(0)}K tokens,
-                Output: {(selectedModel.maxOutputTokens / 1000).toFixed(0)}K tokens
+                {selectedModel.modelType === 'search_ai' ? (
+                  <span>Search / Retrieval AI (no token limits)</span>
+                ) : (
+                  <>
+                    Context: {selectedModel.contextWindowTokens ? `${(selectedModel.contextWindowTokens / 1000).toFixed(0)}K tokens` : 'N/A'},
+                    Output: {selectedModel.maxOutputTokens ? `${(selectedModel.maxOutputTokens / 1000).toFixed(0)}K tokens` : 'N/A'}
+                  </>
+                )}
               </p>
             )}
           </div>
@@ -1087,13 +1106,13 @@ function EditRouteModal({ route, models, onClose, onSave }: EditRouteModalProps)
                   type="number"
                   value={maxContextTokens || ''}
                   onChange={(e) => setMaxContextTokens(e.target.value ? Number(e.target.value) : null)}
-                  placeholder={selectedModel ? `Default: ${selectedModel.contextWindowTokens}` : "Override model limit"}
+                  placeholder={selectedModel ? `Default: ${selectedModel.contextWindowTokens || 'N/A'}` : "Override model limit"}
                   min="1000"
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
                 />
                 <p className="text-xs text-gray-500 mt-1">
                   Leave empty to use model default
-                  {selectedModel && ` (${selectedModel.contextWindowTokens})`}
+                  {selectedModel && selectedModel.contextWindowTokens && ` (${selectedModel.contextWindowTokens})`}
                 </p>
               </div>
               <div>
@@ -1104,13 +1123,13 @@ function EditRouteModal({ route, models, onClose, onSave }: EditRouteModalProps)
                   type="number"
                   value={maxOutputTokens || ''}
                   onChange={(e) => setMaxOutputTokens(e.target.value ? Number(e.target.value) : null)}
-                  placeholder={selectedModel ? `Default: ${selectedModel.maxOutputTokens}` : "Override model limit"}
+                  placeholder={selectedModel ? `Default: ${selectedModel.maxOutputTokens || 'N/A'}` : "Override model limit"}
                   min="100"
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
                 />
                 <p className="text-xs text-gray-500 mt-1">
                   Leave empty to use model default
-                  {selectedModel && ` (${selectedModel.maxOutputTokens})`}
+                  {selectedModel && selectedModel.maxOutputTokens && ` (${selectedModel.maxOutputTokens})`}
                 </p>
               </div>
             </div>

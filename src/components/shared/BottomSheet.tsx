@@ -13,6 +13,7 @@
  */
 
 import { useState, useEffect, useRef, useCallback, ReactNode } from 'react';
+import { useLocation } from 'react-router-dom';
 import { X } from 'lucide-react';
 
 export interface BottomSheetProps {
@@ -26,6 +27,7 @@ export interface BottomSheetProps {
   showCloseButton?: boolean;
   closeOnBackdrop?: boolean;
   preventClose?: boolean; // Prevents closing via swipe/backdrop
+  closeOnRouteChange?: boolean; // Auto-close when route changes (default: true)
 }
 
 export function BottomSheet({
@@ -39,7 +41,9 @@ export function BottomSheet({
   showCloseButton = true,
   closeOnBackdrop = true,
   preventClose = false,
+  closeOnRouteChange = true,
 }: BottomSheetProps) {
+  const location = useLocation();
   const [isMobile, setIsMobile] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
   const [dragStartY, setDragStartY] = useState(0);
@@ -49,6 +53,8 @@ export function BottomSheet({
   const sheetRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
   const dragStateRef = useRef({ isDragging: false, startY: 0, currentY: 0 });
+  const pathnameWhenOpenedRef = useRef<string | null>(null);
+  const isClosingRef = useRef(false);
 
   // Detect mobile vs desktop
   useEffect(() => {
@@ -99,6 +105,37 @@ export function BottomSheet({
       }
     };
   }, [isMobile, isOpen]);
+
+  // Track pathname when sheet opens for route-aware closing
+  useEffect(() => {
+    if (isOpen && closeOnRouteChange) {
+      pathnameWhenOpenedRef.current = location.pathname;
+      isClosingRef.current = false;
+      if (process.env.NODE_ENV === 'development') {
+        console.log('[BottomSheet] Sheet opened, tracking pathname:', location.pathname);
+      }
+    } else if (!isOpen) {
+      pathnameWhenOpenedRef.current = null;
+      isClosingRef.current = false;
+    }
+  }, [isOpen, closeOnRouteChange, location.pathname]);
+
+  // Auto-close on route change (global solution)
+  useEffect(() => {
+    if (!isOpen || !closeOnRouteChange || isClosingRef.current) return;
+    
+    // If pathname changed since sheet opened, close it
+    if (pathnameWhenOpenedRef.current !== null && pathnameWhenOpenedRef.current !== location.pathname) {
+      if (process.env.NODE_ENV === 'development') {
+        console.log('[BottomSheet] Route changed, auto-closing sheet:', {
+          from: pathnameWhenOpenedRef.current,
+          to: location.pathname,
+        });
+      }
+      isClosingRef.current = true;
+      onClose();
+    }
+  }, [isOpen, closeOnRouteChange, location.pathname, onClose]);
 
   // Prevent body scroll when open
   useEffect(() => {

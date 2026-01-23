@@ -1,0 +1,1048 @@
+/**
+ * AddMealPanel - Inline panel for adding/replacing meals
+ * 
+ * ADHD-first design: calm, optional, no pressure
+ * 
+ * Note: Recipe cards navigate to full page (/recipes/:id), not a bottom sheet.
+ */
+
+import { useState, useEffect, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { Heart, Clock, Sparkles, CheckCircle2, Package, X, Tag } from 'lucide-react';
+import { getMealLibrary, getHouseholdFavourites, getCurrentUserFavourites, type MealLibraryItem } from '../../lib/mealPlanner';
+import { compareRecipeAgainstPantry, type RecipePantryMatch } from '../../lib/foodIntelligence';
+import type { Recipe } from '../../lib/recipeGeneratorTypes';
+import { RecipeSearchWithAI } from '../recipes/RecipeSearchWithAI';
+import { listRecipes } from '../../lib/recipeGeneratorService';
+import { getHouseholdIdFromSpaceId, generateRecipeVariations, type RecipeVariation } from '../../lib/recipeAIService';
+import type { RecipeFilters } from '../../lib/recipeGeneratorTypes';
+import { useAuth } from '../../contexts/AuthContext';
+import { supabase } from '../../lib/supabase';
+import { useUIPreferences } from '../../contexts/UIPreferencesContext';
+import { getFoodProfile } from '../../lib/foodProfileService';
+import type { UserFoodProfile } from '../../lib/foodProfileTypes';
+import { getPreferredTags, batchUpsertTagPreferences, type TagPreferenceInput } from '../../lib/tagPreferencesService';
+
+interface AddMealPanelProps {
+  onSelectMeal: (meal: MealLibraryItem | null, customName?: string, recipeId?: string) => void;
+  spaceId: string;
+  dayName: string;
+  mealType: 'breakfast' | 'lunch' | 'dinner' | 'snack';
+  replacingMealId?: string;
+  onClose?: () => void; // Optional - for closing the panel if needed by parent
+}
+
+const MEAL_TYPE_ICONS = {
+  breakfast: '🍳',
+  lunch: '🥪',
+  dinner: '🍲',
+  snack: '🍪',
+};
+
+export function AddMealPanel({
+  onSelectMeal,
+  spaceId,
+  dayName,
+  mealType,
+  replacingMealId,
+  onClose,
+}: AddMealPanelProps) {
+  const navigate = useNavigate();
+  const [activeSection, setActiveSection] = useState<'quick' | 'search' | 'custom' | 'favourites'>('quick');
+  const [searchQuery] = useState(''); // Kept for potential future use with RecipeSearchWithAI
+  const [customMealName, setCustomMealName] = useState('');
+  const [recentMeals, setRecentMeals] = useState<(MealLibraryItem & { source?: 'meal_library' | 'recipe' })[]>([]);
+  const [favourites, setFavourites] = useState<(MealLibraryItem & { source?: 'meal_library' | 'recipe' })[]>([]);
+  const [favouriteMeals, setFavouriteMeals] = useState<(MealLibraryItem & { source?: 'meal_library' })[]>([]);
+  const [favouriteRecipes, setFavouriteRecipes] = useState<(Recipe & { source?: 'recipe' })[]>([]);
+  const [recipeSuggestions, setRecipeSuggestions] = useState<(MealLibraryItem & { source?: 'recipe' })[]>([]);
+  const [aiSuggestions, setAiSuggestions] = useState<RecipeVariation[]>([]);
+  const [loadingAiSuggestions, setLoadingAiSuggestions] = useState(false);
+  const [generatingVariationIndex, setGeneratingVariationIndex] = useState<number | null>(null);
+  const [pantryMatches, setPantryMatches] = useState<Map<string, RecipePantryMatch>>(new Map());
+  const [loading, setLoading] = useState(false);
+  const { user } = useAuth();
+  const { recipeLocation } = useUIPreferences();
+  const [foodProfile, setFoodProfile] = useState<UserFoodProfile | null>(null);
+  const [selectedTags, setSelectedTags] = useState<string[]>([]);
+  
+  // Cache for Perplexity API calls to prevent duplicate requests
+  // Key: JSON string of search parameters (query, mealType, spaceId, foodProfile, recipeLocation)
+  // Value: RecipeVariation[] results
+  const variationsCacheRef = useRef<Map<string, RecipeVariation[]>>(new Map());
+  const variationsLoadingRef = useRef<Set<string>>(new Set()); // Track in-flight requests
+
+  // Get top 5 healthy/relevant tags for the meal type
+  const getTopSuggestedTags = (): string[] => {
+    const healthyTagsByMealType: Record<string, string[]> = {
+      breakfast: ['healthy', 'high-protein', 'quick-meal', 'vegetarian', 'gluten-free'],
+      lunch: ['healthy', 'light', 'quick-meal', 'vegetarian', 'salad'],
+      dinner: ['healthy', 'high-protein', 'comfort-food', 'vegetarian', 'one-pot'],
+      snack: ['healthy', 'quick-meal', 'no-cook', 'vegetarian', 'gluten-free'],
+    };
+    return healthyTagsByMealType[mealType] || ['healthy', 'quick-meal', 'vegetarian', 'gluten-free', 'high-protein'];
+  };
+
+  const topSuggestedTags = getTopSuggestedTags();
+
+  // Handle tag selection - reload AI suggestions with new tags
+  const handleTagToggle = async (tag: string) => {
+    const newSelectedTags = selectedTags.includes(tag)
+      ? selectedTags.filter(t => t !== tag)
+      : [...selectedTags, tag];
+    
+    setSelectedTags(newSelectedTags);
+
+    // Save preferences
+    if (spaceId && newSelectedTags.length > 0) {
+      try {
+        const tagPreferences: TagPreferenceInput[] = newSelectedTags.map(t => ({
+          tag: t,
+          is_preferred: true,
+        }));
+        await batchUpsertTagPreferences(spaceId, tagPreferences);
+      } catch (error) {
+        console.error('[AddMealPanel] Failed to save tag preferences:', error);
+      }
+    }
+
+    // Reload AI suggestions with new tags if we have any selected
+    if (newSelectedTags.length > 0 && user && mealType !== 'snack') {
+      // Clear cache for this meal type to force reload with new tags
+      const cacheKeysToDelete: string[] = [];
+      variationsCacheRef.current.forEach((_, key) => {
+        const cacheData = JSON.parse(key);
+        if (cacheData.mealType === mealType && cacheData.source === 'addMealPanel') {
+          cacheKeysToDelete.push(key);
+        }
+      });
+      cacheKeysToDelete.forEach(key => variationsCacheRef.current.delete(key));
+      
+      // Reload suggestions with new tags
+      loadAISuggestions();
+    } else if (newSelectedTags.length === 0) {
+      // If no tags selected, reload without tags
+      const cacheKeysToDelete: string[] = [];
+      variationsCacheRef.current.forEach((_, key) => {
+        const cacheData = JSON.parse(key);
+        if (cacheData.mealType === mealType && cacheData.source === 'addMealPanel') {
+          cacheKeysToDelete.push(key);
+        }
+      });
+      cacheKeysToDelete.forEach(key => variationsCacheRef.current.delete(key));
+      loadAISuggestions();
+    }
+  };
+
+  useEffect(() => {
+    if (spaceId) {
+      loadFoodProfile();
+      if (activeSection === 'quick') {
+        loadQuickSuggestions();
+      } else if (activeSection === 'favourites') {
+        loadFavourites();
+      }
+    }
+  }, [spaceId, mealType, activeSection]); // Reload when mealType or activeSection changes
+
+  // Load food profile for AI suggestions
+  const loadFoodProfile = async () => {
+    try {
+      const profile = await getFoodProfile(spaceId);
+      setFoodProfile(profile);
+    } catch (error) {
+      console.error('Failed to load food profile:', error);
+      // Don't block if food profile fails to load
+    }
+  };
+
+  // Search is now handled by RecipeSearchWithAI component
+
+  const loadQuickSuggestions = async () => {
+    setLoading(true);
+    let filteredFavs: MealLibraryItem[] = [];
+    let recent: MealLibraryItem[] = [];
+    
+    // Load favourites (non-blocking - continue even if it fails)
+    try {
+      const favs = await getHouseholdFavourites(spaceId);
+      const favMeals = favs.map(f => f.meal).filter(Boolean) as MealLibraryItem[];
+      // Mark favourites as meal_library source (they come from meal_library table)
+      filteredFavs = favMeals
+        .filter(m => m.meal_type === mealType || mealType === 'snack')
+        .map(m => ({ ...m, source: 'meal_library' as const }));
+      setFavourites(filteredFavs.slice(0, 6));
+    } catch (err) {
+      console.error('Failed to load favourites:', err);
+      setFavourites([]);
+    }
+
+    // Load recent meals (non-blocking - continue even if it fails)
+    try {
+      const allMeals = await getMealLibrary({});
+      // Mark recent meals as meal_library source (they come from meal_library table)
+      recent = allMeals
+        .filter(m => m.meal_type === mealType || mealType === 'snack')
+        .map(m => ({ ...m, source: 'meal_library' as const }))
+        .slice(0, 6);
+      setRecentMeals(recent);
+    } catch (err) {
+      console.error('Failed to load recent meals:', err);
+      setRecentMeals([]);
+    }
+
+    // Load recipes from new recipe system - THIS IS CRITICAL
+    // Always load recipes to ensure we have at least 5 options
+    // This runs independently of favourites/recent meals
+    try {
+      const householdId = await getHouseholdIdFromSpaceId(spaceId);
+      const filters: RecipeFilters = {
+        meal_type: mealType === 'snack' ? undefined : mealType,
+        household_id: householdId,
+        include_public: true,
+        limit: 20, // Load more to ensure we have enough after filtering
+      };
+      
+      const recipes = await listRecipes(filters);
+      
+      // Convert recipes to MealLibraryItem format
+      // IMPORTANT: Mark these as 'recipe' source so they route to recipeId, not mealId
+      const recipeMeals: (MealLibraryItem & { source?: 'recipe' })[] = recipes.map(recipe => ({
+        id: recipe.id,
+        name: recipe.name,
+        meal_type: recipe.meal_type,
+        servings: recipe.servings,
+        prep_time: recipe.prep_time || null,
+        cook_time: recipe.cook_time || null,
+        difficulty: recipe.difficulty,
+        cuisine: recipe.cuisine || null,
+        categories: recipe.categories,
+        image_url: recipe.image_url || null,
+        ingredients: recipe.ingredients.map(ing => ({
+          food_item_id: ing.food_item_id,
+          quantity: ing.quantity,
+          unit: ing.unit,
+          optional: ing.optional || false,
+        })),
+        instructions: recipe.instructions || null,
+        calories: recipe.calories || null,
+        protein: recipe.protein || null,
+        carbs: recipe.carbs || null,
+        fat: recipe.fat || null,
+        allergies: recipe.allergies || [],
+        created_at: recipe.created_at,
+        updated_at: recipe.updated_at,
+        source: 'recipe' as const, // Discriminator: this is from recipes table, not meal_library
+      }));
+
+      // Filter out recipes that are already in favourites or recent meals
+      const existingIds = new Set([
+        ...filteredFavs.map(m => m.id),
+        ...recent.map(m => m.id),
+      ]);
+      const uniqueRecipes = recipeMeals.filter(r => !existingIds.has(r.id));
+      
+      // Ensure we have at least 5 total suggestions
+      // If no favourites/recent meals, show at least 5 recipes
+      // Otherwise, fill up to 5 total
+      const totalExisting = filteredFavs.length + recent.length;
+      const needed = totalExisting === 0 ? 5 : Math.max(0, 5 - totalExisting);
+      
+      // Always show at least 5 recipes if we have no other suggestions
+      const minRecipes = totalExisting === 0 ? 5 : Math.max(needed, 0);
+      const recipesToShow = uniqueRecipes.slice(0, Math.max(minRecipes, uniqueRecipes.length > 0 ? 5 : 0));
+      setRecipeSuggestions(recipesToShow);
+
+      // If we still don't have enough suggestions, query Perplexity AI
+      const totalSuggestions = filteredFavs.length + recent.length + recipesToShow.length;
+      if (totalSuggestions === 0 && user && mealType !== 'snack') {
+        // No suggestions at all - load AI suggestions
+        loadAISuggestions();
+      }
+    } catch (err) {
+      console.error('Failed to load recipe suggestions:', err);
+      setRecipeSuggestions([]);
+      
+      // If loading failed and we have no suggestions, try AI
+      const totalSuggestions = filteredFavs.length + recent.length;
+      if (totalSuggestions === 0 && user && mealType !== 'snack') {
+        loadAISuggestions();
+      }
+    }
+
+    // Load pantry intelligence for favourites (non-blocking)
+    if (filteredFavs.length > 0) {
+      try {
+        const matches = new Map<string, RecipePantryMatch>();
+        for (const meal of filteredFavs.slice(0, 6)) {
+          try {
+            const match = await compareRecipeAgainstPantry(meal, spaceId);
+            if (match) {
+              matches.set(meal.id, match);
+            }
+          } catch (e) {
+            // Silent fail for individual matches
+          }
+        }
+        setPantryMatches(matches);
+      } catch (e) {
+        // Silent fail for pantry intelligence
+      }
+    }
+    
+    setLoading(false);
+  };
+
+  // Load AI-generated suggestions from Perplexity
+  const loadAISuggestions = async () => {
+    if (!user || mealType === 'snack') return;
+
+    // Get user's preferred tags for this meal type, plus any selected tags
+    let preferredTagsForMeal: string[] = [];
+    try {
+      if (spaceId) {
+        const allPreferredTags = await getPreferredTags(spaceId);
+        // Filter tags relevant to this meal type
+        const mealTypeTagMap: Record<string, string[]> = {
+          breakfast: ['breakfast', 'quick-meal', '15-min', '30-min', 'healthy', 'high-protein', 'vegetarian', 'vegan', 'gluten-free', 'dairy-free', 'comfort-food', 'light', 'kid-friendly', 'family-friendly', 'make-ahead', 'meal-prep'],
+          lunch: ['lunch', 'quick-meal', '15-min', '30-min', 'healthy', 'light', 'salad', 'vegetarian', 'vegan', 'gluten-free', 'make-ahead', 'meal-prep', 'leftovers', 'one-pot', 'sandwich', 'wrap', 'bowl', 'kid-friendly', 'family-friendly'],
+          dinner: ['dinner', 'comfort-food', 'hearty', 'family-dinner', 'date-night', 'romantic', 'one-pot', 'slow-cooker', 'instant-pot', 'make-ahead', 'meal-prep', 'vegetarian', 'vegan', 'gluten-free', 'high-protein', 'kid-friendly', 'family-friendly'],
+        };
+        const relevantTags = mealTypeTagMap[mealType] || [];
+        preferredTagsForMeal = allPreferredTags.filter(tag => relevantTags.includes(tag));
+      }
+    } catch (error) {
+      console.error('[AddMealPanel] Failed to load tag preferences:', error);
+    }
+
+    // Combine user preferences with selected tags (selected tags take priority)
+    const tagsToUse = selectedTags.length > 0 ? selectedTags : preferredTagsForMeal;
+
+    // Create a generic query for the meal type
+    const mealTypeQueries: Record<string, string> = {
+      breakfast: 'top breakfast recipes',
+      lunch: 'top lunch recipes',
+      dinner: 'top dinner recipes',
+    };
+
+    const baseQuery = mealTypeQueries[mealType] || `${mealType} recipes`;
+    
+    // Create cache key from search parameters (include tags to cache different suggestions)
+    const cacheKey = JSON.stringify({
+      query: baseQuery,
+      mealType,
+      spaceId,
+      foodProfileId: foodProfile?.id || null,
+      recipeLocation,
+      preferredTags: tagsToUse.sort().join(','), // Include tags in cache key
+      source: 'addMealPanel', // Mark as from AddMealPanel to distinguish from other sources
+    });
+
+    // Check if we have cached results
+    if (variationsCacheRef.current.has(cacheKey)) {
+      const cachedVariations = variationsCacheRef.current.get(cacheKey)!;
+      setAiSuggestions(cachedVariations);
+      console.log('[AddMealPanel] Using cached AI suggestions:', {
+        mealType,
+        count: cachedVariations.length,
+      });
+      return;
+    }
+
+    // Check if a request is already in flight for this key
+    if (variationsLoadingRef.current.has(cacheKey)) {
+      console.log('[AddMealPanel] Request already in flight for:', mealType);
+      return;
+    }
+
+    setLoadingAiSuggestions(true);
+    variationsLoadingRef.current.add(cacheKey);
+
+    try {
+      // Get recipe variations from Perplexity, including user's preferred tags
+      const variations = await generateRecipeVariations(
+        baseQuery,
+        mealType,
+        undefined, // cuisine
+        undefined, // dietary requirements
+        user.id,
+        spaceId,
+        foodProfile, // Pass food profile to respect constraints
+        recipeLocation, // Pass location for culturally relevant recipes
+        tagsToUse // Pass selected tags or user's preferred tags for this meal type
+      );
+
+      // Cache the results
+      variationsCacheRef.current.set(cacheKey, variations);
+      setAiSuggestions(variations);
+      console.log('[AddMealPanel] Loaded and cached AI suggestions:', {
+        mealType,
+        count: variations.length,
+      });
+    } catch (err) {
+      console.error('Failed to load AI suggestions:', err);
+      setAiSuggestions([]);
+    } finally {
+      setLoadingAiSuggestions(false);
+      variationsLoadingRef.current.delete(cacheKey);
+    }
+  };
+
+  // Handle selecting an AI suggestion - generate the full recipe
+  const handleSelectAISuggestion = async (variation: RecipeVariation, index: number) => {
+    if (!user) return;
+
+    setGeneratingVariationIndex(index);
+    setLoading(true);
+    try {
+      // Import generateRecipeFromQuery
+      const { generateRecipeFromQuery } = await import('../../lib/recipeAIService');
+      
+      const request = {
+        query: variation.query,
+        meal_type: mealType,
+        food_profile: foodProfile, // Pass food profile
+        location: recipeLocation, // Pass location for culturally relevant recipes
+      };
+
+      const generatedRecipe = await generateRecipeFromQuery(request, user.id, spaceId);
+      
+      // Convert to MealLibraryItem and select it
+      // AI-generated recipes are from recipes table, so mark as 'recipe' source
+      const mealItem: MealLibraryItem & { source?: 'recipe' } = {
+        id: generatedRecipe.id,
+        name: generatedRecipe.name,
+        meal_type: generatedRecipe.meal_type,
+        servings: generatedRecipe.servings,
+        prep_time: generatedRecipe.prep_time || null,
+        cook_time: generatedRecipe.cook_time || null,
+        difficulty: generatedRecipe.difficulty,
+        cuisine: generatedRecipe.cuisine || null,
+        categories: generatedRecipe.categories,
+        image_url: generatedRecipe.image_url || null,
+        ingredients: generatedRecipe.ingredients.map(ing => ({
+          food_item_id: ing.food_item_id,
+          quantity: ing.quantity,
+          unit: ing.unit,
+          optional: ing.optional || false,
+        })),
+        instructions: generatedRecipe.instructions || null,
+        calories: generatedRecipe.calories || null,
+        protein: generatedRecipe.protein || null,
+        carbs: generatedRecipe.carbs || null,
+        fat: generatedRecipe.fat || null,
+        allergies: generatedRecipe.allergies || [],
+        created_at: generatedRecipe.created_at,
+        updated_at: generatedRecipe.updated_at,
+        source: 'recipe' as const, // AI-generated recipes are from recipes table
+      };
+
+      handleSelectMeal(mealItem);
+    } catch (err) {
+      console.error('Failed to generate recipe from AI suggestion:', err);
+      // Show error but don't block UI
+    } finally {
+      setLoading(false);
+      setGeneratingVariationIndex(null);
+    }
+  };
+
+  // Load favorites filtered by meal type
+  const loadFavourites = async () => {
+    if (!user) return;
+    
+    setLoading(true);
+    try {
+      // Get current user's profile ID
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('id')
+        .eq('user_id', user.id)
+        .maybeSingle();
+      
+      if (!profile) {
+        setFavouriteMeals([]);
+        setFavouriteRecipes([]);
+        setLoading(false);
+        return;
+      }
+      
+      // Fetch current user's favorites (both meals and recipes)
+      const favourites = await getCurrentUserFavourites(spaceId, profile.id);
+      
+      // Filter by meal type and separate meals from recipes
+      const meals = favourites
+        .filter(f => f.meal_id && f.meal && (f.meal.meal_type === mealType || mealType === 'snack'))
+        .map(f => ({ ...f.meal!, source: 'meal_library' as const }))
+        .filter(Boolean) as (MealLibraryItem & { source?: 'meal_library' })[];
+      
+      // For recipes, filter by meal_type if available, or show all if snack
+      const recipes = favourites
+        .filter(f => f.recipe_id && f.recipe)
+        .map(f => f.recipe!)
+        .filter(recipe => {
+          // If recipe has meal_type, filter by it; otherwise show all for snack, or show if no meal_type specified
+          if (mealType === 'snack') return true;
+          return recipe.meal_type === mealType || !recipe.meal_type;
+        })
+        .map(r => ({ ...r, source: 'recipe' as const }))
+        .filter(Boolean) as (Recipe & { source?: 'recipe' })[];
+      
+      setFavouriteMeals(meals);
+      setFavouriteRecipes(recipes);
+      
+      // Also update pantry matches for favorites
+      // Convert recipes to MealLibraryItem format for pantry comparison
+      const allFavorites: MealLibraryItem[] = [
+        ...meals,
+        ...recipes.map(recipe => ({
+          id: recipe.id,
+          name: recipe.name,
+          meal_type: recipe.meal_type || mealType,
+          servings: recipe.servings || 4,
+          prep_time: recipe.prep_time || null,
+          cook_time: recipe.cook_time || null,
+          difficulty: recipe.difficulty || 'medium',
+          cuisine: recipe.cuisine || null,
+          categories: recipe.categories || [],
+          image_url: recipe.image_url || null,
+          ingredients: recipe.ingredients || [],
+          instructions: recipe.instructions || null,
+          calories: recipe.calories || null,
+          protein: recipe.protein || null,
+          carbs: recipe.carbs || null,
+          fat: recipe.fat || null,
+          allergies: recipe.allergies || [],
+          created_at: recipe.created_at || new Date().toISOString(),
+          updated_at: recipe.updated_at || new Date().toISOString(),
+        }))
+      ];
+      
+      if (allFavorites.length > 0) {
+        const matches = new Map<string, RecipePantryMatch>();
+        for (const item of allFavorites) {
+          try {
+            const match = await compareRecipeAgainstPantry(item, spaceId);
+            matches.set(item.id, match);
+          } catch (err) {
+            console.error(`Failed to compare ${item.id} against pantry:`, err);
+          }
+        }
+        setPantryMatches(matches);
+      }
+    } catch (error) {
+      console.error('Failed to load favourites:', error);
+      setFavouriteMeals([]);
+      setFavouriteRecipes([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Search is now handled by RecipeSearchWithAI component
+
+  const handleSelectMeal = (meal: MealLibraryItem & { source?: 'meal_library' | 'recipe' }) => {
+    // Route by semantic type, not by id presence
+    // meal_library items → mealId
+    // recipes → recipeId
+    // custom meals → customMealName
+    const source = meal.source || 'meal_library'; // Default to meal_library for backward compatibility
+    
+    console.log('[handleSelectMeal]', {
+      id: meal.id,
+      name: meal.name,
+      source,
+      isRecipe: source === 'recipe',
+      isMealLibrary: source === 'meal_library',
+    });
+
+    // Pass the source information to parent via the existing callback signature
+    // The parent's handleSelectMeal will handle routing
+    if (source === 'recipe') {
+      // Pass as recipeId parameter
+      onSelectMeal(null, undefined, meal.id);
+    } else {
+      // Pass as mealId (meal_library item)
+      onSelectMeal(meal);
+    }
+    
+    if (onClose) onClose();
+  };
+
+  const handleSelectRecipe = (recipe: Recipe) => {
+    // Close the panel immediately, then navigate to full recipe page
+    if (onClose) {
+      onClose();
+    }
+    // Navigate immediately - parent component will detect route change and close panel
+    navigate(`/recipes/${recipe.id}`);
+  };
+
+  const handleCustomMeal = () => {
+    if (customMealName.trim()) {
+      onSelectMeal(null, customMealName.trim());
+      if (onClose) onClose();
+    }
+  };
+
+  const getMealTypeColor = () => {
+    const colors = {
+      breakfast: 'bg-amber-50 border-amber-200 text-amber-700',
+      lunch: 'bg-green-50 border-green-200 text-green-700',
+      dinner: 'bg-purple-50 border-purple-200 text-purple-700',
+      snack: 'bg-gray-50 border-gray-200 text-gray-700',
+    };
+    return colors[mealType];
+  };
+
+  const renderMealCard = (meal: MealLibraryItem & { source?: 'meal_library' | 'recipe' }, showPantryInfo = false) => {
+    const pantryMatch = pantryMatches.get(meal.id);
+    
+    return (
+      <button
+        key={meal.id}
+        onClick={() => handleSelectMeal(meal)}
+        className="w-full text-left bg-white rounded-xl p-4 border-2 border-gray-100 hover:border-gray-300 active:scale-[0.98] transition-all touch-manipulation"
+      >
+        <div className="flex items-start gap-3">
+          {meal.image_url ? (
+            <img
+              src={meal.image_url}
+              alt={meal.name}
+              className="w-16 h-16 rounded-lg object-cover flex-shrink-0"
+              onError={(e) => {
+                (e.target as HTMLImageElement).style.display = 'none';
+              }}
+            />
+          ) : (
+            <div className={`w-16 h-16 rounded-lg ${getMealTypeColor()} flex items-center justify-center text-2xl flex-shrink-0`}>
+              {MEAL_TYPE_ICONS[mealType]}
+            </div>
+          )}
+          
+          <div className="flex-1 min-w-0">
+            <h4 className="font-semibold text-gray-900 mb-1 line-clamp-1">{meal.name}</h4>
+            
+            <div className="flex items-center gap-3 text-xs text-gray-500 mb-2">
+              {meal.prep_time ? (
+                <div className="flex items-center gap-1" title="Preparation time">
+                  <Clock size={12} />
+                  <span>Prep: {meal.prep_time} min</span>
+                </div>
+              ) : null}
+              {meal.cook_time ? (
+                <div className="flex items-center gap-1" title="Cooking time">
+                  <Clock size={12} />
+                  <span>Cook: {meal.cook_time} min</span>
+                </div>
+              ) : null}
+              {!meal.prep_time && !meal.cook_time && (
+                <div className="flex items-center gap-1 text-gray-400">
+                  <Clock size={12} />
+                  <span>Time not specified</span>
+                </div>
+              )}
+            </div>
+
+            {meal.categories.length > 0 && (
+              <div className="flex flex-wrap gap-1 mb-2">
+                {meal.categories.slice(0, 2).map(cat => (
+                  <span key={cat} className="text-xs px-2 py-0.5 bg-gray-100 text-gray-600 rounded-full">
+                    {cat.replace(/_/g, ' ')}
+                  </span>
+                ))}
+              </div>
+            )}
+
+            {showPantryInfo && pantryMatch && (
+              <div className="flex items-center gap-1 text-xs mt-2">
+                {pantryMatch.matchPercentage === 100 ? (
+                  <>
+                    <CheckCircle2 size={12} className="text-green-500" />
+                    <span className="text-green-600">Can make now</span>
+                  </>
+                ) : pantryMatch.missingCount > 0 ? (
+                  <>
+                    <Package size={12} className="text-gray-400" />
+                    <span className="text-gray-500">Missing {pantryMatch.missingCount} ingredient{pantryMatch.missingCount !== 1 ? 's' : ''}</span>
+                  </>
+                ) : null}
+              </div>
+            )}
+          </div>
+        </div>
+      </button>
+    );
+  };
+
+  // Recipe cards are now rendered by RecipeSearchWithAI component
+
+  return (
+    <div className="bg-white rounded-lg border border-gray-200 shadow-lg">
+      {/* Header */}
+      <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200">
+        <h2 className="text-lg font-semibold text-gray-900">
+          {replacingMealId ? `Replace ${mealType}` : `Add ${mealType}`}
+        </h2>
+        {onClose && (
+          <button
+            onClick={onClose}
+            className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+            aria-label="Close"
+          >
+            <X size={20} className="text-gray-500" />
+          </button>
+        )}
+      </div>
+
+      {/* Content */}
+      <div className="p-4">
+        {/* Section Tabs */}
+        <div className="flex gap-2 mb-4 border-b border-gray-200">
+          <button
+            onClick={() => setActiveSection('quick')}
+            className={`px-4 py-2 text-sm font-medium transition-colors border-b-2 ${
+              activeSection === 'quick'
+                ? 'border-orange-500 text-orange-600'
+                : 'border-transparent text-gray-500 hover:text-gray-700'
+            }`}
+          >
+            Quick
+          </button>
+          <button
+            onClick={() => setActiveSection('search')}
+            className={`px-4 py-2 text-sm font-medium transition-colors border-b-2 ${
+              activeSection === 'search'
+                ? 'border-orange-500 text-orange-600'
+                : 'border-transparent text-gray-500 hover:text-gray-700'
+            }`}
+          >
+            Search
+          </button>
+          <button
+            onClick={() => setActiveSection('custom')}
+            className={`px-4 py-2 text-sm font-medium transition-colors border-b-2 ${
+              activeSection === 'custom'
+                ? 'border-orange-500 text-orange-600'
+                : 'border-transparent text-gray-500 hover:text-gray-700'
+            }`}
+          >
+            Simple
+          </button>
+          <button
+            onClick={() => setActiveSection('favourites')}
+            className={`px-4 py-2 text-sm font-medium transition-colors border-b-2 ${
+              activeSection === 'favourites'
+                ? 'border-orange-500 text-orange-600'
+                : 'border-transparent text-gray-500 hover:text-gray-700'
+            }`}
+          >
+            Favourites
+          </button>
+        </div>
+
+        {/* Quick Suggestions */}
+        {activeSection === 'quick' && (
+          <div className="space-y-6">
+            {/* Top 5 Suggested Tags Section - Always show for Quick tab */}
+            <div className="bg-gradient-to-br from-orange-50 to-orange-100 border border-orange-200 rounded-xl p-4">
+              <div className="flex items-center gap-2 mb-3">
+                <Tag size={16} className="text-orange-600" />
+                <h3 className="font-semibold text-gray-900">Refine your search</h3>
+              </div>
+              <p className="text-xs text-gray-600 mb-3">
+                Select tags to find more personalized {mealType} suggestions
+              </p>
+              <div className="flex flex-wrap gap-2">
+                {topSuggestedTags.map(tag => {
+                  const isSelected = selectedTags.includes(tag);
+                  return (
+                    <button
+                      key={tag}
+                      type="button"
+                      onClick={() => handleTagToggle(tag)}
+                      className={`px-3 py-1.5 rounded-full text-xs font-medium transition-all ${
+                        isSelected
+                          ? 'bg-orange-500 text-white shadow-sm'
+                          : 'bg-white border border-orange-200 text-gray-700 hover:border-orange-300 hover:bg-orange-50'
+                      }`}
+                    >
+                      {tag.replace(/-/g, ' ')}
+                    </button>
+                  );
+                })}
+                {selectedTags.length > 0 && (
+                  <button
+                    onClick={() => {
+                      setSelectedTags([]);
+                      // Reload without tags
+                      const cacheKeysToDelete: string[] = [];
+                      variationsCacheRef.current.forEach((_, key) => {
+                        const cacheData = JSON.parse(key);
+                        if (cacheData.mealType === mealType && cacheData.source === 'addMealPanel') {
+                          cacheKeysToDelete.push(key);
+                        }
+                      });
+                      cacheKeysToDelete.forEach(key => variationsCacheRef.current.delete(key));
+                      loadAISuggestions();
+                    }}
+                    className="px-3 py-1.5 rounded-full text-xs font-medium text-gray-500 hover:text-gray-700 border border-gray-200 hover:border-gray-300 bg-white"
+                  >
+                    Clear
+                  </button>
+                )}
+              </div>
+              {selectedTags.length > 0 && (
+                <p className="text-xs text-orange-600 mt-2">
+                  ✓ {selectedTags.length} filter{selectedTags.length !== 1 ? 's' : ''} active
+                </p>
+              )}
+            </div>
+
+            {/* Favourites */}
+            {favourites.length > 0 && (
+              <div>
+                <div className="flex items-center gap-2 mb-3">
+                  <Heart size={16} className="text-red-500" />
+                  <h3 className="font-semibold text-gray-900">Favourites</h3>
+                </div>
+                <div className="space-y-2">
+                  {favourites.map(meal => renderMealCard(meal, true))}
+                </div>
+              </div>
+            )}
+
+            {/* Recent */}
+            {recentMeals.length > 0 && (
+              <div>
+                <div className="flex items-center gap-2 mb-3">
+                  <Clock size={16} className="text-gray-500" />
+                  <h3 className="font-semibold text-gray-900">Recent</h3>
+                </div>
+                <div className="space-y-2">
+                  {recentMeals.map(meal => renderMealCard(meal))}
+                </div>
+              </div>
+            )}
+
+            {/* Pantry Suggestions */}
+            {Array.from(pantryMatches.values()).filter(m => m.matchPercentage === 100).length > 0 && (
+              <div>
+                <div className="flex items-center gap-2 mb-3">
+                  <Sparkles size={16} className="text-orange-500" />
+                  <h3 className="font-semibold text-gray-900">What you can make</h3>
+                </div>
+                <div className="space-y-2">
+                  {favourites
+                    .filter(meal => pantryMatches.get(meal.id)?.matchPercentage === 100)
+                    .map(meal => renderMealCard(meal, true))}
+                </div>
+              </div>
+            )}
+
+            {/* Recipe Suggestions - Show if we need more options */}
+            {recipeSuggestions.length > 0 && (
+              <div>
+                <div className="flex items-center gap-2 mb-3">
+                  <Sparkles size={16} className="text-orange-500" />
+                  <h3 className="font-semibold text-gray-900">Suggestions</h3>
+                </div>
+                <div className="space-y-2">
+                  {recipeSuggestions.map(meal => renderMealCard(meal))}
+                </div>
+              </div>
+            )}
+
+            {/* AI-Generated Suggestions - Show when no other suggestions */}
+            {aiSuggestions.length > 0 && (
+              <div>
+                <div className="flex items-center gap-2 mb-3">
+                  <Sparkles size={16} className="text-orange-500" />
+                  <h3 className="font-semibold text-gray-900">AI Suggestions</h3>
+                </div>
+                <div className="space-y-2">
+                  {aiSuggestions.map((variation, index) => {
+                    const isGeneratingThis = generatingVariationIndex === index;
+                    return (
+                      <button
+                        key={index}
+                        onClick={() => handleSelectAISuggestion(variation, index)}
+                        disabled={loading}
+                        className="w-full text-left bg-white rounded-xl p-4 border-2 border-orange-200 hover:border-orange-300 active:scale-[0.98] transition-all touch-manipulation disabled:opacity-50 disabled:cursor-not-allowed relative"
+                      >
+                        {isGeneratingThis && (
+                          <div className="absolute top-2 right-2">
+                            <div className="w-5 h-5 border-2 border-orange-500 border-t-transparent rounded-full animate-spin"></div>
+                          </div>
+                        )}
+                        <div className="flex items-start gap-3">
+                          <div className={`w-16 h-16 rounded-lg ${getMealTypeColor()} flex items-center justify-center text-2xl flex-shrink-0`}>
+                            {MEAL_TYPE_ICONS[mealType]}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <h4 className="font-semibold text-gray-900 mb-1">{variation.name}</h4>
+                            {variation.description && (
+                              <p className="text-xs text-gray-600 line-clamp-2">{variation.description}</p>
+                            )}
+                            {isGeneratingThis && (
+                              <div className="flex items-center gap-2 mt-2 text-xs text-orange-600">
+                                <Sparkles size={12} className="animate-pulse" />
+                                <span>Generating recipe...</span>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {favourites.length === 0 && 
+             recentMeals.length === 0 && 
+             recipeSuggestions.length === 0 && 
+             aiSuggestions.length === 0 && 
+             !loading && 
+             !loadingAiSuggestions && (
+              <div className="text-center py-8 text-gray-500">
+                <p className="text-sm">No suggestions yet</p>
+                <p className="text-xs mt-1">Try searching or adding a simple meal</p>
+              </div>
+            )}
+
+            {loadingAiSuggestions && (
+              <div className="text-center py-8">
+                <div className="flex items-center justify-center gap-2 text-gray-500">
+                  <Sparkles size={16} className="animate-pulse text-orange-500" />
+                  <p className="text-sm">Finding great {mealType} ideas...</p>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Search - Using RecipeSearchWithAI for Library integration */}
+        {activeSection === 'search' && (
+          <div className="space-y-4">
+            <RecipeSearchWithAI
+              spaceId={spaceId}
+              onSelectRecipe={handleSelectRecipe}
+              initialQuery={searchQuery}
+              mealType={mealType}
+            />
+          </div>
+        )}
+
+        {/* Custom Meal */}
+        {activeSection === 'custom' && (
+          <div className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                What are you having?
+              </label>
+              <input
+                type="text"
+                value={customMealName}
+                onChange={(e) => setCustomMealName(e.target.value)}
+                placeholder="e.g., Pizza, Leftovers, Takeout..."
+                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent"
+                autoFocus
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && customMealName.trim()) {
+                    handleCustomMeal();
+                  }
+                }}
+              />
+            </div>
+            <button
+              onClick={handleCustomMeal}
+              disabled={!customMealName.trim()}
+              className="w-full px-4 py-3 bg-orange-500 hover:bg-orange-600 disabled:bg-gray-200 disabled:text-gray-400 text-white font-medium rounded-lg transition-colors touch-manipulation"
+            >
+              Add to {dayName}
+            </button>
+            <p className="text-xs text-gray-500 text-center">
+              Just a simple name is fine. No pressure.
+            </p>
+          </div>
+        )}
+
+        {/* Favourites */}
+        {activeSection === 'favourites' && (
+          <div className="space-y-6">
+            {loading ? (
+              <div className="flex items-center justify-center py-12">
+                <div className="text-gray-500">Loading favourites...</div>
+              </div>
+            ) : favouriteMeals.length === 0 && favouriteRecipes.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-12 text-center">
+                <Heart size={48} className="text-gray-300 mb-4" />
+                <h3 className="font-semibold text-gray-900 mb-2">No favourites yet</h3>
+                <p className="text-sm text-gray-500">
+                  Add meals or recipes to your favourites from the Library or Recipes tab
+                </p>
+              </div>
+            ) : (
+              <>
+                {/* Meal Favourites */}
+                {favouriteMeals.length > 0 && (
+                  <div>
+                    <div className="flex items-center gap-2 mb-3">
+                      <Heart size={16} className="text-red-500" />
+                      <h3 className="font-semibold text-gray-900">Meal Favourites</h3>
+                    </div>
+                    <div className="space-y-2">
+                      {favouriteMeals.map(meal => renderMealCard(meal, true))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Recipe Favourites */}
+                {favouriteRecipes.length > 0 && (
+                  <div>
+                    <div className="flex items-center gap-2 mb-3">
+                      <Heart size={16} className="text-red-500" />
+                      <h3 className="font-semibold text-gray-900">Recipe Favourites</h3>
+                    </div>
+                    <div className="space-y-2">
+                      {favouriteRecipes.map(recipe => {
+                        // Convert recipe to MealLibraryItem format for renderMealCard
+                        const mealItem: MealLibraryItem & { source?: 'recipe' } = {
+                          id: recipe.id,
+                          name: recipe.name,
+                          meal_type: recipe.meal_type || mealType,
+                          servings: recipe.servings || 4,
+                          prep_time: recipe.prep_time || null,
+                          cook_time: recipe.cook_time || null,
+                          difficulty: recipe.difficulty || 'medium',
+                          cuisine: recipe.cuisine || null,
+                          categories: recipe.categories || [],
+                          image_url: recipe.image_url || null,
+                          ingredients: recipe.ingredients || [],
+                          instructions: recipe.instructions || null,
+                          calories: recipe.calories || null,
+                          protein: recipe.protein || null,
+                          carbs: recipe.carbs || null,
+                          fat: recipe.fat || null,
+                          allergies: recipe.allergies || [],
+                          created_at: recipe.created_at || new Date().toISOString(),
+                          updated_at: recipe.updated_at || new Date().toISOString(),
+                          source: 'recipe' as const,
+                        };
+                        return renderMealCard(mealItem, true);
+                      })}
+                    </div>
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// Backward compatibility export (deprecated - use AddMealPanel)
+export const AddMealBottomSheet = AddMealPanel;

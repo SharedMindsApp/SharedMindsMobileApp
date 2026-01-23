@@ -20,6 +20,8 @@ interface UIPreferencesContextType {
   neurotype: string | null;
   loading: boolean;
   appTheme: 'light' | 'dark' | 'neon-dark';
+  measurementSystem: 'metric' | 'imperial';
+  recipeLocation: string | null; // Active location (override if set, otherwise default)
   updatePreferences: (updates: Partial<UIPreferencesConfig>) => Promise<void>;
   setNeurotypeProfile: (profileId: string) => Promise<void>;
   resetToDefaults: () => Promise<void>;
@@ -39,6 +41,9 @@ const DEFAULT_CONFIG: UIPreferencesConfig = {
   contrastLevel: 'normal',
   reducedMotion: false,
   appTheme: 'light',
+  measurementSystem: 'metric',
+  recipeLocation: null,
+  recipeLocationOverride: null,
 };
 
 const UIPreferencesContext = createContext<UIPreferencesContextType | undefined>(undefined);
@@ -130,6 +135,9 @@ export function UIPreferencesProvider({ children }: { children: ReactNode }) {
           contrastLevel: data.contrast_level,
           reducedMotion: data.reduced_motion,
           appTheme: data.app_theme || 'light',
+          measurementSystem: data.measurement_system || 'metric',
+          recipeLocation: data.recipe_location || null,
+          recipeLocationOverride: data.recipe_location_override || null,
         });
         setNeurotype(data.neurotype_profiles?.name || null);
       } else {
@@ -151,7 +159,7 @@ export function UIPreferencesProvider({ children }: { children: ReactNode }) {
     setConfig(newConfig);
 
     try {
-      const upsertData = {
+      const upsertData: any = {
         user_id: user.id,
         layout_mode: newConfig.layoutMode,
         ui_density: newConfig.uiDensity,
@@ -162,6 +170,17 @@ export function UIPreferencesProvider({ children }: { children: ReactNode }) {
         app_theme: newConfig.appTheme,
         updated_at: new Date().toISOString(),
       };
+      
+      // Include optional fields if they exist in newConfig
+      if ('measurementSystem' in newConfig) {
+        upsertData.measurement_system = newConfig.measurementSystem || 'metric';
+      }
+      if ('recipeLocation' in newConfig) {
+        upsertData.recipe_location = newConfig.recipeLocation || null;
+      }
+      if ('recipeLocationOverride' in newConfig) {
+        upsertData.recipe_location_override = newConfig.recipeLocationOverride || null;
+      }
 
       const { data, error } = await supabase
         .from('user_ui_preferences')
@@ -191,12 +210,15 @@ export function UIPreferencesProvider({ children }: { children: ReactNode }) {
       contrastLevel: profile.default_theme.contrastLevel,
       reducedMotion: false,
       appTheme: config.appTheme,
+      measurementSystem: config.measurementSystem || 'metric',
+      recipeLocation: config.recipeLocation || null,
+      recipeLocationOverride: config.recipeLocationOverride || null,
     };
 
     setConfig(newConfig);
 
     try {
-      const upsertData = {
+      const upsertData: any = {
         user_id: user.id,
         neurotype_profile_id: profileId,
         layout_mode: newConfig.layoutMode,
@@ -208,6 +230,17 @@ export function UIPreferencesProvider({ children }: { children: ReactNode }) {
         app_theme: newConfig.appTheme,
         updated_at: new Date().toISOString(),
       };
+      
+      // Include location fields if they exist in newConfig
+      if ('recipeLocation' in newConfig) {
+        upsertData.recipe_location = newConfig.recipeLocation || null;
+      }
+      if ('recipeLocationOverride' in newConfig) {
+        upsertData.recipe_location_override = newConfig.recipeLocationOverride || null;
+      }
+      if ('measurementSystem' in newConfig) {
+        upsertData.measurement_system = newConfig.measurementSystem || 'metric';
+      }
 
       const { data, error } = await supabase
         .from('user_ui_preferences')
@@ -249,7 +282,7 @@ export function UIPreferencesProvider({ children }: { children: ReactNode }) {
     const updatedOverrides = { ...currentOverrides, [key]: value };
 
     try {
-      const upsertData = {
+      const upsertData: any = {
         user_id: user.id,
         layout_mode: config.layoutMode,
         ui_density: config.uiDensity,
@@ -261,6 +294,17 @@ export function UIPreferencesProvider({ children }: { children: ReactNode }) {
         custom_overrides: updatedOverrides,
         updated_at: new Date().toISOString(),
       };
+      
+      // Include optional fields from config
+      if (config.measurementSystem) {
+        upsertData.measurement_system = config.measurementSystem;
+      }
+      if (config.recipeLocation !== undefined) {
+        upsertData.recipe_location = config.recipeLocation || null;
+      }
+      if (config.recipeLocationOverride !== undefined) {
+        upsertData.recipe_location_override = config.recipeLocationOverride || null;
+      }
 
       const { data, error } = await supabase
         .from('user_ui_preferences')
@@ -326,6 +370,8 @@ export function UIPreferencesProvider({ children }: { children: ReactNode }) {
         neurotype,
         loading,
         appTheme: config.appTheme,
+        measurementSystem: config.measurementSystem || 'metric',
+        recipeLocation: config.recipeLocationOverride || config.recipeLocation || null, // Active location (override takes precedence)
         updatePreferences,
         setNeurotypeProfile,
         resetToDefaults,

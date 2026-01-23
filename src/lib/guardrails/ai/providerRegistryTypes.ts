@@ -5,20 +5,25 @@ export interface AIProvider {
   isEnabled: boolean;
   supportsTools: boolean;
   supportsStreaming: boolean;
+  requiresServerProxy?: boolean; // If true, API calls must go through server proxy
+  supportsBrowserCalls?: boolean; // If false, cannot make direct API calls from browser
   createdAt: string;
   updatedAt: string;
 }
 
 import type { ReasoningLevel } from './providerAdapter';
 
+export type ModelType = 'language_model' | 'search_ai';
+
 export interface AIProviderModel {
   id: string;
   providerId: string;
   modelKey: string;
   displayName: string;
+  modelType: ModelType;
   capabilities: ModelCapabilities;
-  contextWindowTokens: number;
-  maxOutputTokens: number;
+  contextWindowTokens: number | null;
+  maxOutputTokens: number | null;
   costInputPer1M: number | null;
   costOutputPer1M: number | null;
   isEnabled: boolean;
@@ -69,6 +74,8 @@ export type FeatureKey =
   | 'taskflow_assist'
   | 'spaces_meal_planner'
   | 'spaces_notes_assist'
+  | 'spaces_recipe_generation'
+  | 'spaces_grocery_assist'
   | 'reality_check_assist'
   | 'offshoot_analysis'
   | 'reality_check_initial'
@@ -86,6 +93,8 @@ export const FEATURE_KEYS: Record<string, FeatureKey> = {
   TASKFLOW_ASSIST: 'taskflow_assist',
   SPACES_MEAL_PLANNER: 'spaces_meal_planner',
   SPACES_NOTES_ASSIST: 'spaces_notes_assist',
+  SPACES_RECIPE_GENERATION: 'spaces_recipe_generation',
+  SPACES_GROCERY_ASSIST: 'spaces_grocery_assist',
   REALITY_CHECK_ASSIST: 'reality_check_assist',
   OFFSHOOT_ANALYSIS: 'offshoot_analysis',
   REALITY_CHECK_INITIAL: 'reality_check_initial',
@@ -105,6 +114,10 @@ export const INTENT_TO_FEATURE_MAP: Record<string, FeatureKey> = {
   summarize_project: 'project_summary',
   meal_suggestion: 'spaces_meal_planner',
   note_assist: 'spaces_notes_assist',
+  generate_recipe: 'spaces_recipe_generation',
+  recipe_generation: 'spaces_recipe_generation',
+  grocery_suggestion: 'spaces_grocery_assist',
+  grocery_assist: 'spaces_grocery_assist',
   check_feasibility: 'reality_check_assist',
   analyze_offshoot: 'offshoot_analysis',
   breakdown_task: 'intelligent_todo',
@@ -120,6 +133,8 @@ export interface ResolvedRoute {
   constraints: RouteConstraints;
   capabilities: ModelCapabilities;
   supportsStreaming: boolean;
+  requiresServerProxy?: boolean; // If true, must use server proxy (no browser calls)
+  supportsBrowserCalls?: boolean; // If false, cannot make direct browser API calls
 }
 
 export interface RouteResolutionRequest {

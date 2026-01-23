@@ -1,4 +1,5 @@
 import { supabase } from '../../supabase';
+import { validateModelForFeature } from './featureRegistry';
 import type {
   ResolvedRoute,
   RouteResolutionRequest,
@@ -26,14 +27,6 @@ export class NoRouteFoundError extends NoRouteError {
 
 export class AIRoutingService {
   async resolveRoute(request: RouteResolutionRequest): Promise<ResolvedRoute> {
-    console.log('[AI ROUTING] Route resolution started', {
-      featureKey: request.featureKey,
-      intent: request.intent,
-      surfaceType: request.surfaceType,
-      projectId: request.projectId,
-      userId: request.userId,
-    });
-
     const featureKey = request.featureKey || this.inferFeatureFromIntent(request.intent);
 
     if (!featureKey) {
@@ -44,75 +37,33 @@ export class AIRoutingService {
       throw new Error('Unable to determine feature key from request');
     }
 
-    console.log('[AI ROUTING] Feature key determined', {
-      featureKey,
-      wasInferred: !request.featureKey,
-      intent: request.intent,
-    });
-
     const candidates = await this.fetchRouteCandidates(
       featureKey,
       request.surfaceType,
       request.projectId
     );
 
-    console.log('[AI ROUTING] Route candidates fetched', {
-      candidateCount: candidates.length,
-      providers: candidates.map(c => c.provider.name),
-      models: candidates.map(c => c.model.modelKey),
-    });
-
     if (candidates.length === 0) {
       console.warn('[AI ROUTING] No routes found, using fallback', {
         featureKey,
         surfaceType: request.surfaceType,
-        projectId: request.projectId,
       });
-      const fallback = this.getFallbackRoute();
-      console.log('[AI ROUTING] Fallback route selected', {
-        provider: fallback.provider,
-        model: fallback.modelKey,
-      });
-      return fallback;
+      return this.getFallbackRoute();
     }
 
     const validCandidates = this.filterByIntent(candidates, request.intent);
 
-    console.log('[AI ROUTING] Candidates filtered by intent', {
-      originalCount: candidates.length,
-      filteredCount: validCandidates.length,
-      intent: request.intent,
-    });
-
     if (validCandidates.length === 0) {
-      console.warn(
-        '[AI ROUTING] No route matching intent, using any available candidate',
-        {
-          intent: request.intent,
-          featureKey,
-          availableCandidates: candidates.length,
-        }
-      );
-      const bestCandidate = this.selectBestRoute(candidates);
-      const route = this.buildResolvedRoute(bestCandidate);
-      console.log('[AI ROUTING] Route resolved (no intent match)', {
-        provider: route.provider,
-        model: route.modelKey,
-        routeId: route.routeId,
+      console.warn('[AI ROUTING] No route matching intent, using any available candidate', {
+        intent: request.intent,
+        featureKey,
       });
-      return route;
+      const bestCandidate = this.selectBestRoute(candidates);
+      return this.buildResolvedRoute(bestCandidate);
     }
 
     const bestCandidate = this.selectBestRoute(validCandidates);
-    const route = this.buildResolvedRoute(bestCandidate);
-    console.log('[AI ROUTING] Route resolved successfully', {
-      provider: route.provider,
-      model: route.modelKey,
-      routeId: route.routeId,
-      specificity: bestCandidate.specificity,
-      priority: bestCandidate.route.priority,
-    });
-    return route;
+    return this.buildResolvedRoute(bestCandidate);
   }
 
   private async fetchRouteCandidates(
@@ -153,6 +104,21 @@ export class AIRoutingService {
       const provider = model.provider as any;
       if (!provider || !provider.is_enabled) continue;
 
+      // Validate model capabilities match feature requirements
+      const mappedModel = this.mapModelFromDB(model);
+      const capabilityValidation = validateModelForFeature(mappedModel.capabilities, featureKey);
+      
+      if (!capabilityValidation.valid) {
+        console.warn('[AI ROUTING] Model does not have required capabilities', {
+          featureKey,
+          modelId: mappedModel.id,
+          modelKey: mappedModel.modelKey,
+          missingCapabilities: capabilityValidation.missingCapabilities,
+          modelCapabilities: mappedModel.capabilities,
+        });
+        continue; // Skip this route - model doesn't have required capabilities
+      }
+
       let specificity = 0;
 
       if (route.master_project_id === projectId) {
@@ -171,11 +137,13 @@ export class AIRoutingService {
 
       candidates.push({
         route: this.mapRouteFromDB(route),
-        model: this.mapModelFromDB(model),
+        model: mappedModel,
         provider: this.mapProviderFromDB(provider),
         specificity,
       });
     }
+
+    // Capability validation complete - no need to log unless there's an issue
 
     return candidates;
   }
@@ -231,6 +199,8 @@ export class AIRoutingService {
       constraints: candidate.route.constraints,
       capabilities: candidate.model.capabilities,
       supportsStreaming: candidate.provider.supportsStreaming,
+      requiresServerProxy: candidate.provider.requiresServerProxy,
+      supportsBrowserCalls: candidate.provider.supportsBrowserCalls,
     };
   }
 
@@ -259,6 +229,8 @@ export class AIRoutingService {
         longContext: true,
       },
       supportsStreaming: true,
+      requiresServerProxy: false, // Anthropic supports browser calls
+      supportsBrowserCalls: true,
     };
   }
 
@@ -281,16 +253,31 @@ export class AIRoutingService {
   private mapModelFromDB(data: any): AIProviderModel {
     // Trim model keys when mapping from database to sanitize any existing bad data
     // OpenAI API rejects model identifiers with leading/trailing whitespace
+    const rawCapabilities = data.capabilities || {};
+    
+    // Normalize capabilities to ensure all fields are properly set
+    // This is critical for capability validation to work correctly
+    const normalizedCapabilities = {
+      chat: rawCapabilities.chat || false,
+      reasoning: rawCapabilities.reasoning || false,
+      vision: rawCapabilities.vision || false,
+      search: rawCapabilities.search || false, // CRITICAL: Perplexity models need this
+      longContext: rawCapabilities.longContext || rawCapabilities.long_context || false,
+      tools: rawCapabilities.tools || false,
+    };
+    
     return {
       id: data.id,
       providerId: data.provider_id,
       modelKey: (data.model_key || '').trim(),
       displayName: data.display_name,
-      capabilities: data.capabilities || {},
+      modelType: (data.model_type || 'language_model') as 'language_model' | 'search_ai',
+      capabilities: normalizedCapabilities,
       contextWindowTokens: data.context_window_tokens,
       maxOutputTokens: data.max_output_tokens,
       costInputPer1M: data.cost_input_per_1m,
       costOutputPer1M: data.cost_output_per_1m,
+      reasoningLevel: data.reasoning_level || null,
       isEnabled: data.is_enabled,
       createdAt: data.created_at,
       updatedAt: data.updated_at,
@@ -305,6 +292,8 @@ export class AIRoutingService {
       isEnabled: data.is_enabled,
       supportsTools: data.supports_tools,
       supportsStreaming: data.supports_streaming,
+      requiresServerProxy: data.requires_server_proxy || false,
+      supportsBrowserCalls: data.supports_browser_calls !== false, // Default to true if not set
       createdAt: data.created_at,
       updatedAt: data.updated_at,
     };

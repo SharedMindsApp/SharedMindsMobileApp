@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react';
-import { Settings, Check, X, Plus, Cpu, Zap, Wrench, Eye, DollarSign, Box, CheckCircle, XCircle, Trash2, Edit2, Play, Loader2, AlertTriangle, CheckCircle2 } from 'lucide-react';
+import { Settings, Check, X, Plus, Cpu, Zap, Wrench, Eye, DollarSign, Box, CheckCircle, XCircle, Trash2, Edit2, Play, Loader2, AlertTriangle, CheckCircle2, Server } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { AdminLayout } from './AdminLayout';
-import type { AIProvider, AIProviderModel, ModelCapabilities } from '../../lib/guardrails/ai/providerRegistryTypes';
+import type { AIProvider, AIProviderModel, ModelCapabilities, ModelType } from '../../lib/guardrails/ai/providerRegistryTypes';
 import { getProviderAdapter } from '../../lib/guardrails/ai/providerFactory';
 import type { NormalizedAIRequest } from '../../lib/guardrails/ai/providerAdapter';
 import { ProviderNotConfiguredError, ModelNotSupportedError, ProviderAPIError } from '../../lib/guardrails/ai/providerAdapter';
@@ -19,9 +19,10 @@ import type { ReasoningLevel } from '../../lib/guardrails/ai/providerAdapter';
 interface AddModelModalData {
   modelKey: string;
   displayName: string;
+  modelType: ModelType;
   capabilities: ModelCapabilities;
-  contextWindowTokens: number;
-  maxOutputTokens: number;
+  contextWindowTokens: number | null;
+  maxOutputTokens: number | null;
   costInputPer1M: number | null;
   costOutputPer1M: number | null;
   reasoningLevel?: ReasoningLevel | null; // Admin-selectable preset for OpenAI models
@@ -70,6 +71,8 @@ export function AdminAIProvidersPage() {
           isEnabled: p.is_enabled,
           supportsTools: p.supports_tools,
           supportsStreaming: p.supports_streaming,
+          requiresServerProxy: p.requires_server_proxy || false,
+          supportsBrowserCalls: p.supports_browser_calls !== false, // Default to true if not set
           createdAt: p.created_at,
           updatedAt: p.updated_at,
         }))
@@ -103,6 +106,7 @@ export function AdminAIProvidersPage() {
         providerId: m.provider_id,
         modelKey: (m.model_key || '').trim(),
         displayName: m.display_name,
+        modelType: (m.model_type || 'language_model') as ModelType,
         capabilities: m.capabilities || {},
         contextWindowTokens: m.context_window_tokens,
         maxOutputTokens: m.max_output_tokens,
@@ -277,6 +281,7 @@ export function AdminAIProvidersPage() {
         provider_id: selectedProvider,
         model_key: trimmedModelKey,
         display_name: data.displayName,
+        model_type: data.modelType,
         capabilities: data.capabilities,
         context_window_tokens: data.contextWindowTokens,
         max_output_tokens: data.maxOutputTokens,
@@ -333,6 +338,7 @@ export function AdminAIProvidersPage() {
         .update({
           model_key: trimmedModelKey,
           display_name: data.displayName,
+          model_type: data.modelType,
           capabilities: data.capabilities,
           context_window_tokens: data.contextWindowTokens,
           max_output_tokens: data.maxOutputTokens,
@@ -637,28 +643,33 @@ export function AdminAIProvidersPage() {
                             )}
                           </div>
                           <div className="text-xs text-gray-500 mt-0.5 font-mono">{model.modelKey}</div>
-
-                          <div className="grid grid-cols-2 gap-4 mt-3">
-                            <div className="flex items-start gap-2">
-                              <Eye size={16} className="text-gray-400 mt-0.5" />
-                              <div>
-                                <div className="text-xs text-gray-500">Context Window</div>
-                                <div className="text-sm font-semibold text-gray-900 mt-0.5">
-                                  {(model.contextWindowTokens / 1000).toFixed(0)}K tokens
-                                </div>
-                              </div>
-                            </div>
-                            <div className="flex items-start gap-2">
-                              <DollarSign size={16} className="text-gray-400 mt-0.5" />
-                              <div>
-                                <div className="text-xs text-gray-500">Cost per 1M tokens</div>
-                                <div className="text-sm font-semibold text-gray-900 mt-0.5">
-                                  ${model.costInputPer1M?.toFixed(2) || 'N/A'} / $
-                                  {model.costOutputPer1M?.toFixed(2) || 'N/A'}
-                                </div>
-                              </div>
-                            </div>
+                          <div className="text-xs text-gray-400 mt-0.5">
+                            {model.modelType === 'search_ai' ? 'Search / Retrieval AI' : 'Language Model'}
                           </div>
+
+                          {model.modelType === 'language_model' && (
+                            <div className="grid grid-cols-2 gap-4 mt-3">
+                              <div className="flex items-start gap-2">
+                                <Eye size={16} className="text-gray-400 mt-0.5" />
+                                <div>
+                                  <div className="text-xs text-gray-500">Context Window</div>
+                                  <div className="text-sm font-semibold text-gray-900 mt-0.5">
+                                    {model.contextWindowTokens ? `${(model.contextWindowTokens / 1000).toFixed(0)}K tokens` : 'N/A'}
+                                  </div>
+                                </div>
+                              </div>
+                              <div className="flex items-start gap-2">
+                                <DollarSign size={16} className="text-gray-400 mt-0.5" />
+                                <div>
+                                  <div className="text-xs text-gray-500">Cost per 1M tokens</div>
+                                  <div className="text-sm font-semibold text-gray-900 mt-0.5">
+                                    ${model.costInputPer1M?.toFixed(2) || 'N/A'} / $
+                                    {model.costOutputPer1M?.toFixed(2) || 'N/A'}
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                          )}
 
                           <div className="flex gap-1.5 mt-3">
                             {model.capabilities.chat && (
@@ -684,6 +695,11 @@ export function AdminAIProvidersPage() {
                             {model.capabilities.longContext && (
                               <span className="text-xs px-2 py-0.5 bg-teal-50 text-teal-700 rounded-full">
                                 Long Context
+                              </span>
+                            )}
+                            {model.capabilities.search && (
+                              <span className="text-xs px-2 py-0.5 bg-indigo-50 text-indigo-700 rounded-full">
+                                Search
                               </span>
                             )}
                           </div>
@@ -959,6 +975,7 @@ interface AddModelModalProps {
 function AddModelModal({ onClose, onSave, initialData, providerName }: AddModelModalProps) {
   const [modelKey, setModelKey] = useState(initialData?.modelKey || '');
   const [displayName, setDisplayName] = useState(initialData?.displayName || '');
+  const [modelType, setModelType] = useState<ModelType>(initialData?.modelType || 'language_model');
   const [capabilities, setCapabilities] = useState<ModelCapabilities>(
     initialData?.capabilities || {
       chat: false,
@@ -969,27 +986,62 @@ function AddModelModal({ onClose, onSave, initialData, providerName }: AddModelM
       tools: false,
     }
   );
-  const [contextWindowTokens, setContextWindowTokens] = useState(initialData?.contextWindowTokens || 100000);
-  const [maxOutputTokens, setMaxOutputTokens] = useState(initialData?.maxOutputTokens || 4096);
+  const [contextWindowTokens, setContextWindowTokens] = useState<number | null>(initialData?.contextWindowTokens ?? 100000);
+  const [maxOutputTokens, setMaxOutputTokens] = useState<number | null>(initialData?.maxOutputTokens ?? 4096);
   const [costInputPer1M, setCostInputPer1M] = useState<number | null>(initialData?.costInputPer1M ?? null);
   const [costOutputPer1M, setCostOutputPer1M] = useState<number | null>(initialData?.costOutputPer1M ?? null);
   const [reasoningLevel, setReasoningLevel] = useState<ReasoningLevel | ''>(initialData?.reasoningLevel || '');
   
   // Check if this is an OpenAI model (reasoning level only applies to OpenAI)
   const isOpenAI = providerName === 'openai';
+  const isSearchAI = modelType === 'search_ai';
+  const isLanguageModel = modelType === 'language_model';
+  
+  // When model type changes, update capabilities and token fields
+  useEffect(() => {
+    if (modelType === 'search_ai') {
+      // For search_ai, set search capability and clear token fields
+      setCapabilities(prev => ({
+        ...prev,
+        search: true,
+        chat: false,
+        reasoning: false,
+        vision: false,
+        longContext: false,
+      }));
+      setContextWindowTokens(null);
+      setMaxOutputTokens(null);
+    } else {
+      // For language_model, set default token values if null
+      if (contextWindowTokens === null) {
+        setContextWindowTokens(100000);
+      }
+      if (maxOutputTokens === null) {
+        setMaxOutputTokens(4096);
+      }
+    }
+  }, [modelType]); // eslint-disable-line react-hooks/exhaustive-deps
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    
+    // Validation: search_ai must have search capability
+    if (modelType === 'search_ai' && !capabilities.search) {
+      alert('Search AI models must have the Search capability enabled.');
+      return;
+    }
+    
     // Trim model key on form submit to prevent whitespace issues
     // This ensures clean data even if user accidentally adds spaces
     onSave({
       modelKey: modelKey.trim(),
       displayName,
+      modelType,
       capabilities,
-      contextWindowTokens,
-      maxOutputTokens,
-      costInputPer1M,
-      costOutputPer1M,
+      contextWindowTokens: isSearchAI ? null : contextWindowTokens,
+      maxOutputTokens: isSearchAI ? null : maxOutputTokens,
+      costInputPer1M: isSearchAI ? null : costInputPer1M,
+      costOutputPer1M: isSearchAI ? null : costOutputPer1M,
       reasoningLevel: reasoningLevel || null, // Store null if empty
     });
   }
@@ -1001,6 +1053,42 @@ function AddModelModal({ onClose, onSave, initialData, providerName }: AddModelM
           {initialData ? 'Edit Model' : 'Add Model'}
         </h3>
         <form onSubmit={handleSubmit} className="space-y-4">
+          {/* Model Type Selector */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Model Type
+            </label>
+            <div className="flex gap-4">
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="radio"
+                  name="modelType"
+                  value="language_model"
+                  checked={modelType === 'language_model'}
+                  onChange={(e) => setModelType(e.target.value as ModelType)}
+                  className="text-blue-600 focus:ring-blue-500"
+                />
+                <span className="text-sm text-gray-700">Language Model</span>
+              </label>
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="radio"
+                  name="modelType"
+                  value="search_ai"
+                  checked={modelType === 'search_ai'}
+                  onChange={(e) => setModelType(e.target.value as ModelType)}
+                  className="text-blue-600 focus:ring-blue-500"
+                />
+                <span className="text-sm text-gray-700">Search / Retrieval AI</span>
+              </label>
+            </div>
+            {isSearchAI && (
+              <p className="text-xs text-gray-500 mt-2">
+                Search-based AI providers like Perplexity don't use token-based pricing or context windows.
+              </p>
+            )}
+          </div>
+
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -1038,190 +1126,216 @@ function AddModelModal({ onClose, onSave, initialData, providerName }: AddModelM
               These determine which features can use this model. Each feature requires specific capabilities.
             </p>
             <div className="grid grid-cols-2 gap-3 bg-white rounded-lg p-3">
-              <label className="flex items-start gap-2 cursor-pointer hover:bg-gray-50 p-2 rounded">
-                <input
-                  type="checkbox"
-                  checked={capabilities.chat || false}
-                  onChange={(e) =>
-                    setCapabilities({ ...capabilities, chat: e.target.checked })
-                  }
-                  className="rounded border-gray-300 text-blue-600 focus:ring-blue-500 mt-0.5"
-                />
-                <div>
-                  <span className="text-sm font-medium text-gray-900">Chat</span>
-                  <p className="text-xs text-gray-500">Basic conversational AI</p>
-                </div>
-              </label>
-              <label className="flex items-start gap-2 cursor-pointer hover:bg-gray-50 p-2 rounded">
-                <input
-                  type="checkbox"
-                  checked={capabilities.reasoning || false}
-                  onChange={(e) =>
-                    setCapabilities({ ...capabilities, reasoning: e.target.checked })
-                  }
-                  className="rounded border-gray-300 text-blue-600 focus:ring-blue-500 mt-0.5"
-                />
-                <div>
-                  <span className="text-sm font-medium text-gray-900">Reasoning</span>
-                  <p className="text-xs text-gray-500">Complex problem solving</p>
-                </div>
-              </label>
-              <label className="flex items-start gap-2 cursor-pointer hover:bg-gray-50 p-2 rounded">
-                <input
-                  type="checkbox"
-                  checked={capabilities.vision || false}
-                  onChange={(e) =>
-                    setCapabilities({ ...capabilities, vision: e.target.checked })
-                  }
-                  className="rounded border-gray-300 text-blue-600 focus:ring-blue-500 mt-0.5"
-                />
-                <div>
-                  <span className="text-sm font-medium text-gray-900">Vision</span>
-                  <p className="text-xs text-gray-500">Image understanding</p>
-                </div>
-              </label>
-              <label className="flex items-start gap-2 cursor-pointer hover:bg-gray-50 p-2 rounded">
-                <input
-                  type="checkbox"
-                  checked={capabilities.search || false}
-                  onChange={(e) =>
-                    setCapabilities({ ...capabilities, search: e.target.checked })
-                  }
-                  className="rounded border-gray-300 text-blue-600 focus:ring-blue-500 mt-0.5"
-                />
-                <div>
-                  <span className="text-sm font-medium text-gray-900">Search</span>
-                  <p className="text-xs text-gray-500">Web search capability</p>
-                </div>
-              </label>
-              <label className="flex items-start gap-2 cursor-pointer hover:bg-gray-50 p-2 rounded">
-                <input
-                  type="checkbox"
-                  checked={capabilities.longContext || false}
-                  onChange={(e) =>
-                    setCapabilities({ ...capabilities, longContext: e.target.checked })
-                  }
-                  className="rounded border-gray-300 text-blue-600 focus:ring-blue-500 mt-0.5"
-                />
-                <div>
-                  <span className="text-sm font-medium text-gray-900">Long Context</span>
-                  <p className="text-xs text-gray-500">Large document handling</p>
-                </div>
-              </label>
-              <label className="flex items-start gap-2 cursor-pointer hover:bg-gray-50 p-2 rounded">
-                <input
-                  type="checkbox"
-                  checked={capabilities.tools || false}
-                  onChange={(e) =>
-                    setCapabilities({ ...capabilities, tools: e.target.checked })
-                  }
-                  className="rounded border-gray-300 text-blue-600 focus:ring-blue-500 mt-0.5"
-                />
-                <div>
-                  <span className="text-sm font-medium text-gray-900">Tools</span>
-                  <p className="text-xs text-gray-500">Function calling support</p>
-                </div>
-              </label>
+              {isSearchAI ? (
+                <>
+                  <label className="flex items-start gap-2 cursor-pointer hover:bg-gray-50 p-2 rounded">
+                    <input
+                      type="checkbox"
+                      checked={capabilities.search || false}
+                      onChange={(e) =>
+                        setCapabilities({ ...capabilities, search: e.target.checked })
+                      }
+                      className="rounded border-gray-300 text-blue-600 focus:ring-blue-500 mt-0.5"
+                      required={isSearchAI}
+                    />
+                    <div>
+                      <span className="text-sm font-medium text-gray-900">Search</span>
+                      <p className="text-xs text-gray-500">Web search capability</p>
+                    </div>
+                  </label>
+                  <label className="flex items-start gap-2 cursor-pointer hover:bg-gray-50 p-2 rounded">
+                    <input
+                      type="checkbox"
+                      checked={capabilities.tools || false}
+                      onChange={(e) =>
+                        setCapabilities({ ...capabilities, tools: e.target.checked })
+                      }
+                      className="rounded border-gray-300 text-blue-600 focus:ring-blue-500 mt-0.5"
+                    />
+                    <div>
+                      <span className="text-sm font-medium text-gray-900">Structured Output (JSON)</span>
+                      <p className="text-xs text-gray-500">JSON response formatting</p>
+                    </div>
+                  </label>
+                </>
+              ) : (
+                <>
+                  <label className="flex items-start gap-2 cursor-pointer hover:bg-gray-50 p-2 rounded">
+                    <input
+                      type="checkbox"
+                      checked={capabilities.chat || false}
+                      onChange={(e) =>
+                        setCapabilities({ ...capabilities, chat: e.target.checked })
+                      }
+                      className="rounded border-gray-300 text-blue-600 focus:ring-blue-500 mt-0.5"
+                    />
+                    <div>
+                      <span className="text-sm font-medium text-gray-900">Chat</span>
+                      <p className="text-xs text-gray-500">Basic conversational AI</p>
+                    </div>
+                  </label>
+                  <label className="flex items-start gap-2 cursor-pointer hover:bg-gray-50 p-2 rounded">
+                    <input
+                      type="checkbox"
+                      checked={capabilities.reasoning || false}
+                      onChange={(e) =>
+                        setCapabilities({ ...capabilities, reasoning: e.target.checked })
+                      }
+                      className="rounded border-gray-300 text-blue-600 focus:ring-blue-500 mt-0.5"
+                    />
+                    <div>
+                      <span className="text-sm font-medium text-gray-900">Reasoning</span>
+                      <p className="text-xs text-gray-500">Complex problem solving</p>
+                    </div>
+                  </label>
+                  <label className="flex items-start gap-2 cursor-pointer hover:bg-gray-50 p-2 rounded">
+                    <input
+                      type="checkbox"
+                      checked={capabilities.vision || false}
+                      onChange={(e) =>
+                        setCapabilities({ ...capabilities, vision: e.target.checked })
+                      }
+                      className="rounded border-gray-300 text-blue-600 focus:ring-blue-500 mt-0.5"
+                    />
+                    <div>
+                      <span className="text-sm font-medium text-gray-900">Vision</span>
+                      <p className="text-xs text-gray-500">Image understanding</p>
+                    </div>
+                  </label>
+                  <label className="flex items-start gap-2 cursor-pointer hover:bg-gray-50 p-2 rounded">
+                    <input
+                      type="checkbox"
+                      checked={capabilities.longContext || false}
+                      onChange={(e) =>
+                        setCapabilities({ ...capabilities, longContext: e.target.checked })
+                      }
+                      className="rounded border-gray-300 text-blue-600 focus:ring-blue-500 mt-0.5"
+                    />
+                    <div>
+                      <span className="text-sm font-medium text-gray-900">Long Context</span>
+                      <p className="text-xs text-gray-500">Large document handling</p>
+                    </div>
+                  </label>
+                  <label className="flex items-start gap-2 cursor-pointer hover:bg-gray-50 p-2 rounded">
+                    <input
+                      type="checkbox"
+                      checked={capabilities.tools || false}
+                      onChange={(e) =>
+                        setCapabilities({ ...capabilities, tools: e.target.checked })
+                      }
+                      className="rounded border-gray-300 text-blue-600 focus:ring-blue-500 mt-0.5"
+                    />
+                    <div>
+                      <span className="text-sm font-medium text-gray-900">Tools</span>
+                      <p className="text-xs text-gray-500">Function calling support</p>
+                    </div>
+                  </label>
+                </>
+              )}
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Context Window (tokens)
-              </label>
-              <input
-                type="number"
-                value={contextWindowTokens}
-                onChange={(e) => setContextWindowTokens(Number(e.target.value))}
-                required
-                min="1000"
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Max Output (tokens)
-              </label>
-              <input
-                type="number"
-                value={maxOutputTokens}
-                onChange={(e) => setMaxOutputTokens(Number(e.target.value))}
-                required
-                min="100"
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
-              />
-            </div>
-          </div>
+          {isLanguageModel && (
+            <>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Context Window (tokens)
+                  </label>
+                  <input
+                    type="number"
+                    value={contextWindowTokens ?? ''}
+                    onChange={(e) => setContextWindowTokens(e.target.value ? Number(e.target.value) : null)}
+                    required={isLanguageModel}
+                    min="1000"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Max Output (tokens)
+                  </label>
+                  <input
+                    type="number"
+                    value={maxOutputTokens ?? ''}
+                    onChange={(e) => setMaxOutputTokens(e.target.value ? Number(e.target.value) : null)}
+                    required={isLanguageModel}
+                    min="100"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+                  />
+                </div>
+              </div>
 
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Cost per 1M input tokens ($)
-              </label>
-              <input
-                type="text"
-                inputMode="decimal"
-                value={costInputPer1M !== null ? String(costInputPer1M) : ''}
-                onChange={(e) => {
-                  const val = e.target.value;
-                  if (val === '') {
-                    setCostInputPer1M(null);
-                  } else if (/^\d*\.?\d*$/.test(val)) {
-                    setCostInputPer1M(val as any);
-                  }
-                }}
-                onBlur={(e) => {
-                  const val = e.target.value.trim();
-                  if (val === '' || val === '.') {
-                    setCostInputPer1M(null);
-                  } else {
-                    const num = parseFloat(val);
-                    if (!isNaN(num) && num >= 0) {
-                      setCostInputPer1M(parseFloat(num.toFixed(2)));
-                    } else {
-                      setCostInputPer1M(null);
-                    }
-                  }
-                }}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
-                placeholder="e.g., 0.05"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Cost per 1M output tokens ($)
-              </label>
-              <input
-                type="text"
-                inputMode="decimal"
-                value={costOutputPer1M !== null ? String(costOutputPer1M) : ''}
-                onChange={(e) => {
-                  const val = e.target.value;
-                  if (val === '') {
-                    setCostOutputPer1M(null);
-                  } else if (/^\d*\.?\d*$/.test(val)) {
-                    setCostOutputPer1M(val as any);
-                  }
-                }}
-                onBlur={(e) => {
-                  const val = e.target.value.trim();
-                  if (val === '' || val === '.') {
-                    setCostOutputPer1M(null);
-                  } else {
-                    const num = parseFloat(val);
-                    if (!isNaN(num) && num >= 0) {
-                      setCostOutputPer1M(parseFloat(num.toFixed(2)));
-                    } else {
-                      setCostOutputPer1M(null);
-                    }
-                  }
-                }}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
-                placeholder="e.g., 0.15"
-              />
-            </div>
-          </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Cost per 1M input tokens ($)
+                  </label>
+                  <input
+                    type="text"
+                    inputMode="decimal"
+                    value={costInputPer1M !== null ? String(costInputPer1M) : ''}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      if (val === '') {
+                        setCostInputPer1M(null);
+                      } else if (/^\d*\.?\d*$/.test(val)) {
+                        setCostInputPer1M(val as any);
+                      }
+                    }}
+                    onBlur={(e) => {
+                      const val = e.target.value.trim();
+                      if (val === '' || val === '.') {
+                        setCostInputPer1M(null);
+                      } else {
+                        const num = parseFloat(val);
+                        if (!isNaN(num) && num >= 0) {
+                          setCostInputPer1M(parseFloat(num.toFixed(2)));
+                        } else {
+                          setCostInputPer1M(null);
+                        }
+                      }
+                    }}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+                    placeholder="e.g., 0.05"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Cost per 1M output tokens ($)
+                  </label>
+                  <input
+                    type="text"
+                    inputMode="decimal"
+                    value={costOutputPer1M !== null ? String(costOutputPer1M) : ''}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      if (val === '') {
+                        setCostOutputPer1M(null);
+                      } else if (/^\d*\.?\d*$/.test(val)) {
+                        setCostOutputPer1M(val as any);
+                      }
+                    }}
+                    onBlur={(e) => {
+                      const val = e.target.value.trim();
+                      if (val === '' || val === '.') {
+                        setCostOutputPer1M(null);
+                      } else {
+                        const num = parseFloat(val);
+                        if (!isNaN(num) && num >= 0) {
+                          setCostOutputPer1M(parseFloat(num.toFixed(2)));
+                        } else {
+                          setCostOutputPer1M(null);
+                        }
+                      }
+                    }}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+                    placeholder="e.g., 0.15"
+                  />
+                </div>
+              </div>
+            </>
+          )}
 
           {/* Reasoning Level - Only for OpenAI models */}
           {isOpenAI && (
@@ -1303,35 +1417,52 @@ function TestModelModal({ model, provider, onClose }: TestModelModalProps) {
     const startTime = Date.now();
 
     try {
-      // Step 1: Check API key configuration
-      diagnostics.push({
-        step: 'API Key Check',
-        status: 'success',
-        message: 'Checking API key configuration...',
-      });
-
-      const apiKeyEnvVar = provider.name === 'openai' ? 'VITE_OPENAI_API_KEY' : provider.name === 'anthropic' ? 'VITE_ANTHROPIC_API_KEY' : 'UNKNOWN';
-      const apiKey = import.meta.env[apiKeyEnvVar];
-
-      if (!apiKey) {
+      // Step 1: Check API key configuration (skip for server-only providers)
+      const isServerOnly = provider.requiresServerProxy || !provider.supportsBrowserCalls;
+      
+      if (isServerOnly) {
         diagnostics.push({
           step: 'API Key Check',
-          status: 'error',
-          message: `API key not found in environment variable: ${apiKeyEnvVar}`,
+          status: 'success',
+          message: 'This provider runs server-side for security reasons',
           details: {
-            expectedEnvVar: apiKeyEnvVar,
-            provider: provider.name,
-            suggestion: `Set ${apiKeyEnvVar} in your .env file or environment variables`,
+            note: 'API key is stored server-side and never exposed to the client',
+            proxyRequired: true,
           },
         });
-        throw new ProviderNotConfiguredError(provider.name);
-      }
+      } else {
+        diagnostics.push({
+          step: 'API Key Check',
+          status: 'success',
+          message: 'Checking API key configuration...',
+        });
 
-      diagnostics.push({
-        step: 'API Key Check',
-        status: 'success',
-        message: `API key found (${apiKey.substring(0, 8)}...)`,
-      });
+        const apiKeyEnvVar = 
+          provider.name === 'openai' ? 'VITE_OPENAI_API_KEY' :
+          provider.name === 'anthropic' ? 'VITE_ANTHROPIC_API_KEY' :
+          'UNKNOWN';
+        const apiKey = import.meta.env[apiKeyEnvVar];
+
+        if (!apiKey) {
+          diagnostics.push({
+            step: 'API Key Check',
+            status: 'error',
+            message: `API key not found in environment variable: ${apiKeyEnvVar}`,
+            details: {
+              expectedEnvVar: apiKeyEnvVar,
+              provider: provider.name,
+              suggestion: `Set ${apiKeyEnvVar} in your .env file or environment variables`,
+            },
+          });
+          throw new ProviderNotConfiguredError(provider.name);
+        }
+
+        diagnostics.push({
+          step: 'API Key Check',
+          status: 'success',
+          message: `API key found (${apiKey.substring(0, 8)}...)`,
+        });
+      }
 
       // Step 2: Get provider adapter
       diagnostics.push({
@@ -1349,13 +1480,14 @@ function TestModelModal({ model, provider, onClose }: TestModelModalProps) {
           message: `Adapter created for ${provider.name}`,
         });
       } catch (error) {
+        const supportedProviders = ['openai', 'anthropic', 'perplexity'];
         diagnostics.push({
           step: 'Adapter Initialization',
           status: 'error',
           message: `Failed to create adapter: ${error instanceof Error ? error.message : String(error)}`,
           details: {
             provider: provider.name,
-            supportedProviders: ['openai', 'anthropic'],
+            supportedProviders,
           },
         });
         throw error;
@@ -1390,10 +1522,10 @@ function TestModelModal({ model, provider, onClose }: TestModelModalProps) {
         systemPrompt: 'You are a helpful assistant. Respond concisely.',
         userPrompt: testPrompt,
         budgets: {
-          maxInputTokens: model.contextWindowTokens,
-          maxOutputTokens: model.maxOutputTokens,
+          maxInputTokens: model.contextWindowTokens || 100000,
+          maxOutputTokens: model.maxOutputTokens || 4096,
         },
-        maxTokens: model.maxOutputTokens, // Will be overridden by reasoning level if set
+        maxTokens: model.maxOutputTokens || 4096, // Will be overridden by reasoning level if set
         temperature: 0.7,
         reasoningLevel: model.reasoningLevel || undefined, // Use model's reasoning level preset if configured
       };
@@ -1485,6 +1617,11 @@ function TestModelModal({ model, provider, onClose }: TestModelModalProps) {
 
       // Add error diagnostic
       if (error instanceof ProviderNotConfiguredError) {
+        const envVarName = 
+          provider.name === 'openai' ? 'VITE_OPENAI_API_KEY' :
+          provider.name === 'anthropic' ? 'VITE_ANTHROPIC_API_KEY' :
+          provider.name === 'perplexity' ? 'VITE_PERPLEXITY_API_KEY' :
+          'API_KEY';
         diagnostics.push({
           step: 'Error',
           status: 'error',
@@ -1492,7 +1629,7 @@ function TestModelModal({ model, provider, onClose }: TestModelModalProps) {
           details: {
             error: error.message,
             provider: provider.name,
-            suggestion: `Set ${provider.name === 'openai' ? 'VITE_OPENAI_API_KEY' : 'VITE_ANTHROPIC_API_KEY'} in your environment variables`,
+            suggestion: `Set ${envVarName} in your environment variables`,
           },
         });
       } else if (error instanceof ModelNotSupportedError) {
@@ -1508,6 +1645,15 @@ function TestModelModal({ model, provider, onClose }: TestModelModalProps) {
           },
         });
       } else if (error instanceof ProviderAPIError) {
+        const isServerOnly = provider.requiresServerProxy || !provider.supportsBrowserCalls;
+        const suggestion = isServerOnly
+          ? (error.message.includes('proxy') || error.message.includes('Server proxy')
+              ? 'Check that the Perplexity proxy Edge Function is deployed and PERPLEXITY_API_KEY is set in Supabase environment variables'
+              : 'Perplexity requires a server-side proxy. Please check backend configuration.')
+          : (error.retryable
+              ? 'This error may be temporary. Try again in a moment.'
+              : 'Check your API key, model name, and account status with the provider');
+        
         diagnostics.push({
           step: 'Error',
           status: 'error',
@@ -1516,9 +1662,7 @@ function TestModelModal({ model, provider, onClose }: TestModelModalProps) {
             error: error.message,
             statusCode: (error as any).statusCode,
             retryable: error.retryable,
-            suggestion: error.retryable
-              ? 'This error may be temporary. Try again in a moment.'
-              : 'Check your API key, model name, and account status with the provider',
+            suggestion,
           },
         });
       } else if (error instanceof Error) {
@@ -1575,6 +1719,12 @@ function TestModelModal({ model, provider, onClose }: TestModelModalProps) {
               <div className="font-medium text-gray-700">{model.displayName}</div>
             </div>
             <div className="text-xs text-gray-500 font-mono">{model.modelKey}</div>
+            {(provider.requiresServerProxy || !provider.supportsBrowserCalls) && (
+              <div className="mt-2 px-3 py-1.5 bg-blue-50 border border-blue-200 rounded-lg text-xs text-blue-800 flex items-center gap-2">
+                <Server size={14} />
+                <span>This provider runs server-side for security reasons</span>
+              </div>
+            )}
           </div>
 
           <div>

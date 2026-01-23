@@ -57,10 +57,14 @@ export interface PantryItem {
   food_item_id: string; // References food_items table
   item_name?: string; // Deprecated - kept for backward compatibility, use food_item.name
   category: string;
-  quantity: string | null;
-  unit: string | null;
-  expiration_date: string | null;
-  location: string | null; // 'fridge' | 'freezer' | 'cupboard'
+  quantity: string | null; // Legacy - kept for backward compatibility
+  unit: string | null; // Legacy - kept for backward compatibility
+  quantity_value: string | null; // Preferred: natural language quantity (e.g. "3", "half", "a few")
+  quantity_unit: string | null; // Preferred: unit (e.g. "tins", "packs", "kg")
+  expiration_date: string | null; // Legacy - kept for backward compatibility
+  expires_on: string | null; // Preferred: date (YYYY-MM-DD format)
+  location: string | null; // Legacy: 'fridge' | 'freezer' | 'cupboard' (backward compatibility)
+  location_id: string | null; // References pantry_locations table (preferred)
   status?: 'have' | 'low' | 'out'; // Optional status
   notes: string | null;
   added_by: string | null;
@@ -68,6 +72,13 @@ export interface PantryItem {
   updated_at: string;
   // Joined from food_items
   food_item?: FoodItem;
+  // Joined from pantry_locations
+  pantry_location?: {
+    id: string;
+    name: string;
+    icon: string | null;
+    order_index: number;
+  };
 }
 
 export interface SmartSuggestion {
@@ -252,17 +263,19 @@ export async function addGroceryItem(params: {
     })
     .select(`
       *,
-      food_item:food_items(*)
+      food_item:food_items(*),
+      pantry_location:pantry_locations(id, name, icon, order_index)
     `)
     .single();
 
   if (error) throw error;
-  
+
   // Ensure item_name is available for backward compatibility
   return {
     ...data,
     food_item: data.food_item || null,
     item_name: data.food_item?.name || 'Unknown Item',
+    pantry_location: data.pantry_location || null,
   };
 }
 
@@ -386,7 +399,8 @@ export async function getPantryItems(householdId: string): Promise<PantryItem[]>
     .from('household_pantry_items')
     .select(`
       *,
-      food_item:food_items(*)
+      food_item:food_items(*),
+      pantry_location:pantry_locations(id, name, icon, order_index)
     `)
     .eq('household_id', householdId)
     .order('expiration_date', { ascending: true, nullsFirst: false })
@@ -399,6 +413,7 @@ export async function getPantryItems(householdId: string): Promise<PantryItem[]>
     ...item,
     food_item: item.food_item || null,
     item_name: item.food_item?.name || item.item_name || 'Unknown Item',
+    pantry_location: item.pantry_location || null,
   }));
   
   return items;
@@ -409,10 +424,14 @@ export async function addPantryItem(params: {
   foodItemId?: string; // Preferred - use this
   itemName?: string; // Deprecated - kept for backward compatibility
   category?: string;
-  quantity?: string;
-  unit?: string;
-  expirationDate?: string;
-  location?: 'fridge' | 'freezer' | 'cupboard' | string;
+  quantity?: string; // Legacy - kept for backward compatibility
+  unit?: string; // Legacy - kept for backward compatibility
+  quantityValue?: string; // Preferred: natural language quantity
+  quantityUnit?: string; // Preferred: unit
+  expirationDate?: string; // Legacy - kept for backward compatibility
+  expiresOn?: string; // Preferred: date (YYYY-MM-DD)
+  location?: 'fridge' | 'freezer' | 'cupboard' | string; // Legacy support
+  locationId?: string; // Preferred - use this (references pantry_locations)
   status?: 'have' | 'low' | 'out';
   notes?: string;
   memberId?: string;
@@ -429,33 +448,57 @@ export async function addPantryItem(params: {
     throw new Error('Either foodItemId or itemName must be provided');
   }
 
-  // Get food item to determine category if not provided
+  // Get food item to determine category and name if not provided
   const foodItem = await supabase
     .from('food_items')
-    .select('category')
+    .select('category, name')
     .eq('id', foodItemId)
     .single();
 
   const category = params.category || foodItem.data?.category || 'other';
+  const itemName = foodItem.data?.name || null; // For backward compatibility
+
+  // Parse quantity if provided in "3 x tins" format (gentle parsing, no errors if fails)
+  let quantityValue = params.quantityValue || null;
+  let quantityUnit = params.quantityUnit || null;
+  
+  // If quantity is provided but not parsed, try gentle parsing
+  if (params.quantity && !quantityValue) {
+    const quantityStr = params.quantity.trim();
+    // Try to parse "3 x tins" or "3 tins" format
+    const match = quantityStr.match(/^(\d+(?:\.\d+)?)\s*(?:x\s*)?(.+)$/i);
+    if (match) {
+      quantityValue = match[1];
+      quantityUnit = match[2].trim() || null;
+    } else {
+      // Store as-is if parsing fails
+      quantityValue = quantityStr;
+    }
+  }
 
   const { data, error } = await supabase
     .from('household_pantry_items')
     .insert({
       household_id: params.householdId,
       food_item_id: foodItemId,
-      item_name: null, // No longer storing item_name directly
+      item_name: itemName, // Store for backward compatibility (can be NULL after migration)
       category: category,
-      quantity: params.quantity || null,
-      unit: params.unit || null,
-      expiration_date: params.expirationDate || null,
-      location: params.location || null,
+      quantity: params.quantity || null, // Legacy support
+      unit: params.unit || null, // Legacy support
+      quantity_value: quantityValue || null,
+      quantity_unit: quantityUnit || null,
+      expiration_date: params.expirationDate || null, // Legacy support
+      expires_on: params.expiresOn || null,
+      location: params.location || null, // Legacy support
+      location_id: params.locationId || null, // Preferred
       status: params.status || null,
       notes: params.notes || null,
       added_by: params.memberId || null,
     })
     .select(`
       *,
-      food_item:food_items(*)
+      food_item:food_items(*),
+      pantry_location:pantry_locations(id, name, icon, order_index)
     `)
     .single();
 
@@ -487,12 +530,77 @@ export async function deletePantryItem(itemId: string): Promise<void> {
   if (error) throw error;
 }
 
+/**
+ * Get normalized ingredient names from user's pantry
+ * Returns array of unique, normalized ingredient names for recipe search
+ */
+export async function getUserPantryIngredients(spaceId: string): Promise<string[]> {
+  // Convert spaceId to householdId for pantry lookup
+  // Note: For personal spaces, we still need to get pantry items
+  // Personal spaces may have pantry items stored with household_id = personal space context_id
+  const { getHouseholdIdFromSpaceId } = await import('./recipeAIService');
+  const householdId = await getHouseholdIdFromSpaceId(spaceId);
+  
+  // If no householdId (personal space), try to get pantry items by spaceId directly
+  // or return empty array if pantry is not available for personal spaces
+  if (!householdId) {
+    // For personal spaces, pantry might be stored differently
+    // For now, return empty - can be enhanced later if personal pantry is supported
+    return [];
+  }
+
+  try {
+    const pantryItems = await getPantryItems(householdId);
+    
+    // Extract and normalize ingredient names
+    const ingredientNames = new Set<string>();
+    
+    for (const item of pantryItems) {
+      if (item.food_item?.name) {
+        // Normalize ingredient name (lowercase, trim)
+        const normalized = item.food_item.name
+          .toLowerCase()
+          .trim()
+          .replace(/[^\w\s]/g, '')
+          .replace(/\s+/g, ' ');
+        
+        if (normalized.length > 0) {
+          ingredientNames.add(normalized);
+        }
+      }
+    }
+    
+    return Array.from(ingredientNames).sort();
+  } catch (error) {
+    console.error('[getUserPantryIngredients] Failed to load pantry ingredients:', error);
+    return [];
+  }
+}
+
 export async function moveToPantry(groceryItem: GroceryItem, householdId: string, memberId?: string): Promise<void> {
+  // Pre-fill quantity from grocery item if it exists
+  let quantityValue: string | undefined;
+  let quantityUnit: string | undefined;
+  
+  if (groceryItem.quantity) {
+    // Try gentle parsing of "3 x tins" or "3 tins" format
+    const quantityStr = groceryItem.quantity.trim();
+    const match = quantityStr.match(/^(\d+(?:\.\d+)?)\s*(?:x\s*)?(.+)$/i);
+    if (match) {
+      quantityValue = match[1];
+      quantityUnit = match[2].trim() || groceryItem.unit || undefined;
+    } else {
+      quantityValue = quantityStr;
+      quantityUnit = groceryItem.unit || undefined;
+    }
+  }
+  
   await addPantryItem({
     householdId,
     foodItemId: groceryItem.food_item_id,
     category: groceryItem.category,
-    quantity: groceryItem.quantity || undefined,
+    quantityValue,
+    quantityUnit,
     memberId,
   });
 

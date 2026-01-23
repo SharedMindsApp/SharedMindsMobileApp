@@ -4,6 +4,7 @@ export type FontScale = 's' | 'm' | 'l' | 'xl';
 export type ColorTheme = 'default' | 'cream' | 'pastel-yellow' | 'pastel-blue' | 'light-grey' | 'monochrome';
 export type ContrastLevel = 'normal' | 'high' | 'reduced';
 export type AppTheme = 'light' | 'dark' | 'neon-dark';
+export type MeasurementSystem = 'metric' | 'imperial';
 
 export interface NeurotypeProfile {
   id: string;
@@ -32,6 +33,9 @@ export interface UserUIPreferences {
   contrast_level: ContrastLevel;
   reduced_motion: boolean;
   app_theme: AppTheme;
+  measurement_system?: MeasurementSystem;
+  recipe_location?: string | null; // User's default location for recipe searches (e.g., "United Kingdom")
+  recipe_location_override?: string | null; // Optional temporary override (e.g., when on holiday)
   custom_overrides: Record<string, any>;
   created_at: string;
   updated_at: string;
@@ -114,6 +118,9 @@ export interface UIPreferencesConfig {
   contrastLevel: ContrastLevel;
   reducedMotion: boolean;
   appTheme: AppTheme;
+  measurementSystem?: MeasurementSystem;
+  recipeLocation?: string | null; // User's default location for recipe searches
+  recipeLocationOverride?: string | null; // Optional temporary override (e.g., when on holiday)
   widgetColors?: WidgetColorPreferences;
   favouriteNavTabs?: NavigationTabId[];
 }

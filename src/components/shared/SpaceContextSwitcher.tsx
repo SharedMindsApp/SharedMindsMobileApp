@@ -69,12 +69,12 @@ export function SpaceContextSwitcher({
     <div className={`relative ${className}`}>
       <button
         onClick={() => setIsOpen(!isOpen)}
-        className="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-stone-300 bg-white hover:bg-stone-50 transition-colors text-sm"
+        className="flex items-center gap-1.5 px-2 py-1 rounded-lg border border-stone-300 bg-white hover:bg-stone-50 transition-colors text-sm"
       >
-        <CurrentIcon size={16} className="text-stone-600" />
-        <span className="font-medium text-stone-700">{currentSpace?.name || 'Select Space'}</span>
-        <span className="text-xs text-stone-500">({getTypeLabel(currentSpace?.type || 'household')})</span>
-        <ChevronDown size={14} className="text-stone-500" />
+        <CurrentIcon size={14} className="text-stone-600 flex-shrink-0" />
+        <span className="font-medium text-stone-700 truncate max-w-[120px]">{currentSpace?.name || 'Select Space'}</span>
+        <span className="text-xs text-stone-500 hidden sm:inline">({getTypeLabel(currentSpace?.type || 'household')})</span>
+        <ChevronDown size={12} className="text-stone-500 flex-shrink-0" />
       </button>
 
       {isOpen && (

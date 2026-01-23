@@ -61,6 +61,7 @@ const WIDGET_ICON_MAP: Record<string, keyof typeof Icons> = {
   tables: 'Table',
   graphics: 'ImagePlus',
   workspace: 'Layers', // Layered Desk Canvas
+  journal: 'BookOpen', // Open book icon
   custom: 'Square',
 };
 
@@ -87,6 +88,7 @@ const WIDGET_COLOR_MAP: Record<string, string> = {
   tables: 'bg-purple-500',
   graphics: 'bg-fuchsia-500',
   workspace: 'bg-stone-500', // Neutral stone tone for desk canvas
+  journal: 'bg-amber-500', // Warm amber for journal
   custom: 'bg-gray-500',
 };
 

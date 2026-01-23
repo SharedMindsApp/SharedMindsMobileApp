@@ -17,6 +17,8 @@ import {
   Shield,
   UserPlus,
   Plus,
+  MapPin,
+  Globe,
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
@@ -30,6 +32,8 @@ import { NotificationSettings } from './notifications/NotificationSettings';
 import { getUserSpaces, type SpaceListItem } from '../lib/sharedSpacesManagement';
 import { SpaceDetailsView } from './shared/SpaceDetailsView';
 import { CreateSpaceModal } from './shared/CreateSpaceModal';
+import { useUIPreferences } from '../contexts/UIPreferencesContext';
+import { showToast } from './Toast';
 
 type Tab = 'profile' | 'security' | 'household' | 'teams' | 'members' | 'preferences' | 'notifications' | 'danger';
 
@@ -60,10 +64,21 @@ export function ProfileSettings() {
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
   const [deleteConfirmText, setDeleteConfirmText] = useState('');
+  const { config, updatePreferences } = useUIPreferences();
+  const [defaultLocation, setDefaultLocation] = useState(config.recipeLocation || '');
+  const [overrideLocation, setOverrideLocation] = useState(config.recipeLocationOverride || '');
+  const [showOverride, setShowOverride] = useState(!!config.recipeLocationOverride);
 
   useEffect(() => {
     loadData();
   }, []);
+
+  // Sync location state with config when it changes
+  useEffect(() => {
+    setDefaultLocation(config.recipeLocation || '');
+    setOverrideLocation(config.recipeLocationOverride || '');
+    setShowOverride(!!config.recipeLocationOverride);
+  }, [config.recipeLocation, config.recipeLocationOverride]);
 
   const loadData = async () => {
     try {
@@ -401,6 +416,158 @@ export function ProfileSettings() {
                       </>
                     )}
                   </button>
+                </div>
+              </div>
+
+              {/* Location Settings */}
+              <div className="pt-4 sm:pt-6 border-t border-gray-200">
+                <div className="flex items-center gap-3 mb-4 sm:mb-6">
+                  <div className="p-2 bg-orange-100 rounded-lg">
+                    <MapPin size={20} className="text-orange-600 sm:w-6 sm:h-6" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm sm:text-lg font-semibold text-gray-900 mb-1">User Location</h3>
+                    <p className="text-xs sm:text-sm text-gray-600">
+                      Set your location to get culturally relevant content and local recommendations
+                    </p>
+                  </div>
+                </div>
+
+                {/* Active Location Display */}
+                {(config.recipeLocationOverride || config.recipeLocation) && (
+                  <div className="mb-4 sm:mb-6 p-3 sm:p-4 bg-green-50 border border-green-200 rounded-lg">
+                    <div className="flex items-center gap-2 mb-1.5">
+                      <Globe size={14} className="text-green-600 flex-shrink-0" />
+                      <span className="text-xs sm:text-sm font-medium text-green-900">Active Location:</span>
+                    </div>
+                    <p className="text-sm sm:text-base font-semibold text-green-800 break-words">
+                      {config.recipeLocationOverride || config.recipeLocation}
+                    </p>
+                    {config.recipeLocationOverride && (
+                      <p className="text-xs text-green-700 mt-1.5">(Temporary override - will use default when cleared)</p>
+                    )}
+                  </div>
+                )}
+
+                {/* Default Location */}
+                <div className="mb-4 sm:mb-6">
+                  <label className="block text-sm font-medium text-gray-700 mb-1.5 sm:mb-2">
+                    Default Location
+                  </label>
+                  <p className="text-xs text-gray-500 mb-3">
+                    Your home location (e.g., "United Kingdom", "London, UK", "New York, USA")
+                  </p>
+                  <div className="flex flex-col sm:flex-row gap-2">
+                    <input
+                      type="text"
+                      value={defaultLocation}
+                      onChange={(e) => setDefaultLocation(e.target.value)}
+                      onBlur={async () => {
+                        if (defaultLocation.trim() !== (config.recipeLocation || '')) {
+                          try {
+                            await updatePreferences({ recipeLocation: defaultLocation.trim() || null });
+                            showToast('success', 'Default location updated');
+                          } catch (error) {
+                            console.error('Failed to update location:', error);
+                            showToast('error', 'Failed to update location');
+                          }
+                        }
+                      }}
+                      onKeyPress={async (e) => {
+                        if (e.key === 'Enter') {
+                          if (defaultLocation.trim() !== (config.recipeLocation || '')) {
+                            try {
+                              await updatePreferences({ recipeLocation: defaultLocation.trim() || null });
+                              showToast('success', 'Default location updated');
+                            } catch (error) {
+                              console.error('Failed to update location:', error);
+                              showToast('error', 'Failed to update location');
+                            }
+                          }
+                        }
+                      }}
+                      placeholder="e.g., United Kingdom"
+                      className="flex-1 px-3 sm:px-4 py-2.5 sm:py-2 text-base border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-orange-500 min-h-[44px] sm:min-h-0"
+                      disabled={saving}
+                    />
+                  </div>
+                </div>
+
+                {/* Location Override */}
+                <div>
+                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-0 mb-2">
+                    <label className="block text-sm font-medium text-gray-700">
+                      Temporary Location Override
+                    </label>
+                    {!showOverride && (
+                      <button
+                        onClick={() => setShowOverride(true)}
+                        className="text-sm text-orange-600 hover:text-orange-700 font-medium self-start sm:self-auto"
+                      >
+                        Set Override
+                      </button>
+                    )}
+                  </div>
+                  <p className="text-xs text-gray-500 mb-3">
+                    Use when traveling (e.g., on holiday). Overrides default location for recipe searches.
+                  </p>
+                  {showOverride && (
+                    <div className="space-y-3">
+                      <div className="flex flex-col sm:flex-row gap-2">
+                        <input
+                          type="text"
+                          value={overrideLocation}
+                          onChange={(e) => setOverrideLocation(e.target.value)}
+                          onBlur={async () => {
+                            if (overrideLocation.trim() !== (config.recipeLocationOverride || '')) {
+                              try {
+                                await updatePreferences({ recipeLocationOverride: overrideLocation.trim() || null });
+                                showToast('success', 'Location override updated');
+                              } catch (error) {
+                                console.error('Failed to update override:', error);
+                                showToast('error', 'Failed to update override');
+                              }
+                            }
+                          }}
+                          onKeyPress={async (e) => {
+                            if (e.key === 'Enter') {
+                              if (overrideLocation.trim() !== (config.recipeLocationOverride || '')) {
+                                try {
+                                  await updatePreferences({ recipeLocationOverride: overrideLocation.trim() || null });
+                                  showToast('success', 'Location override updated');
+                                } catch (error) {
+                                  console.error('Failed to update override:', error);
+                                  showToast('error', 'Failed to update override');
+                                }
+                              }
+                            }
+                          }}
+                          placeholder="e.g., Spain, Barcelona"
+                          className="flex-1 px-3 sm:px-4 py-2.5 sm:py-2 text-base border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-orange-500 min-h-[44px] sm:min-h-0"
+                          disabled={saving}
+                        />
+                      </div>
+                      {config.recipeLocationOverride && (
+                        <button
+                          onClick={async () => {
+                            try {
+                              await updatePreferences({ recipeLocationOverride: null });
+                              setOverrideLocation('');
+                              setShowOverride(false);
+                              showToast('success', 'Location override cleared');
+                            } catch (error) {
+                              console.error('Failed to clear override:', error);
+                              showToast('error', 'Failed to clear override');
+                            }
+                          }}
+                          disabled={saving}
+                          className="w-full px-4 py-2.5 sm:py-2 border border-gray-300 text-gray-700 rounded-lg font-medium hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors min-h-[44px] sm:min-h-0"
+                        >
+                          Clear Override
+                        </button>
+                      )}
+                    </div>
+                  )}
                 </div>
               </div>
             </div>

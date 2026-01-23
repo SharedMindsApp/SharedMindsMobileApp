@@ -12,12 +12,13 @@
  */
 
 import { useState, useEffect } from 'react';
-import { X, UtensilsCrossed, ChefHat, Clock, Sparkles, ChevronDown, ChevronUp, Plus, Eye } from 'lucide-react';
+import { X, UtensilsCrossed, ChefHat, Clock, Sparkles, ChevronDown, ChevronUp, Plus, Eye, Moon } from 'lucide-react';
 import { getMakeableRecipes, type GetMakeableRecipesResult } from '../../lib/foodIntelligence';
 import { getWeekStartDate, addMealToPlan, type MealLibraryItem } from '../../lib/mealPlanner';
 import { useAuth } from '../../contexts/AuthContext';
 import { supabase } from '../../lib/supabase';
 import { showToast } from '../Toast';
+import { useMealSchedule } from '../../hooks/useMealSchedule';
 
 interface MakeableRecipesModalProps {
   isOpen: boolean;
@@ -35,6 +36,7 @@ export function MakeableRecipesModal({
   onAddToMealPlan,
 }: MakeableRecipesModalProps) {
   const { user } = useAuth();
+  const { getMealSlotsForDay } = useMealSchedule(spaceId);
   const [loading, setLoading] = useState(true);
   const [results, setResults] = useState<GetMakeableRecipesResult | null>(null);
   const [showAlmost, setShowAlmost] = useState(false);
@@ -42,12 +44,24 @@ export function MakeableRecipesModal({
 
   useEffect(() => {
     if (isOpen && spaceId) {
+      // Check if all slots are fasting before loading recipes
+      const today = new Date();
+      const dayOfWeek = today.getDay();
+      const activeMealSlots = getMealSlotsForDay(dayOfWeek);
+      
+      if (activeMealSlots.length === 0) {
+        // All slots are fasting - don't load recipes
+        setResults(null);
+        setLoading(false);
+        return;
+      }
+      
       loadMakeableRecipes();
     } else {
       setResults(null);
       setShowAlmost(false);
     }
-  }, [isOpen, spaceId]);
+  }, [isOpen, spaceId, getMealSlotsForDay]);
 
   const loadMakeableRecipes = async () => {
     setLoading(true);
@@ -90,11 +104,23 @@ export function MakeableRecipesModal({
       const today = new Date();
       const dayOfWeek = today.getDay(); // 0 = Sunday, 6 = Saturday
 
+      // Get active meal slots for today - use the first available meal slot
+      // If all slots are fasting, show a message
+      const activeSlots = getMealSlotsForDay(dayOfWeek);
+      if (activeSlots.length === 0) {
+        showToast('info', 'You\'re fasting today — recipe suggestions will resume at your next meal');
+        return;
+      }
+      
+      // Use the first active meal slot's mealTypeMapping, or fallback to recipe's meal_type
+      const slot = activeSlots[0];
+      const mealType = slot.mealTypeMapping || recipe.meal_type;
+      
       await addMealToPlan(
         spaceId,
         recipe.id,
         null,
-        recipe.meal_type,
+        mealType as 'breakfast' | 'lunch' | 'dinner' | 'snack',
         dayOfWeek,
         weekStartDate,
         profile.id
@@ -160,7 +186,17 @@ export function MakeableRecipesModal({
             </div>
           ) : !results ? (
             <div className="text-center py-12">
-              <p className="text-gray-600">No results available</p>
+              <div className="flex flex-col items-center gap-4">
+                <Moon size={48} className="text-gray-400" />
+                <div>
+                  <p className="text-lg font-semibold text-gray-700 mb-2">
+                    You're fasting today
+                  </p>
+                  <p className="text-sm text-gray-500">
+                    Recipe suggestions will resume at your next meal
+                  </p>
+                </div>
+              </div>
             </div>
           ) : (
             <>

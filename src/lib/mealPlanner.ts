@@ -28,10 +28,14 @@ export interface MealLibraryItem {
   updated_at: string;
 }
 
+import type { Recipe } from './recipeGeneratorTypes';
+
 export interface MealPlan {
   id: string;
   space_id: string;
+  household_id?: string; // Alternative name for space_id
   meal_id: string | null;
+  recipe_id: string | null; // New: support for recipe_id
   custom_meal_name: string | null;
   meal_type: 'breakfast' | 'lunch' | 'dinner' | 'snack';
   day_of_week: number;
@@ -41,16 +45,20 @@ export interface MealPlan {
   created_at: string;
   updated_at: string;
   meal?: MealLibraryItem;
+  recipe?: Recipe; // New: recipe data when recipe_id is set
 }
 
 export interface MealFavourite {
   id: string;
-  meal_id: string;
+  meal_id: string | null;
+  recipe_id: string | null; // New: support for recipe_id
   space_id: string;
+  household_id?: string; // Alternative name for space_id
   user_id: string;
   vote_count: number;
   created_at: string;
   meal?: MealLibraryItem;
+  recipe?: Recipe; // New: recipe data when recipe_id is set
 }
 
 export async function getMealLibrary(filters?: {
@@ -101,7 +109,8 @@ export async function getWeeklyMealPlan(
     .from('meal_plans')
     .select(`
       *,
-      meal:meal_id (*)
+      meal:meal_id (*),
+      recipe:recipe_id (*)
     `)
     .eq('space_id', householdId)
     .eq('week_start_date', weekStartDate)
@@ -113,6 +122,29 @@ export async function getWeeklyMealPlan(
   return data || [];
 }
 
+/**
+ * Verify that a mealId exists in meal_library table
+ * This prevents foreign key violations when mealId is set
+ */
+async function verifyMealExists(mealId: string): Promise<boolean> {
+  if (!mealId || mealId.trim() === '') {
+    return false;
+  }
+
+  const { data, error } = await supabase
+    .from('meal_library')
+    .select('id')
+    .eq('id', mealId)
+    .maybeSingle();
+
+  if (error) {
+    console.error('[verifyMealExists] Error checking meal:', error);
+    return false;
+  }
+
+  return !!data;
+}
+
 export async function addMealToPlan(
   householdId: string,
   mealId: string | null,
@@ -120,8 +152,22 @@ export async function addMealToPlan(
   mealType: 'breakfast' | 'lunch' | 'dinner' | 'snack',
   dayOfWeek: number,
   weekStartDate: string,
-  createdBy: string
+  createdBy: string,
+  recipeId?: string | null // New: optional recipe_id parameter
 ): Promise<MealPlan> {
+  // Defensive validation: if mealId is provided, verify it exists in meal_library
+  if (mealId !== null && mealId !== undefined && mealId.trim() !== '') {
+    const mealExists = await verifyMealExists(mealId);
+    if (!mealExists) {
+      throw new Error(
+        `[addMealToPlan] Invalid mealId "${mealId}": not found in meal_library. ` +
+        `meal_id must only reference meal_library.id. ` +
+        `If adding a recipe, use recipeId parameter instead. ` +
+        `If adding a custom meal, use customMealName parameter instead.`
+      );
+    }
+  }
+
   const { data: existing } = await supabase
     .from('meal_plans')
     .select('id')
@@ -131,18 +177,37 @@ export async function addMealToPlan(
     .eq('meal_type', mealType)
     .maybeSingle();
 
+  const updateData: any = {
+    updated_at: new Date().toISOString()
+  };
+
+  // Prioritize recipe_id over meal_id if both are provided
+  // Ensure at least one of meal_id, recipe_id, or custom_meal_name is set (constraint requirement)
+  // Always explicitly set both to null first, then set the appropriate one
+  updateData.meal_id = null;
+  updateData.recipe_id = null;
+  
+  if (recipeId !== undefined && recipeId !== null && recipeId.trim() !== '') {
+    updateData.recipe_id = recipeId;
+    // meal_id already set to null above
+  } else if (mealId !== null && mealId !== undefined && mealId.trim() !== '') {
+    updateData.meal_id = mealId;
+    // recipe_id already set to null above
+  }
+  // custom_meal_name can be set regardless (it's part of the constraint check)
+  updateData.custom_meal_name = customMealName || null;
+
+  console.log('[addMealToPlan] Update data for existing record:', JSON.stringify(updateData, null, 2));
+
   if (existing) {
     const { data, error } = await supabase
       .from('meal_plans')
-      .update({
-        meal_id: mealId,
-        custom_meal_name: customMealName,
-        updated_at: new Date().toISOString()
-      })
+      .update(updateData)
       .eq('id', existing.id)
       .select(`
         *,
-        meal:meal_id (*)
+        meal:meal_id (*),
+        recipe:recipe_id (*)
       `)
       .single();
 
@@ -150,26 +215,98 @@ export async function addMealToPlan(
     return data;
   }
 
+  // Build insert data with explicit null handling
+  const insertData: any = {
+    space_id: householdId,
+    meal_type: mealType,
+    day_of_week: dayOfWeek,
+    week_start_date: weekStartDate,
+    created_by: createdBy,
+    // Explicitly set all three fields to ensure constraint is satisfied
+    meal_id: null,
+    recipe_id: null,
+    custom_meal_name: customMealName || null,
+  };
+
+  // Prioritize recipe_id over meal_id if both are provided
+  // Ensure at least one of meal_id, recipe_id, or custom_meal_name is set (constraint requirement)
+  if (recipeId !== undefined && recipeId !== null && recipeId.trim() !== '') {
+    insertData.recipe_id = recipeId;
+    insertData.meal_id = null; // Explicitly null
+  } else if (mealId !== null && mealId !== undefined && mealId.trim() !== '') {
+    insertData.meal_id = mealId;
+    insertData.recipe_id = null; // Explicitly null
+  } else if (customMealName && customMealName.trim() !== '') {
+    // If neither recipe_id nor meal_id, ensure custom_meal_name is set
+    insertData.meal_id = null;
+    insertData.recipe_id = null;
+  } else {
+    // Fallback: if nothing is provided, this will fail the constraint
+    throw new Error('Cannot create meal plan: must provide recipe_id, meal_id, or custom_meal_name');
+  }
+
+  console.log('[addMealToPlan] Insert data:', {
+    space_id: insertData.space_id,
+    meal_id: insertData.meal_id,
+    recipe_id: insertData.recipe_id,
+    custom_meal_name: insertData.custom_meal_name,
+    meal_type: insertData.meal_type,
+    day_of_week: insertData.day_of_week,
+    week_start_date: insertData.week_start_date,
+  });
+
+  console.log('[addMealToPlan] Final insert data before database:', JSON.stringify(insertData, null, 2));
+
   const { data, error } = await supabase
     .from('meal_plans')
-    .insert({
-      space_id: householdId,
-      meal_id: mealId,
-      custom_meal_name: customMealName,
-      meal_type: mealType,
-      day_of_week: dayOfWeek,
-      week_start_date: weekStartDate,
-      created_by: createdBy
-    })
+    .insert(insertData)
     .select(`
       *,
-      meal:meal_id (*)
+      meal:meal_id (*),
+      recipe:recipe_id (*)
     `)
     .single();
 
-  if (error) throw error;
+  if (error) {
+    console.error('[addMealToPlan] Insert failed:', {
+      error,
+      insertData,
+      recipeId,
+      mealId,
+      customMealName,
+    });
+    throw error;
+  }
 
   return data;
+}
+
+/**
+ * Add a recipe to meal plan (convenience function)
+ */
+export async function addRecipeToPlan(
+  householdId: string,
+  recipeId: string,
+  mealType: 'breakfast' | 'lunch' | 'dinner' | 'snack',
+  dayOfWeek: number,
+  weekStartDate: string,
+  createdBy: string
+): Promise<MealPlan> {
+  // Validate recipeId is provided
+  if (!recipeId || recipeId.trim() === '') {
+    throw new Error('recipeId is required to add a recipe to meal plan');
+  }
+
+  return addMealToPlan(
+    householdId,
+    null, // mealId - not used when adding a recipe
+    null, // customMealName - not used when adding a recipe
+    mealType,
+    dayOfWeek,
+    weekStartDate,
+    createdBy,
+    recipeId // This will be used
+  );
 }
 
 export async function removeMealFromPlan(mealPlanId: string): Promise<void> {
@@ -186,12 +323,55 @@ export async function getHouseholdFavourites(householdId: string): Promise<MealF
     .from('meal_favourites')
     .select(`
       *,
-      meal:meal_id (*)
+      meal:meal_id (*),
+      recipe:recipe_id (*)
     `)
     .eq('space_id', householdId)
     .order('vote_count', { ascending: false });
 
   if (error) throw error;
+
+  return data || [];
+}
+
+/**
+ * Get current user's favorites (both meals and recipes) for a space
+ * Uses the current authenticated user's profile ID
+ */
+export async function getCurrentUserFavourites(spaceId: string, userId?: string): Promise<MealFavourite[]> {
+  // If userId is provided, use it; otherwise fetch from auth context
+  let profileId = userId;
+  
+  if (!profileId) {
+    // Get current user's profile ID
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return [];
+    
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('id')
+      .eq('user_id', user.id)
+      .maybeSingle();
+    
+    if (!profile) return [];
+    profileId = profile.id;
+  }
+
+  const { data, error } = await supabase
+    .from('meal_favourites')
+    .select(`
+      *,
+      meal:meal_id (*),
+      recipe:recipe_id (*)
+    `)
+    .eq('user_id', profileId)
+    .eq('space_id', spaceId)
+    .order('created_at', { ascending: false });
+
+  if (error) {
+    console.error('[getCurrentUserFavourites] Error fetching favorites:', error);
+    throw error;
+  }
 
   return data || [];
 }
@@ -232,6 +412,45 @@ export async function toggleMealFavourite(
   return true;
 }
 
+/**
+ * Toggle recipe favorite (convenience function)
+ */
+export async function toggleRecipeFavourite(
+  recipeId: string,
+  householdId: string,
+  userId: string
+): Promise<boolean> {
+  const { data: existing } = await supabase
+    .from('meal_favourites')
+    .select('id')
+    .eq('recipe_id', recipeId)
+    .eq('space_id', householdId)
+    .eq('user_id', userId)
+    .maybeSingle();
+
+  if (existing) {
+    const { error } = await supabase
+      .from('meal_favourites')
+      .delete()
+      .eq('id', existing.id);
+
+    if (error) throw error;
+    return false;
+  }
+
+  const { error } = await supabase
+    .from('meal_favourites')
+    .insert({
+      recipe_id: recipeId,
+      space_id: householdId,
+      user_id: userId,
+      vote_count: 1
+    });
+
+  if (error) throw error;
+  return true;
+}
+
 export async function isMealFavourite(
   mealId: string,
   householdId: string,
@@ -241,6 +460,25 @@ export async function isMealFavourite(
     .from('meal_favourites')
     .select('id')
     .eq('meal_id', mealId)
+    .eq('space_id', householdId)
+    .eq('user_id', userId)
+    .maybeSingle();
+
+  return !!data;
+}
+
+/**
+ * Check if recipe is favorited
+ */
+export async function isRecipeFavourite(
+  recipeId: string,
+  householdId: string,
+  userId: string
+): Promise<boolean> {
+  const { data } = await supabase
+    .from('meal_favourites')
+    .select('id')
+    .eq('recipe_id', recipeId)
     .eq('space_id', householdId)
     .eq('user_id', userId)
     .maybeSingle();

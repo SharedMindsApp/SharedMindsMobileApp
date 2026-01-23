@@ -68,8 +68,8 @@ export const FEATURE_REGISTRY: Record<FeatureKey, FeatureMetadata> = {
   spaces_meal_planner: {
     key: 'spaces_meal_planner',
     label: 'Meal Planner',
-    description: 'Suggest meals, plan menus, and provide dietary guidance',
-    requiredCapabilities: ['chat'],
+    description: 'Suggest meals, plan menus, and provide dietary guidance. Can use chat-based models (OpenAI, Anthropic) or search-based models (Perplexity)',
+    requiredCapabilities: ['chat', 'search'], // Accepts models with chat OR search (validated with OR logic)
     allowedIntents: ['meal_suggestion', 'meal_planning'],
     supportedSurfaces: ['shared'],
     icon: 'UtensilsCrossed',
@@ -137,6 +137,33 @@ export const FEATURE_REGISTRY: Record<FeatureKey, FeatureMetadata> = {
     supportedSurfaces: ['project'],
     icon: 'RefreshCw',
   },
+  intelligent_todo: {
+    key: 'intelligent_todo',
+    label: 'Intelligent Todo Breakdown',
+    description: 'Break down tasks into manageable micro-steps with AI assistance',
+    requiredCapabilities: ['chat', 'reasoning'],
+    allowedIntents: ['breakdown_task', 'task_breakdown', 'micro_steps'],
+    supportedSurfaces: ['personal', 'shared'],
+    icon: 'ListTodo',
+  },
+  spaces_recipe_generation: {
+    key: 'spaces_recipe_generation',
+    label: 'Recipe Generation',
+    description: 'Generate recipes using AI-powered web search and extraction (Perplexity)',
+    requiredCapabilities: ['search'],
+    allowedIntents: ['generate_recipe', 'recipe_generation', 'recipe_search'],
+    supportedSurfaces: ['shared'],
+    icon: 'UtensilsCrossed',
+  },
+  spaces_grocery_assist: {
+    key: 'spaces_grocery_assist',
+    label: 'Grocery List Assistant',
+    description: 'Smart shopping suggestions based on meal plans and pantry inventory',
+    requiredCapabilities: ['chat', 'reasoning'],
+    allowedIntents: ['grocery_suggestion', 'grocery_assist', 'shopping_list'],
+    supportedSurfaces: ['shared'],
+    icon: 'ShoppingCart',
+  },
 };
 
 export function getFeatureMetadata(featureKey: FeatureKey): FeatureMetadata {
@@ -160,6 +187,27 @@ export function validateModelForFeature(
     };
   }
 
+  // Special handling for features that accept multiple capability types (OR logic)
+  // Currently: spaces_meal_planner accepts chat OR search
+  if (featureKey === 'spaces_meal_planner') {
+    // Accept if model has chat OR search capability
+    const hasChat = modelCapabilities.chat || false;
+    const hasSearch = modelCapabilities.search || false;
+    
+    if (hasChat || hasSearch) {
+      return {
+        valid: true,
+        missingCapabilities: [],
+      };
+    }
+    
+    return {
+      valid: false,
+      missingCapabilities: ['chat', 'search'], // Needs at least one
+    };
+  }
+
+  // Standard AND logic for other features (all required capabilities must be present)
   const missingCapabilities: string[] = [];
 
   for (const capability of feature.requiredCapabilities) {

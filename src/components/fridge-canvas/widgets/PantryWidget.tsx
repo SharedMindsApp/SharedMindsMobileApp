@@ -27,6 +27,17 @@ import { Sparkles, ChefHat } from 'lucide-react';
 import { useSpaceContext } from '../../../hooks/useSpaceContext';
 import { WidgetHeader } from '../../shared/WidgetHeader';
 import { MakeableRecipesModal } from '../../shared/MakeableRecipesModal';
+import { 
+  getPantryLocations, 
+  createPantryLocation, 
+  updatePantryLocation, 
+  deletePantryLocation,
+  ensureDefaultLocations,
+  type PantryLocation 
+} from '../../../lib/pantryLocations';
+import { PantryLocationSelector } from '../../shared/PantryLocationSelector';
+import { PantryLocationManager } from '../../shared/PantryLocationManager';
+import { Settings } from 'lucide-react';
 
 interface PantryWidgetProps {
   householdId: string;
@@ -43,40 +54,71 @@ const LOCATION_GROUPS: Record<string, { label: string; icon: any; color: string 
 // Comprehensive list of common pantry items organized by category
 const COMMON_PANTRY_ITEMS: Record<string, string[]> = {
   'Dairy & Eggs': [
-    'Milk', 'Eggs', 'Butter', 'Cheese', 'Yogurt', 'Sour Cream', 
-    'Cream Cheese', 'Cottage Cheese', 'Greek Yogurt', 'Heavy Cream'
+    'Milk', 'Eggs', 'Butter', 'Cheese', 'Yogurt', 'Greek Yogurt',
+    'Sour Cream', 'Cream Cheese', 'Cottage Cheese', 'Heavy Cream',
+    'Whipping Cream', 'Mozzarella', 'Cheddar', 'Parmesan', 'Feta'
   ],
-  'Produce': [
-    'Bananas', 'Apples', 'Oranges', 'Lettuce', 'Tomatoes', 'Carrots', 
-    'Onions', 'Potatoes', 'Broccoli', 'Spinach', 'Bell Peppers', 
-    'Cucumber', 'Celery', 'Avocado', 'Lemons', 'Garlic'
+  'Produce - Fruits': [
+    'Bananas', 'Apples', 'Oranges', 'Lemons', 'Limes', 'Strawberries',
+    'Blueberries', 'Grapes', 'Watermelon', 'Pineapple', 'Mango',
+    'Peaches', 'Pears', 'Cherries', 'Avocado', 'Kiwi', 'Raspberries',
+    'Blackberries', 'Cranberries'
+  ],
+  'Produce - Vegetables': [
+    'Lettuce', 'Tomatoes', 'Carrots', 'Onions', 'Potatoes', 'Broccoli',
+    'Spinach', 'Bell Peppers', 'Cucumber', 'Celery', 'Garlic', 'Corn',
+    'Mushrooms', 'Green Beans', 'Asparagus', 'Zucchini', 'Eggplant',
+    'Cabbage', 'Cauliflower', 'Sweet Potatoes', 'Brussels Sprouts',
+    'Kale', 'Arugula', 'Radishes', 'Beets'
   ],
   'Meat & Seafood': [
-    'Chicken Breast', 'Ground Beef', 'Salmon', 'Bacon', 'Ground Turkey',
-    'Pork Chops', 'Shrimp', 'Tuna', 'Sausage'
+    'Chicken Breast', 'Chicken Thighs', 'Ground Beef', 'Steak', 'Salmon',
+    'Bacon', 'Ground Turkey', 'Pork Chops', 'Shrimp', 'Tuna', 'Sausage',
+    'Ham', 'Turkey', 'Cod', 'Tilapia', 'Ground Pork', 'Ribs', 'Chicken Wings'
   ],
   'Bakery': [
-    'Bread', 'Bagels', 'Tortillas', 'English Muffins', 'Croissants'
+    'Bread', 'Bagels', 'Tortillas', 'English Muffins', 'Croissants',
+    'Muffins', 'Donuts', 'Baguette', 'Sourdough', 'Whole Wheat Bread',
+    'Pita Bread', 'Naan', 'Dinner Rolls'
   ],
   'Pantry Staples': [
-    'Rice', 'Pasta', 'Flour', 'Sugar', 'Salt', 'Pepper', 'Olive Oil',
-    'Vegetable Oil', 'Vinegar', 'Soy Sauce', 'Canned Tomatoes',
-    'Canned Beans', 'Chicken Broth', 'Beef Broth'
+    'Rice', 'Pasta', 'Spaghetti', 'Noodles', 'Flour', 'Sugar', 'Brown Sugar',
+    'Salt', 'Black Pepper', 'Olive Oil', 'Vegetable Oil', 'Canola Oil',
+    'Vinegar', 'Balsamic Vinegar', 'Soy Sauce', 'Canned Tomatoes',
+    'Canned Beans', 'Black Beans', 'Kidney Beans', 'Chickpeas', 'Lentils',
+    'Chicken Broth', 'Beef Broth', 'Vegetable Broth', 'Tomato Paste',
+    'Tomato Sauce', 'Coconut Milk', 'Baking Soda', 'Baking Powder',
+    'Vanilla Extract', 'Cinnamon', 'Oregano', 'Basil', 'Thyme'
   ],
   'Snacks': [
-    'Crackers', 'Chips', 'Nuts', 'Peanut Butter', 'Jam', 'Honey',
-    'Granola Bars', 'Popcorn'
+    'Crackers', 'Chips', 'Potato Chips', 'Tortilla Chips', 'Nuts', 'Almonds',
+    'Peanuts', 'Walnuts', 'Peanut Butter', 'Almond Butter', 'Jam', 'Jelly',
+    'Honey', 'Granola Bars', 'Popcorn', 'Chocolate', 'Cookies', 'Pretzels',
+    'Trail Mix', 'Dried Fruit', 'Raisins'
   ],
   'Beverages': [
-    'Coffee', 'Tea', 'Juice', 'Soda', 'Water', 'Beer', 'Wine'
+    'Coffee', 'Tea', 'Green Tea', 'Black Tea', 'Orange Juice', 'Apple Juice',
+    'Cranberry Juice', 'Soda', 'Water', 'Sparkling Water', 'Beer', 'Wine',
+    'Champagne', 'Energy Drinks', 'Sports Drinks', 'Lemonade', 'Iced Tea'
   ],
   'Frozen': [
-    'Frozen Vegetables', 'Frozen Fruit', 'Ice Cream', 'Frozen Pizza',
-    'Frozen Chicken', 'Frozen Berries'
+    'Frozen Vegetables', 'Frozen Fruit', 'Frozen Berries', 'Ice Cream',
+    'Frozen Pizza', 'Frozen Chicken', 'Frozen Fish', 'Frozen French Fries',
+    'Frozen Waffles', 'Frozen Burritos', 'Frozen Meals', 'Ice Pops'
   ],
   'Condiments & Sauces': [
     'Ketchup', 'Mustard', 'Mayonnaise', 'Hot Sauce', 'BBQ Sauce',
-    'Salad Dressing', 'Worcestershire Sauce'
+    'Salad Dressing', 'Ranch Dressing', 'Italian Dressing', 'Worcestershire Sauce',
+    'Sriracha', 'Teriyaki Sauce', 'Pesto', 'Hummus', 'Salsa', 'Guacamole',
+    'Tartar Sauce', 'Horseradish', 'Relish', 'Pickles'
+  ],
+  'Breakfast': [
+    'Cereal', 'Oatmeal', 'Pancake Mix', 'Waffle Mix', 'Maple Syrup',
+    'Breakfast Sausage', 'Hash Browns', 'Breakfast Burritos'
+  ],
+  'Desserts & Baking': [
+    'Chocolate Chips', 'Cocoa Powder', 'Powdered Sugar', 'Shortening',
+    'Pie Crust', 'Cake Mix', 'Brownie Mix', 'Frosting', 'Sprinkles'
   ]
 };
 
@@ -100,7 +142,11 @@ export function PantryWidget({ householdId, viewMode }: PantryWidgetProps) {
   
   // Location selection state
   const [pendingFoodItem, setPendingFoodItem] = useState<FoodItem | null>(null);
-  const [lastUsedLocation, setLastUsedLocation] = useState<string>('cupboard');
+  const [lastUsedLocationId, setLastUsedLocationId] = useState<string | null>(null);
+  const [showLocationSelector, setShowLocationSelector] = useState(false);
+  const [pantryLocations, setPantryLocations] = useState<PantryLocation[]>([]);
+  const [loadingLocations, setLoadingLocations] = useState(false);
+  const [showManageLocations, setShowManageLocations] = useState(false);
   
   // Track if we're switching contexts to prevent stale updates
   const contextSpaceIdRef = useRef(currentSpaceId);
@@ -109,11 +155,18 @@ export function PantryWidget({ householdId, viewMode }: PantryWidgetProps) {
   const [editingItem, setEditingItem] = useState<PantryItem | null>(null);
   const [editForm, setEditForm] = useState({
     location: '',
-    quantity: '',
-    unit: '',
+    quantityValue: '',
+    quantityUnit: '',
+    expiresOn: '',
     notes: '',
     status: 'have' as 'have' | 'low' | 'out',
   });
+  
+  // Quantity editing state (inline)
+  const [editingQuantityId, setEditingQuantityId] = useState<string | null>(null);
+  const [quantityValueInput, setQuantityValueInput] = useState('');
+  const [quantityUnitInput, setQuantityUnitInput] = useState('');
+  const quantityValueInputRef = useRef<HTMLInputElement>(null);
   
   // Search & filter state
   const [searchQuery, setSearchQuery] = useState('');
@@ -123,17 +176,24 @@ export function PantryWidget({ householdId, viewMode }: PantryWidgetProps) {
   const [showCommonItems, setShowCommonItems] = useState(false);
   const [selectedCommonItems, setSelectedCommonItems] = useState<Set<string>>(new Set());
   
-  // Quantity editing state
-  const [editingQuantityId, setEditingQuantityId] = useState<string | null>(null);
-  const [quantityInput, setQuantityInput] = useState('');
-  const quantityInputRef = useRef<HTMLInputElement>(null);
-  
   // Makeable recipes modal state
   const [showMakeableRecipes, setShowMakeableRecipes] = useState(false);
+  
+  // Pending item form state (for adding new items)
+  const [pendingQuantityValue, setPendingQuantityValue] = useState('');
+  const [pendingQuantityUnit, setPendingQuantityUnit] = useState('');
+  const [pendingExpiresOn, setPendingExpiresOn] = useState('');
 
   // Update ref when space changes
   useEffect(() => {
     contextSpaceIdRef.current = currentSpaceId;
+  }, [currentSpaceId]);
+
+  // Load pantry locations and ensure defaults exist
+  useEffect(() => {
+    if (currentSpaceId && !isSwitching()) {
+      loadPantryLocations();
+    }
   }, [currentSpaceId]);
 
   // Load pantry items when space context changes
@@ -150,6 +210,9 @@ export function PantryWidget({ householdId, viewMode }: PantryWidgetProps) {
     setEditingItem(null);
     setEditingQuantityId(null);
     setPendingFoodItem(null);
+    setPendingQuantityValue('');
+    setPendingQuantityUnit('');
+    setPendingExpiresOn('');
     
     return () => {
       // Cleanup on unmount or space change
@@ -173,6 +236,41 @@ export function PantryWidget({ householdId, viewMode }: PantryWidgetProps) {
       });
     }
   }, [pantryItems]);
+
+  const loadPantryLocations = async () => {
+    const expectedSpaceId = contextSpaceIdRef.current;
+    
+    try {
+      setLoadingLocations(true);
+      // Ensure default locations exist (silent setup)
+      const locations = await ensureDefaultLocations(currentSpaceId);
+      
+      // Verify we're still in the same context
+      if (contextSpaceIdRef.current !== expectedSpaceId) {
+        return;
+      }
+      
+      setPantryLocations(locations);
+      
+      // Restore last used location from sessionStorage
+      const lastUsedKey = `last_used_location_${currentSpaceId}`;
+      const lastUsed = sessionStorage.getItem(lastUsedKey);
+      if (lastUsed && locations.some(l => l.id === lastUsed)) {
+        setLastUsedLocationId(lastUsed);
+      }
+    } catch (error) {
+      console.error('Failed to load pantry locations:', error);
+    } finally {
+      if (contextSpaceIdRef.current === expectedSpaceId) {
+        setLoadingLocations(false);
+      }
+    }
+  };
+
+  const handleLocationsUpdated = async () => {
+    await loadPantryLocations();
+    await loadPantryItems(getAbortSignal());
+  };
 
   const loadPantryItems = async (abortSignal?: AbortSignal | null) => {
     // Check if context has changed during load
@@ -208,21 +306,38 @@ export function PantryWidget({ householdId, viewMode }: PantryWidgetProps) {
     // Show location selector instead of immediately adding
     setPendingFoodItem(foodItem);
     setShowFoodPicker(false);
+    setShowLocationSelector(true);
   };
 
-  const handleLocationSelect = async (location: string) => {
+  const handleLocationSelect = async (locationId: string | null) => {
     if (!pendingFoodItem) return;
 
     try {
       await addPantryItem({
         householdId: currentSpaceId,
         foodItemId: pendingFoodItem.id,
-        location: location,
+        locationId: locationId || undefined,
+        quantityValue: pendingQuantityValue.trim() || undefined,
+        quantityUnit: pendingQuantityUnit.trim() || undefined,
+        expiresOn: pendingExpiresOn || undefined,
         status: 'have',
       });
-      setLastUsedLocation(location); // Remember for next time
+      
+      // Remember last used location per space
+      if (locationId) {
+        setLastUsedLocationId(locationId);
+        const lastUsedKey = `last_used_location_${currentSpaceId}`;
+        sessionStorage.setItem(lastUsedKey, locationId);
+      }
+      
+      // Clear pending form
+      setPendingQuantityValue('');
+      setPendingQuantityUnit('');
+      setPendingExpiresOn('');
+      
       await loadPantryItems(getAbortSignal());
       setPendingFoodItem(null);
+      setShowLocationSelector(false);
       showToast('success', 'Added to pantry');
     } catch (error) {
       console.error('Failed to add pantry item:', error);
@@ -233,9 +348,10 @@ export function PantryWidget({ householdId, viewMode }: PantryWidgetProps) {
   const handleEditItem = (item: PantryItem) => {
     setEditingItem(item);
     setEditForm({
-      location: item.location || 'cupboard',
-      quantity: item.quantity || '',
-      unit: item.unit || '',
+      location: item.location_id || '', // Use location_id
+      quantityValue: item.quantity_value || '',
+      quantityUnit: item.quantity_unit || '',
+      expiresOn: item.expires_on ? item.expires_on.split('T')[0] : '', // Format date for input
       notes: item.notes || '',
       status: item.status || 'have',
     });
@@ -245,10 +361,16 @@ export function PantryWidget({ householdId, viewMode }: PantryWidgetProps) {
     if (!editingItem) return;
 
     try {
+      // Convert editForm.location to location_id
+      const locationId = editForm.location && editForm.location !== '' 
+        ? (pantryLocations.find(l => l.id === editForm.location)?.id || null)
+        : null;
+
       await updatePantryItem(editingItem.id, {
-        location: editForm.location || null,
-        quantity: editForm.quantity || null,
-        unit: editForm.unit || null,
+        location_id: locationId,
+        quantity_value: editForm.quantityValue.trim() || null,
+        quantity_unit: editForm.quantityUnit.trim() || null,
+        expires_on: editForm.expiresOn || null,
         notes: editForm.notes || null,
         status: editForm.status || null,
       });
@@ -261,9 +383,9 @@ export function PantryWidget({ householdId, viewMode }: PantryWidgetProps) {
     }
   };
 
-  const handleQuickLocationChange = async (itemId: string, newLocation: string) => {
+  const handleQuickLocationChange = async (itemId: string, locationId: string | null) => {
     try {
-      await updatePantryItem(itemId, { location: newLocation });
+      await updatePantryItem(itemId, { location_id: locationId });
       await loadPantryItems(getAbortSignal());
     } catch (error) {
       console.error('Failed to update location:', error);
@@ -272,27 +394,37 @@ export function PantryWidget({ householdId, viewMode }: PantryWidgetProps) {
 
   const handleQuantityEdit = (item: PantryItem) => {
     setEditingQuantityId(item.id);
-    setQuantityInput(`${item.quantity || ''} ${item.unit || ''}`.trim());
-    setTimeout(() => quantityInputRef.current?.focus(), 100);
+    setQuantityValueInput(item.quantity_value || item.quantity || '');
+    setQuantityUnitInput(item.quantity_unit || item.unit || '');
+    setTimeout(() => {
+      quantityValueInputRef.current?.focus();
+    }, 0);
   };
 
   const handleQuantitySave = async (itemId: string) => {
-    const parts = quantityInput.trim().split(/\s+/);
-    const quantity = parts[0] || '';
-    const unit = parts.slice(1).join(' ') || '';
+    const value = quantityValueInput.trim();
+    const unit = quantityUnitInput.trim();
 
     try {
       await updatePantryItem(itemId, {
-        quantity: quantity || null,
-        unit: unit || null,
+        quantity_value: value || null,
+        quantity_unit: unit || null,
       });
       await loadPantryItems(getAbortSignal());
       setEditingQuantityId(null);
-      setQuantityInput('');
+      setQuantityValueInput('');
+      setQuantityUnitInput('');
     } catch (error) {
       console.error('Failed to update quantity:', error);
     }
   };
+
+  const handleQuantityCancel = () => {
+    setEditingQuantityId(null);
+    setQuantityValueInput('');
+    setQuantityUnitInput('');
+  };
+
 
   const handleAddFromGroceryList = async () => {
     try {
@@ -328,7 +460,7 @@ export function PantryWidget({ householdId, viewMode }: PantryWidgetProps) {
         await addPantryItem({
           householdId: currentSpaceId,
           foodItemId: foodItem.id,
-          location: lastUsedLocation,
+          locationId: lastUsedLocationId || undefined,
           status: 'have',
         });
       }
@@ -370,24 +502,30 @@ export function PantryWidget({ householdId, viewMode }: PantryWidgetProps) {
     });
   };
 
-  const handleDeleteItem = async (id: string) => {
+  const handleDeleteItem = async (id: string, itemName?: string) => {
+    // Find the item to get its name for the confirmation
+    const item = pantryItems.find(i => i.id === id);
+    const displayName = itemName || item?.food_item?.name || item?.item_name || 'this item';
+    
+    // Show confirmation dialog
+    const confirmed = window.confirm(
+      `Are you sure you want to delete "${displayName}" from your pantry?`
+    );
+    
+    if (!confirmed) {
+      return;
+    }
+    
     try {
       await deletePantryItem(id);
       await loadPantryItems(getAbortSignal());
+      showToast('success', 'Item removed from pantry');
     } catch (error) {
       console.error('Failed to delete item:', error);
       showToast('error', 'Failed to delete item');
     }
   };
 
-  const handleLocationChange = async (id: string, location: string) => {
-    try {
-      await updatePantryItem(id, { location });
-      await loadPantryItems();
-    } catch (error) {
-      console.error('Failed to update location:', error);
-    }
-  };
 
   const loadRecipeSuggestions = async () => {
     const expectedSpaceId = contextSpaceIdRef.current;
@@ -412,28 +550,42 @@ export function PantryWidget({ householdId, viewMode }: PantryWidgetProps) {
     }
   };
 
-  // Filter items by search query
+  // Filter items by search query and location
   const filteredItems = pantryItems.filter(item => {
     const itemName = item.food_item?.name || item.item_name || 'Unknown Item';
     const matchesSearch = !searchQuery || itemName.toLowerCase().includes(searchQuery.toLowerCase());
-    const matchesLocation = !selectedLocationFilter || (item.location || 'cupboard') === selectedLocationFilter;
-    return matchesSearch && matchesLocation;
+    
+    // Filter by location_id if selected
+    if (selectedLocationFilter) {
+      if (selectedLocationFilter === 'unassigned') {
+        // Show only unassigned items
+        if (item.location_id) return false;
+      } else {
+        // Show only items in selected location
+        if (item.location_id !== selectedLocationFilter) return false;
+      }
+    }
+    
+    return matchesSearch;
   });
 
-  // Group filtered items by location
-  const itemsByLocation = filteredItems.reduce((acc, item) => {
-    const loc = item.location || 'cupboard';
-    if (!acc[loc]) acc[loc] = [];
-    acc[loc].push(item);
+  // Group filtered items by location_id
+  const itemsByLocationId = filteredItems.reduce((acc, item) => {
+    const locationId = item.location_id || 'unassigned';
+    if (!acc[locationId]) acc[locationId] = [];
+    acc[locationId].push(item);
     return acc;
   }, {} as Record<string, PantryItem[]>);
 
-  // Location options for selector
-  const locationOptions = [
-    { key: 'fridge', label: 'Fridge', icon: Square, emoji: '🧊' },
-    { key: 'freezer', label: 'Freezer', icon: Snowflake, emoji: '❄️' },
-    { key: 'cupboard', label: 'Cupboard', icon: Box, emoji: '🧺' },
+  // Sort locations by order_index, with unassigned at the end
+  const sortedLocationIds = [
+    ...pantryLocations
+      .sort((a, b) => a.order_index - b.order_index)
+      .map(loc => loc.id)
+      .filter(id => itemsByLocationId[id] && itemsByLocationId[id].length > 0),
+    ...(itemsByLocationId['unassigned'] && itemsByLocationId['unassigned'].length > 0 ? ['unassigned'] : [])
   ];
+
 
   if (viewMode === 'icon') {
     const totalItems = pantryItems.length;
@@ -535,6 +687,13 @@ export function PantryWidget({ householdId, viewMode }: PantryWidgetProps) {
               <span className="hidden sm:inline text-sm font-medium">What can I make?</span>
             </button>
             <button
+              onClick={() => setShowManageLocations(true)}
+              className="p-2 bg-stone-400 hover:bg-stone-500 text-white rounded-lg transition-colors"
+              title="Manage locations"
+            >
+              <Settings size={18} />
+            </button>
+            <button
               onClick={() => setShowFoodPicker(true)}
               className="p-2 bg-stone-500 hover:bg-stone-600 text-white rounded-lg transition-colors"
               title="Add to pantry"
@@ -544,6 +703,42 @@ export function PantryWidget({ householdId, viewMode }: PantryWidgetProps) {
           </div>
         }
       />
+
+      {/* Locations Overview (Visible in Dashboard) */}
+      {pantryLocations.length > 0 && (
+        <div className="mb-4 p-3 bg-stone-50 rounded-lg border border-stone-200">
+          <div className="flex items-center justify-between mb-2">
+            <h4 className="text-sm font-semibold text-gray-900">Locations</h4>
+            <button
+              onClick={() => setShowManageLocations(true)}
+              className="text-xs text-stone-600 hover:text-stone-800 underline"
+            >
+              Manage
+            </button>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {pantryLocations.map((location) => {
+              const itemCount = pantryItems.filter(item => item.location_id === location.id).length;
+              return (
+                <div
+                  key={location.id}
+                  className="flex items-center gap-1.5 px-2.5 py-1 bg-white rounded-lg border border-stone-200 text-xs"
+                >
+                  {location.icon && <span>{location.icon}</span>}
+                  <span className="font-medium text-gray-900">{location.name}</span>
+                  <span className="text-gray-500">({itemCount})</span>
+                </div>
+              );
+            })}
+            {pantryItems.filter(item => !item.location_id).length > 0 && (
+              <div className="flex items-center gap-1.5 px-2.5 py-1 bg-white rounded-lg border border-stone-200 text-xs">
+                <span className="font-medium text-gray-900">Unassigned</span>
+                <span className="text-gray-500">({pantryItems.filter(item => !item.location_id).length})</span>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Search & Filter */}
       {pantryItems.length > 0 && (
@@ -571,23 +766,37 @@ export function PantryWidget({ householdId, viewMode }: PantryWidgetProps) {
             >
               All
             </button>
-            {Object.entries(LOCATION_GROUPS).map(([key, info]) => {
-              const LocationIcon = info.icon;
+            {pantryLocations.map((location) => {
+              const itemCount = pantryItems.filter(item => item.location_id === location.id).length;
+              if (itemCount === 0) return null;
+              
               return (
                 <button
-                  key={key}
-                  onClick={() => setSelectedLocationFilter(key)}
+                  key={location.id}
+                  onClick={() => setSelectedLocationFilter(location.id)}
                   className={`px-3 py-1 rounded-full text-xs font-medium transition-colors flex items-center gap-1.5 ${
-                    selectedLocationFilter === key
+                    selectedLocationFilter === location.id
                       ? 'bg-stone-500 text-white'
                       : 'bg-stone-100 text-stone-700 hover:bg-stone-200'
                   }`}
                 >
-                  <LocationIcon size={12} />
-                  {info.label}
+                  {location.icon && <span>{location.icon}</span>}
+                  {location.name} ({itemCount})
                 </button>
               );
             })}
+            {pantryItems.filter(item => !item.location_id).length > 0 && (
+              <button
+                onClick={() => setSelectedLocationFilter('unassigned')}
+                className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${
+                  selectedLocationFilter === 'unassigned'
+                    ? 'bg-stone-500 text-white'
+                    : 'bg-stone-100 text-stone-700 hover:bg-stone-200'
+                }`}
+              >
+                Unassigned ({pantryItems.filter(item => !item.location_id).length})
+              </button>
+            )}
           </div>
         </div>
       )}
@@ -636,24 +845,28 @@ export function PantryWidget({ householdId, viewMode }: PantryWidgetProps) {
           </div>
         ) : (
           <div className="space-y-4">
-            {Object.entries(LOCATION_GROUPS).map(([locationKey, locationInfo]) => {
-              const items = itemsByLocation[locationKey] || [];
+            {sortedLocationIds.map((locationId) => {
+              const items = itemsByLocationId[locationId] || [];
               if (items.length === 0) return null;
 
-              const LocationIcon = locationInfo.icon;
+              const location = locationId === 'unassigned' 
+                ? null 
+                : pantryLocations.find(l => l.id === locationId);
+              
+              const locationName = location?.name || 'Unassigned';
+              const locationIcon = location?.icon || null;
 
               return (
-                <div key={locationKey} className={`${locationInfo.color} rounded-lg p-3 border-2`}>
+                <div key={locationId} className="bg-stone-50 rounded-lg p-3 border-2 border-stone-200">
                   <div className="flex items-center gap-2 mb-2">
-                    <LocationIcon size={16} className="text-stone-700" />
-                    <h4 className="font-semibold text-sm text-stone-900">{locationInfo.label}</h4>
+                    {locationIcon && <span className="text-base">{locationIcon}</span>}
+                    <h4 className="font-semibold text-sm text-stone-900">{locationName}</h4>
                     <span className="text-xs text-stone-600">({items.length})</span>
                   </div>
                   <div className="space-y-1.5">
                     {items.map((item) => {
                       const itemName = item.food_item?.name || item.item_name || 'Unknown Item';
                       const isEditingQuantity = editingQuantityId === item.id;
-                      const currentLocation = item.location || 'cupboard';
                       
                       return (
                         <div key={item.id} className="bg-white/60 rounded-lg p-2 flex items-center justify-between group">
@@ -665,30 +878,79 @@ export function PantryWidget({ householdId, viewMode }: PantryWidgetProps) {
                               <p className="font-medium text-sm text-gray-900 truncate">{itemName}</p>
                               <div className="flex items-center gap-2 mt-0.5">
                                 {isEditingQuantity ? (
-                                  <input
-                                    ref={isEditingQuantity ? quantityInputRef : null}
-                                    type="text"
-                                    value={quantityInput}
-                                    onChange={(e) => setQuantityInput(e.target.value)}
-                                    onBlur={() => handleQuantitySave(item.id)}
-                                    onKeyDown={(e) => {
-                                      if (e.key === 'Enter') {
-                                        handleQuantitySave(item.id);
+                                  <div className="flex items-center gap-1">
+                                    <input
+                                      ref={quantityValueInputRef}
+                                      type="text"
+                                      value={quantityValueInput}
+                                      onChange={(e) => setQuantityValueInput(e.target.value)}
+                                      onKeyDown={(e) => {
+                                        if (e.key === 'Enter') {
+                                          handleQuantitySave(item.id);
                                       } else if (e.key === 'Escape') {
-                                        setEditingQuantityId(null);
-                                        setQuantityInput('');
-                                      }
-                                    }}
-                                    className="text-xs text-gray-500 border border-stone-300 rounded px-1.5 py-0.5 w-24 focus:outline-none focus:ring-1 focus:ring-stone-500"
-                                    placeholder="e.g., 2 tins"
-                                    autoFocus
-                                  />
+                                        handleQuantityCancel();
+                                      } else if (e.key === 'Tab' && !e.shiftKey) {
+                                          // Allow tab to move to unit input
+                                        }
+                                      }}
+                                      className="text-xs text-gray-500 border border-stone-300 rounded px-1.5 py-0.5 w-16 focus:outline-none focus:ring-1 focus:ring-stone-500"
+                                      placeholder="3"
+                                      autoFocus
+                                    />
+                                    <input
+                                      type="text"
+                                      value={quantityUnitInput}
+                                      onChange={(e) => setQuantityUnitInput(e.target.value)}
+                                      onBlur={() => handleQuantitySave(item.id)}
+                                      onKeyDown={(e) => {
+                                        if (e.key === 'Enter') {
+                                          handleQuantitySave(item.id);
+                                        } else if (e.key === 'Escape') {
+                                          handleQuantityCancel();
+                                        }
+                                      }}
+                                      className="text-xs text-gray-500 border border-stone-300 rounded px-1.5 py-0.5 w-20 focus:outline-none focus:ring-1 focus:ring-stone-500"
+                                      placeholder="tins"
+                                    />
+                                  </div>
                                 ) : (
                                   <button
                                     onClick={() => handleQuantityEdit(item)}
                                     className="text-xs text-gray-500 hover:text-gray-700 text-left"
                                   >
-                                    {item.quantity ? `${item.quantity} ${item.unit || ''}` : 'Add quantity'}
+                                    {item.quantity_value || item.quantity ? (
+                                      `${item.quantity_value || item.quantity}${item.quantity_unit || item.unit ? ` ${item.quantity_unit || item.unit}` : ''}`
+                                    ) : (
+                                      'Add quantity'
+                                    )}
+                                  </button>
+                                )}
+                                
+                                {/* Expiry Date Display (Soft Awareness) */}
+                                {item.expires_on && (
+                                  <button
+                                    onClick={() => handleEditItem(item)}
+                                    className="text-xs text-gray-500 hover:text-gray-600"
+                                    title="Tap to edit"
+                                  >
+                                    {(() => {
+                                      const expiryDate = new Date(item.expires_on);
+                                      const today = new Date();
+                                      today.setHours(0, 0, 0, 0);
+                                      const daysUntilExpiry = Math.ceil((expiryDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+                                      
+                                      // Soft awareness: slightly warmer tone if within 3 days, but no red
+                                      const isSoon = daysUntilExpiry >= 0 && daysUntilExpiry <= 3;
+                                      const isExpired = daysUntilExpiry < 0;
+                                      
+                                      const dateStr = expiryDate.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+                                      
+                                      return (
+                                        <span className={isSoon ? 'text-amber-600' : isExpired ? 'text-stone-500' : 'text-gray-500'}>
+                                          Best before: {dateStr}
+                                        </span>
+                                      );
+                                    })()}
                                   </button>
                                 )}
                                 
@@ -697,18 +959,23 @@ export function PantryWidget({ householdId, viewMode }: PantryWidgetProps) {
                                   <button
                                     onClick={(e) => {
                                       e.stopPropagation();
-                                      const locations = ['fridge', 'freezer', 'cupboard'];
-                                      const currentIndex = locations.indexOf(currentLocation);
-                                      const nextIndex = (currentIndex + 1) % locations.length;
-                                      handleQuickLocationChange(item.id, locations[nextIndex]);
+                                      // Cycle through available locations
+                                      const availableLocations = pantryLocations.map(l => l.id);
+                                      const currentIndex = availableLocations.indexOf(item.location_id || '');
+                                      const nextIndex = (currentIndex + 1) % (availableLocations.length + 1); // +1 for null/unassigned
+                                      const nextLocationId = nextIndex === availableLocations.length 
+                                        ? null 
+                                        : availableLocations[nextIndex];
+                                      handleQuickLocationChange(item.id, nextLocationId);
                                     }}
                                     className="text-xs px-2 py-0.5 bg-stone-100 hover:bg-stone-200 text-stone-700 rounded flex items-center gap-1 transition-colors"
                                     title="Change location"
                                   >
-                                    {(() => {
-                                      const LocationIcon = LOCATION_GROUPS[currentLocation]?.icon;
-                                      return LocationIcon ? <LocationIcon size={10} /> : null;
-                                    })()}
+                                    {item.pantry_location?.icon ? (
+                                      <span>{item.pantry_location.icon}</span>
+                                    ) : (
+                                      <Box size={10} />
+                                    )}
                                     <ChevronDown size={10} />
                                   </button>
                                 </div>
@@ -724,7 +991,7 @@ export function PantryWidget({ householdId, viewMode }: PantryWidgetProps) {
                               <Edit2 size={14} />
                             </button>
                             <button
-                              onClick={() => handleDeleteItem(item.id)}
+                              onClick={() => handleDeleteItem(item.id, itemName)}
                               className="opacity-0 group-hover:opacity-100 text-gray-400 hover:text-gray-600 transition-opacity"
                               title="Delete"
                             >
@@ -739,98 +1006,6 @@ export function PantryWidget({ householdId, viewMode }: PantryWidgetProps) {
               );
             })}
 
-            {/* Items without location */}
-            {itemsByLocation[''] && itemsByLocation[''].length > 0 && (
-              <div className="bg-gray-50 rounded-lg p-3 border-2 border-gray-200">
-                <h4 className="font-semibold text-sm text-gray-900 mb-2">Other</h4>
-                <div className="space-y-1.5">
-                  {itemsByLocation[''].map((item) => {
-                    const itemName = item.food_item?.name || item.item_name || 'Unknown Item';
-                    const isEditingQuantity = editingQuantityId === item.id;
-                    const currentLocation = item.location || 'cupboard';
-                    
-                    return (
-                      <div key={item.id} className="bg-white/60 rounded-lg p-2 flex items-center justify-between group">
-                        <div className="flex items-center gap-2 flex-1 min-w-0">
-                          {item.food_item?.emoji && (
-                            <span className="text-base flex-shrink-0">{item.food_item.emoji}</span>
-                          )}
-                          <div className="flex-1 min-w-0">
-                            <p className="font-medium text-sm text-gray-900 truncate">{itemName}</p>
-                            <div className="flex items-center gap-2 mt-0.5">
-                              {isEditingQuantity ? (
-                                <input
-                                  ref={isEditingQuantity ? quantityInputRef : null}
-                                  type="text"
-                                  value={quantityInput}
-                                  onChange={(e) => setQuantityInput(e.target.value)}
-                                  onBlur={() => handleQuantitySave(item.id)}
-                                  onKeyDown={(e) => {
-                                    if (e.key === 'Enter') {
-                                      handleQuantitySave(item.id);
-                                    } else if (e.key === 'Escape') {
-                                      setEditingQuantityId(null);
-                                      setQuantityInput('');
-                                    }
-                                  }}
-                                  className="text-xs text-gray-500 border border-stone-300 rounded px-1.5 py-0.5 w-24 focus:outline-none focus:ring-1 focus:ring-stone-500"
-                                  placeholder="e.g., 2 tins"
-                                  autoFocus
-                                />
-                              ) : (
-                                <button
-                                  onClick={() => handleQuantityEdit(item)}
-                                  className="text-xs text-gray-500 hover:text-gray-700 text-left"
-                                >
-                                  {item.quantity ? `${item.quantity} ${item.unit || ''}` : 'Add quantity'}
-                                </button>
-                              )}
-                              
-                              {/* Quick Location Change */}
-                              <div className="relative">
-                                <button
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    const locations = ['fridge', 'freezer', 'cupboard'];
-                                    const currentIndex = locations.indexOf(currentLocation);
-                                    const nextIndex = (currentIndex + 1) % locations.length;
-                                    handleQuickLocationChange(item.id, locations[nextIndex]);
-                                  }}
-                                  className="text-xs px-2 py-0.5 bg-stone-100 hover:bg-stone-200 text-stone-700 rounded flex items-center gap-1 transition-colors"
-                                  title="Change location"
-                                >
-                                  {(() => {
-                                    const LocationIcon = LOCATION_GROUPS[currentLocation]?.icon;
-                                    return LocationIcon ? <LocationIcon size={10} /> : null;
-                                  })()}
-                                  <ChevronDown size={10} />
-                                </button>
-                              </div>
-                            </div>
-                          </div>
-                        </div>
-                        <div className="flex items-center gap-1 flex-shrink-0">
-                          <button
-                            onClick={() => handleEditItem(item)}
-                            className="opacity-0 group-hover:opacity-100 text-gray-400 hover:text-stone-600 transition-opacity"
-                            title="Edit"
-                          >
-                            <Edit2 size={14} />
-                          </button>
-                          <button
-                            onClick={() => handleDeleteItem(item.id)}
-                            className="opacity-0 group-hover:opacity-100 text-gray-400 hover:text-gray-600 transition-opacity"
-                            title="Delete"
-                          >
-                            <X size={14} />
-                          </button>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
           </div>
         )}
       </div>
@@ -853,53 +1028,6 @@ export function PantryWidget({ householdId, viewMode }: PantryWidgetProps) {
         </div>
       )}
 
-      {/* Location Selector Modal */}
-      {pendingFoodItem && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 safe-top safe-bottom">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm mx-4 p-6">
-            <div className="mb-4">
-              <h3 className="text-lg font-semibold text-gray-900 mb-1">Where is it?</h3>
-              <p className="text-sm text-gray-600">
-                {pendingFoodItem.emoji && <span className="text-lg mr-1">{pendingFoodItem.emoji}</span>}
-                {pendingFoodItem.name}
-              </p>
-            </div>
-            
-            <div className="space-y-2 mb-4">
-              {locationOptions.map((option) => {
-                const OptionIcon = option.icon;
-                const isSelected = option.key === lastUsedLocation;
-                return (
-                  <button
-                    key={option.key}
-                    onClick={() => handleLocationSelect(option.key)}
-                    className={`w-full p-3 rounded-lg border-2 transition-all text-left flex items-center gap-3 ${
-                      isSelected
-                        ? 'border-stone-500 bg-stone-50'
-                        : 'border-stone-200 hover:border-stone-300 hover:bg-stone-50'
-                    }`}
-                  >
-                    <span className="text-2xl">{option.emoji}</span>
-                    <div className="flex-1">
-                      <p className="font-medium text-gray-900">{option.label}</p>
-                      {isSelected && (
-                        <p className="text-xs text-stone-600">Last used</p>
-                      )}
-                    </div>
-                  </button>
-                );
-              })}
-            </div>
-            
-            <button
-              onClick={() => setPendingFoodItem(null)}
-              className="w-full py-2 text-sm text-gray-600 hover:text-gray-800"
-            >
-              Cancel
-            </button>
-          </div>
-        </div>
-      )}
 
       {/* Edit Item Modal */}
       {editingItem && (
@@ -925,24 +1053,35 @@ export function PantryWidget({ householdId, viewMode }: PantryWidgetProps) {
               {/* Location */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">Location</label>
-                <div className="grid grid-cols-3 gap-2">
-                  {locationOptions.map((option) => {
-                    const OptionIcon = option.icon;
-                    return (
-                      <button
-                        key={option.key}
-                        onClick={() => setEditForm(prev => ({ ...prev, location: option.key }))}
-                        className={`p-3 rounded-lg border-2 transition-all ${
-                          editForm.location === option.key
-                            ? 'border-stone-500 bg-stone-50'
-                            : 'border-stone-200 hover:border-stone-300'
-                        }`}
-                      >
-                        <span className="text-2xl block mb-1">{option.emoji}</span>
-                        <p className="text-xs font-medium text-gray-700">{option.label}</p>
-                      </button>
-                    );
-                  })}
+                <div className="space-y-2">
+                  {/* No location option */}
+                  <button
+                    onClick={() => setEditForm(prev => ({ ...prev, location: '' }))}
+                    className={`w-full text-left p-3 rounded-lg border-2 transition-all ${
+                      !editForm.location
+                        ? 'border-stone-500 bg-stone-50'
+                        : 'border-stone-200 hover:border-stone-300'
+                    }`}
+                  >
+                    <p className="text-sm font-medium text-gray-900">No location</p>
+                  </button>
+                  {/* Existing locations */}
+                  {pantryLocations.map((location) => (
+                    <button
+                      key={location.id}
+                      onClick={() => {
+                        setEditForm(prev => ({ ...prev, location: location.id }));
+                      }}
+                      className={`w-full text-left p-3 rounded-lg border-2 transition-all flex items-center gap-2 ${
+                        editingItem?.location_id === location.id
+                          ? 'border-stone-500 bg-stone-50'
+                          : 'border-stone-200 hover:border-stone-300'
+                      }`}
+                    >
+                      {location.icon && <span>{location.icon}</span>}
+                      <p className="text-sm font-medium text-gray-900">{location.name}</p>
+                    </button>
+                  ))}
                 </div>
               </div>
 
@@ -952,9 +1091,9 @@ export function PantryWidget({ householdId, viewMode }: PantryWidgetProps) {
                   <label className="block text-sm font-medium text-gray-700 mb-2">Quantity</label>
                   <input
                     type="text"
-                    value={editForm.quantity}
-                    onChange={(e) => setEditForm(prev => ({ ...prev, quantity: e.target.value }))}
-                    placeholder="e.g., 2, half, a bit"
+                    value={editForm.quantityValue}
+                    onChange={(e) => setEditForm(prev => ({ ...prev, quantityValue: e.target.value }))}
+                    placeholder="e.g., 3, half, a few"
                     className="w-full px-3 py-2 border border-stone-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-stone-500"
                   />
                 </div>
@@ -962,9 +1101,9 @@ export function PantryWidget({ householdId, viewMode }: PantryWidgetProps) {
                   <label className="block text-sm font-medium text-gray-700 mb-2">Unit</label>
                   <input
                     type="text"
-                    value={editForm.unit}
-                    onChange={(e) => setEditForm(prev => ({ ...prev, unit: e.target.value }))}
-                    placeholder="e.g., tins, cups, lbs"
+                    value={editForm.quantityUnit}
+                    onChange={(e) => setEditForm(prev => ({ ...prev, quantityUnit: e.target.value }))}
+                    placeholder="e.g., tins, packs, kg"
                     className="w-full px-3 py-2 border border-stone-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-stone-500"
                   />
                 </div>
@@ -1123,6 +1262,41 @@ export function PantryWidget({ householdId, viewMode }: PantryWidgetProps) {
         isOpen={showMakeableRecipes}
         onClose={() => setShowMakeableRecipes(false)}
         spaceId={currentSpaceId}
+      />
+
+      {/* Location Selector Modal */}
+      <PantryLocationSelector
+        isOpen={showLocationSelector}
+        onClose={() => {
+          setShowLocationSelector(false);
+          setPendingFoodItem(null);
+          setPendingQuantityValue('');
+          setPendingQuantityUnit('');
+          setPendingExpiresOn('');
+        }}
+        onSelect={handleLocationSelect}
+        locations={pantryLocations}
+        lastUsedLocationId={lastUsedLocationId}
+        spaceId={currentSpaceId}
+        onLocationCreated={(location) => {
+          setPantryLocations([...pantryLocations, location]);
+        }}
+        quantityValue={pendingQuantityValue}
+        quantityUnit={pendingQuantityUnit}
+        expiresOn={pendingExpiresOn}
+        onQuantityValueChange={setPendingQuantityValue}
+        onQuantityUnitChange={setPendingQuantityUnit}
+        onExpiresOnChange={setPendingExpiresOn}
+      />
+
+      {/* Location Manager Modal */}
+      <PantryLocationManager
+        isOpen={showManageLocations}
+        onClose={() => setShowManageLocations(false)}
+        locations={pantryLocations}
+        pantryItems={pantryItems}
+        spaceId={currentSpaceId}
+        onLocationsUpdated={handleLocationsUpdated}
       />
     </div>
   );

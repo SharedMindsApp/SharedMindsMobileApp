@@ -209,6 +209,7 @@ import { TripDetailPage } from './components/planner/travel/TripDetailPage';
 import { TripListPage } from './components/planner/travel/TripListPage';
 import { PlannerSocial } from './components/planner/PlannerSocial';
 import { PlannerJournal } from './components/planner/PlannerJournal';
+import { RecipeDetailPage } from './components/recipes/RecipeDetailPage';
 import { DailyAlignmentPage } from './components/regulation/DailyAlignmentPage';
 import { TrackerTemplatesPage } from './components/tracker-studio/TrackerTemplatesPage';
 import { MyTrackersPage } from './components/tracker-studio/MyTrackersPage';
@@ -2091,6 +2092,17 @@ function AppContent() {
               <AuthGuard>
                 <Layout>
                   <DiscoveryWizard />
+                </Layout>
+              </AuthGuard>
+            }
+          />
+          {/* Recipe Routes */}
+          <Route
+            path="/recipes/:recipeId"
+            element={
+              <AuthGuard>
+                <Layout>
+                  <RecipeDetailPage />
                 </Layout>
               </AuthGuard>
             }

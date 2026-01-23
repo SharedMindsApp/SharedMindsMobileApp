@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   ArrowLeft,
@@ -22,6 +22,10 @@ import {
   MessageCircle,
   FileText,
   Shield,
+  UtensilsCrossed,
+  MapPin,
+  Globe,
+  X,
 } from 'lucide-react';
 import { useUIPreferences } from '../contexts/UIPreferencesContext';
 import { COLOR_THEMES, ALL_NAVIGATION_TABS, DEFAULT_FAVOURITE_NAV_TABS } from '../lib/uiPreferencesTypes';
@@ -33,6 +37,7 @@ import type {
   ContrastLevel,
   AppTheme,
   NavigationTabId,
+  MeasurementSystem,
 } from '../lib/uiPreferencesTypes';
 import { useAuth } from '../contexts/AuthContext';
 
@@ -62,6 +67,9 @@ export function UIPreferencesSettings() {
 
   const [saving, setSaving] = useState(false);
   const [saveMessage, setSaveMessage] = useState('');
+  const [defaultLocation, setDefaultLocation] = useState(config.recipeLocation || '');
+  const [overrideLocation, setOverrideLocation] = useState(config.recipeLocationOverride || '');
+  const [showOverride, setShowOverride] = useState(!!config.recipeLocationOverride);
 
   const handleUpdate = async (updates: any) => {
     try {
@@ -108,6 +116,13 @@ export function UIPreferencesSettings() {
   };
 
   const favouriteNavTabs = config.favouriteNavTabs || DEFAULT_FAVOURITE_NAV_TABS;
+
+  // Sync location state with config when it changes
+  useEffect(() => {
+    setDefaultLocation(config.recipeLocation || '');
+    setOverrideLocation(config.recipeLocationOverride || '');
+    setShowOverride(!!config.recipeLocationOverride);
+  }, [config.recipeLocation, config.recipeLocationOverride]);
 
   const availableNavTabs = ALL_NAVIGATION_TABS.filter((tab) => {
     if (tab.requiresAdmin && !isAdmin) return false;
@@ -280,6 +295,168 @@ export function UIPreferencesSettings() {
                   </button>
                 );
               })}
+            </div>
+          </div>
+
+          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+            <div className="flex items-center gap-3 mb-6">
+              <UtensilsCrossed size={24} className="text-orange-600" />
+              <div>
+                <h2 className="text-xl font-semibold text-gray-900">Measurement System</h2>
+                <p className="text-sm text-gray-600">
+                  Choose how recipe ingredients are displayed
+                </p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {[
+                { value: 'metric' as MeasurementSystem, label: 'Metric', description: 'Grams, milliliters, liters' },
+                { value: 'imperial' as MeasurementSystem, label: 'US Imperial', description: 'Ounces, cups, pounds' },
+              ].map((option) => (
+                <button
+                  key={option.value}
+                  onClick={() => handleUpdate({ measurementSystem: option.value })}
+                  disabled={saving}
+                  className={`text-left p-4 rounded-lg border-2 transition-all ${
+                    (config.measurementSystem || 'metric') === option.value
+                      ? 'border-orange-500 bg-orange-50'
+                      : 'border-gray-200 hover:border-orange-300'
+                  } ${saving ? 'opacity-50 cursor-not-allowed' : ''}`}
+                >
+                  <div className="flex items-start justify-between mb-2">
+                    <h3 className="font-semibold text-gray-900">{option.label}</h3>
+                    {(config.measurementSystem || 'metric') === option.value && (
+                      <Check size={20} className="text-orange-600" />
+                    )}
+                  </div>
+                  <p className="text-sm text-gray-600">{option.description}</p>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+            <div className="flex items-center gap-3 mb-6">
+              <MapPin size={24} className="text-orange-600" />
+              <div>
+                <h2 className="text-xl font-semibold text-gray-900">Recipe Location</h2>
+                <p className="text-sm text-gray-600">
+                  Set your location to get culturally relevant recipes with local ingredients
+                </p>
+              </div>
+            </div>
+
+            {/* Active Location Display */}
+            {(config.recipeLocationOverride || config.recipeLocation) && (
+              <div className="mb-6 p-4 bg-green-50 border border-green-200 rounded-lg">
+                <div className="flex items-center gap-2 mb-1.5">
+                  <Globe size={16} className="text-green-600 flex-shrink-0" />
+                  <span className="text-sm font-medium text-green-900">Active Location:</span>
+                </div>
+                <p className="text-base font-semibold text-green-800 break-words">
+                  {config.recipeLocationOverride || config.recipeLocation}
+                </p>
+                {config.recipeLocationOverride && (
+                  <p className="text-xs text-green-700 mt-1.5">(Temporary override - will use default when cleared)</p>
+                )}
+              </div>
+            )}
+
+            {/* Default Location */}
+            <div className="mb-6">
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Default Location
+              </label>
+              <p className="text-xs text-gray-500 mb-3">
+                Your home location (e.g., "United Kingdom", "London, UK", "New York, USA")
+              </p>
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  defaultValue={config.recipeLocation || ''}
+                  onBlur={(e) => {
+                    const value = e.target.value.trim() || null;
+                    if (value !== config.recipeLocation) {
+                      handleUpdate({ recipeLocation: value });
+                    }
+                  }}
+                  onKeyPress={(e) => {
+                    if (e.key === 'Enter') {
+                      const value = (e.target as HTMLInputElement).value.trim() || null;
+                      if (value !== config.recipeLocation) {
+                        handleUpdate({ recipeLocation: value });
+                      }
+                    }
+                  }}
+                  placeholder="e.g., United Kingdom"
+                  className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
+                  disabled={saving}
+                />
+              </div>
+            </div>
+
+            {/* Location Override */}
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <label className="block text-sm font-medium text-gray-700">
+                  Temporary Location Override
+                </label>
+                {!config.recipeLocationOverride && (
+                  <button
+                    onClick={() => {
+                      const input = document.getElementById('override-location-input') as HTMLInputElement;
+                      if (input) {
+                        input.focus();
+                        input.style.display = 'block';
+                      }
+                    }}
+                    className="text-sm text-orange-600 hover:text-orange-700 font-medium"
+                  >
+                    Set Override
+                  </button>
+                )}
+              </div>
+              <p className="text-xs text-gray-500 mb-3">
+                Use when traveling (e.g., on holiday). Overrides default location for recipe searches.
+              </p>
+              {(config.recipeLocationOverride || document.getElementById('override-location-input')) && (
+                <div className="space-y-3">
+                  <div className="flex gap-2">
+                    <input
+                      id="override-location-input"
+                      type="text"
+                      defaultValue={config.recipeLocationOverride || ''}
+                      onBlur={(e) => {
+                        const value = e.target.value.trim() || null;
+                        if (value !== config.recipeLocationOverride) {
+                          handleUpdate({ recipeLocationOverride: value });
+                        }
+                      }}
+                      onKeyPress={(e) => {
+                        if (e.key === 'Enter') {
+                          const value = (e.target as HTMLInputElement).value.trim() || null;
+                          if (value !== config.recipeLocationOverride) {
+                            handleUpdate({ recipeLocationOverride: value });
+                          }
+                        }
+                      }}
+                      placeholder="e.g., Spain, Barcelona"
+                      className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
+                      disabled={saving}
+                    />
+                  </div>
+                  {config.recipeLocationOverride && (
+                    <button
+                      onClick={() => handleUpdate({ recipeLocationOverride: null })}
+                      disabled={saving}
+                      className="w-full px-4 py-2 border border-gray-300 text-gray-700 rounded-lg font-medium hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                    >
+                      Clear Override
+                    </button>
+                  )}
+                </div>
+              )}
             </div>
           </div>
 

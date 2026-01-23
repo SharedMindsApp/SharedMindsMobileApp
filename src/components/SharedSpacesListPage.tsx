@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Loader2, Users, ArrowRight, Plus, Home, User, ChevronDown, Target, MessageCircle, Settings } from 'lucide-react';
+import { Loader2, Users, ArrowRight, Plus, Home, User, ChevronDown, Target, MessageCircle, Settings, ArrowLeft } from 'lucide-react';
 import { getSharedSpaces, Household } from '../lib/household';
 import { isStandaloneApp } from '../lib/appContext';
 
@@ -58,7 +58,16 @@ export function SharedSpacesListPage() {
       <div className="bg-white border-b border-gray-200 shadow-sm relative z-50">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16">
-            <div className="flex items-center gap-6">
+            <div className="flex items-center gap-4 sm:gap-6">
+              {/* Back Button */}
+              <button
+                onClick={() => navigate('/spaces')}
+                className="flex items-center justify-center w-10 h-10 rounded-lg text-gray-600 hover:bg-gray-100 hover:text-gray-900 transition-colors touch-manipulation"
+                aria-label="Back to main navigation"
+              >
+                <ArrowLeft size={20} />
+              </button>
+              
               <div>
                 <h1 className="text-lg font-bold text-gray-900">Shared Spaces</h1>
                 <p className="text-xs text-gray-500">Collaborative dashboards</p>

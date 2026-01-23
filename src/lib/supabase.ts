@@ -5,12 +5,24 @@ import { createClient } from '@supabase/supabase-js';
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
-// Validate environment variables in production
-if (import.meta.env.PROD && (!supabaseUrl || !supabaseAnonKey)) {
-  console.error('[supabase] Missing required environment variables:', {
+// Validate environment variables
+if (!supabaseUrl || !supabaseAnonKey) {
+  const errorMsg = '[supabase] Missing required environment variables. Please check your .env file.';
+  console.error(errorMsg, {
     hasUrl: !!supabaseUrl,
     hasKey: !!supabaseAnonKey,
+    urlPrefix: supabaseUrl ? supabaseUrl.substring(0, 20) : 'missing',
   });
+  
+  // In development, show a helpful error
+  if (import.meta.env.DEV) {
+    console.error(
+      'Make sure you have VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY in your .env file.\n' +
+      'Example:\n' +
+      'VITE_SUPABASE_URL=https://your-project.supabase.co\n' +
+      'VITE_SUPABASE_ANON_KEY=your-anon-key'
+    );
+  }
 }
 
 // 🔥 Create a fully configured Supabase client with connection resilience

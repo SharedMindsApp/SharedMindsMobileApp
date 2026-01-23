@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { UtensilsCrossed, Coffee, Sun, Moon, X, Plus, Calendar, BookOpen, Heart, ChefHat, Clock, Edit, Trash2, Link as LinkIcon, Star, Search, Filter, ExternalLink, StickyNote } from 'lucide-react';
-import { getWeeklyMealPlan, addMealToPlan, removeMealFromPlan, getWeekStartDate, getMealLibrary, getHouseholdFavourites, toggleMealFavourite, createCustomMeal, updateCustomMeal, deleteCustomMeal, type MealLibraryItem, type MealPlan } from '../../../lib/mealPlanner';
+import { getWeeklyMealPlan, addMealToPlan, addRecipeToPlan, removeMealFromPlan, getWeekStartDate, getMealLibrary, getHouseholdFavourites, toggleMealFavourite, createCustomMeal, updateCustomMeal, deleteCustomMeal, type MealLibraryItem, type MealPlan } from '../../../lib/mealPlanner';
 import { getHouseholdRecipeLinks, createRecipeLink, deleteRecipeLink, toggleRecipeVote, updateRecipeIcon, getPlatformIcon, type RecipeLink } from '../../../lib/recipeLinks';
 import { getRecipeIcon } from '../../../lib/recipeIcons';
 import { MealPickerModal } from '../../meal-planner/MealPickerModal';
@@ -154,7 +154,7 @@ export function HouseholdMeals() {
     setShowMealPicker(true);
   };
 
-  const handleSelectMeal = async (meal: MealLibraryItem | null, customName?: string) => {
+  const handleSelectMeal = async (meal: MealLibraryItem | null, customName?: string, recipeId?: string) => {
     if (!selectedSlot || !user) return;
 
     try {
@@ -166,15 +166,27 @@ export function HouseholdMeals() {
 
       if (!profile) return;
 
-      await addMealToPlan(
-        householdId,
-        meal?.id || null,
-        customName || null,
-        selectedSlot.mealType,
-        selectedSlot.dayIndex,
-        weekStartDate,
-        profile.id
-      );
+      // If recipeId is provided, use addRecipeToPlan; otherwise use addMealToPlan
+      if (recipeId) {
+        await addRecipeToPlan(
+          householdId,
+          recipeId,
+          selectedSlot.mealType,
+          selectedSlot.dayIndex,
+          weekStartDate,
+          profile.id
+        );
+      } else {
+        await addMealToPlan(
+          householdId,
+          meal?.id || null,
+          customName || null,
+          selectedSlot.mealType,
+          selectedSlot.dayIndex,
+          weekStartDate,
+          profile.id
+        );
+      }
 
       await loadMealPlans();
     } catch (error) {
@@ -526,12 +538,12 @@ export function HouseholdMeals() {
                                   </button>
                                 </div>
                                 <p className="text-sm font-bold text-gray-900 mb-2 line-clamp-2">
-                                  {plan.meal?.name || plan.custom_meal_name || 'Unnamed meal'}
+                                  {plan.recipe?.name || plan.meal?.name || plan.custom_meal_name || 'Unnamed meal'}
                                 </p>
-                                {plan.meal && plan.meal.categories && plan.meal.categories.length > 0 && (
+                                {((plan.recipe?.categories && plan.recipe.categories.length > 0) || (plan.meal?.categories && plan.meal.categories.length > 0)) && (
                                   <div className="mt-auto">
                                     <div className="flex flex-wrap gap-1">
-                                      {plan.meal.categories.slice(0, 2).map(cat => (
+                                      {(plan.recipe?.categories || plan.meal?.categories || []).slice(0, 2).map(cat => (
                                         <span key={cat} className="text-xs px-2 py-0.5 bg-orange-200 text-orange-800 rounded font-medium">
                                           {cat.replace(/_/g, ' ')}
                                         </span>

@@ -6,6 +6,7 @@
  */
 
 import { supabase } from './supabase';
+import { getFoodEmoji } from './foodEmojis';
 
 export interface FoodItem {
   id: string;
@@ -47,6 +48,9 @@ export async function getOrCreateFoodItem(
     return existing;
   }
 
+  // Get emoji for the food item
+  const emoji = getFoodEmoji(name, category);
+  
   // Create new food item
   const { data: newItem, error: createError } = await supabase
     .from('food_items')
@@ -54,6 +58,7 @@ export async function getOrCreateFoodItem(
       name: name.trim(),
       normalized_name: normalizedName,
       category: category || null,
+      emoji: emoji || null,
     })
     .select()
     .single();

@@ -8,6 +8,8 @@ import {
   X,
   Plus,
   AlertCircle,
+  Settings,
+  Clock,
 } from 'lucide-react';
 import { getUserHousehold } from '../lib/household';
 import { getHouseholdMembersList } from '../lib/household';
@@ -23,6 +25,8 @@ import {
   MEAL_TIMES,
   MEAL_AVAILABILITY_OPTIONS,
 } from '../lib/dietProfiles';
+import { MealScheduleSettings } from './meal-planner/MealScheduleSettings';
+import { useSpaceContext } from '../hooks/useSpaceContext';
 
 type MemberProfile = {
   id: string;
@@ -45,6 +49,10 @@ export function MealPreferences() {
   const [householdId, setHouseholdId] = useState<string>('');
   const [membersWithDiets, setMembersWithDiets] = useState<MemberWithDiet[]>([]);
   const [newAvoidItem, setNewAvoidItem] = useState<{ [key: string]: string }>({});
+  const [showScheduleSettings, setShowScheduleSettings] = useState(false);
+  
+  // Get current space ID for meal schedule settings
+  const { currentSpaceId } = useSpaceContext(householdId);
 
   useEffect(() => {
     loadData();
@@ -319,10 +327,20 @@ export function MealPreferences() {
         >
           <ArrowLeft size={24} className="text-gray-600" />
         </button>
-        <div>
+        <div className="flex-1">
           <h1 className="text-3xl font-bold text-gray-900">Meal Preferences</h1>
           <p className="text-gray-600">Manage dietary preferences for household members</p>
         </div>
+        {currentSpaceId && (
+          <button
+            onClick={() => setShowScheduleSettings(true)}
+            className="flex items-center gap-2 px-4 py-2 bg-orange-500 text-white rounded-lg hover:bg-orange-600 transition-colors"
+          >
+            <Settings size={18} />
+            <span className="hidden sm:inline">Meal Schedule</span>
+            <span className="sm:hidden">Schedule</span>
+          </button>
+        )}
       </div>
 
       {error && (
@@ -610,6 +628,14 @@ export function MealPreferences() {
             </button>
           </div>
         </div>
+      )}
+
+      {/* Meal Schedule Settings Modal */}
+      {showScheduleSettings && currentSpaceId && (
+        <MealScheduleSettings
+          spaceId={currentSpaceId}
+          onClose={() => setShowScheduleSettings(false)}
+        />
       )}
     </div>
   );

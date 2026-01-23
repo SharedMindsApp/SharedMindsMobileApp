@@ -24,7 +24,11 @@ export type NotificationSignalType =
   | 'streak_broken' 
   | 'update' 
   | 'alert' 
-  | 'milestone';
+  | 'milestone'
+  | 'meal_upcoming'
+  | 'meal_cook_start'
+  | 'meal_check_in'
+  | 'meal_missed';
 
 export interface NotificationCapability {
   feature: NotificationFeature;
@@ -83,6 +87,34 @@ export const NOTIFICATION_CAPABILITIES: Record<NotificationFeature, Notification
       feature: 'planner',
       signalType: 'upcoming_scheduled',
       description: 'Upcoming scheduled items',
+      supportsInApp: true,
+      supportsPush: true,
+    },
+    {
+      feature: 'planner',
+      signalType: 'meal_upcoming',
+      description: 'Reminders for upcoming meals',
+      supportsInApp: true,
+      supportsPush: true,
+    },
+    {
+      feature: 'planner',
+      signalType: 'meal_cook_start',
+      description: 'Prompts to start cooking',
+      supportsInApp: true,
+      supportsPush: true,
+    },
+    {
+      feature: 'planner',
+      signalType: 'meal_check_in',
+      description: 'Check-in prompts after meal time',
+      supportsInApp: true,
+      supportsPush: true,
+    },
+    {
+      feature: 'planner',
+      signalType: 'meal_missed',
+      description: 'Notifications for missed meals (opt-in)',
       supportsInApp: true,
       supportsPush: true,
     },
