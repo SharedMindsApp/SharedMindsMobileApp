@@ -420,7 +420,7 @@ export async function getPantryItems(householdId: string): Promise<PantryItem[]>
 }
 
 export async function addPantryItem(params: {
-  householdId: string;
+  householdId: string; // Can be a space ID or household ID (polymorphic)
   foodItemId?: string; // Preferred - use this
   itemName?: string; // Deprecated - kept for backward compatibility
   category?: string;
@@ -435,7 +435,223 @@ export async function addPantryItem(params: {
   status?: 'have' | 'low' | 'out';
   notes?: string;
   memberId?: string;
+  // Portion tracking fields
+  totalPortions?: number | null; // Total portions available (null = unlimited)
+  portionUnit?: string | null; // Unit for portions (e.g., "serving", "slice")
 }): Promise<PantryItem> {
+  // ============================================================================
+  // 1. RESOLVE SPACE CONTEXT AND VALIDATE OWNERSHIP (FAIL EARLY)
+  // ============================================================================
+  
+  // Fetch space details to determine space type
+  const { data: space, error: spaceError } = await supabase
+    .from('spaces')
+    .select('id, space_type, context_id')
+    .eq('id', params.householdId)
+    .maybeSingle();
+  
+  let resolvedHouseholdId: string | null = null;
+  let resolvedAddedBy: string | null = null;
+  
+  if (space && !spaceError) {
+    // This is a space ID - validate based on space type
+    // Check space_type (not context_type) - shared/household spaces allow pantry items
+    if (space.space_type === 'personal') {
+      // Personal spaces cannot create household_pantry_items
+      throw new Error(
+        'Cannot add pantry items from a personal space. Switch to a household space to add pantry items.'
+      );
+    } else if (space.space_type === 'shared' || space.space_type === 'household') {
+      // Household space: validate household exists and user is a member
+      if (!space.context_id) {
+        throw new Error(
+          `Household space ${space.id} has no associated household. Cannot create pantry item.`
+        );
+      }
+      
+      // Validate household space exists
+      // For household spaces, context_id = space.id (self-reference)
+      const { data: householdSpace, error: householdError } = await supabase
+        .from('spaces')
+        .select('id, context_type')
+        .eq('id', space.context_id)
+        .eq('context_type', 'household')
+        .maybeSingle();
+      
+      if (householdError) {
+        console.error('[addPantryItem] Error validating household space:', {
+          space_id: space.id,
+          context_id: space.context_id,
+          error: householdError.message,
+        });
+        throw new Error('Failed to validate household space. Please try again.');
+      }
+      
+      if (!householdSpace) {
+        throw new Error(
+          `Household space ${space.context_id} associated with space ${space.id} does not exist. Cannot create pantry item.`
+        );
+      }
+      
+      // Validate user is a household member
+      const { data: membershipCheck, error: membershipError } = await supabase
+        .rpc('is_user_household_member', { hid: space.context_id });
+      
+      if (membershipError) {
+        console.error('[addPantryItem] Error checking household membership:', {
+          space_id: space.id,
+          household_id: space.context_id,
+          error: membershipError.message,
+        });
+        throw new Error('Failed to verify household membership. Please try again.');
+      }
+      
+      if (!membershipCheck) {
+        throw new Error(
+          'You are not a member of this household. Cannot add pantry items to spaces you do not have access to.'
+        );
+      }
+      
+      // All validations passed for household space
+      resolvedHouseholdId = space.context_id; // Use household ID, not space ID
+      
+      // Get current user's household_member ID for added_by
+      // RLS policy allows: added_by = get_current_member_id(household_id) OR added_by IS NULL
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        const { data: member, error: memberError } = await supabase
+          .from('household_members')
+          .select('id')
+          .eq('household_id', space.context_id)
+          .eq('auth_user_id', user.id)
+          .eq('status', 'active')
+          .maybeSingle();
+        
+        if (!memberError && member) {
+          resolvedAddedBy = member.id; // Use household_members.id, not auth.uid()
+        }
+        // If member not found, leave as null (RLS allows NULL)
+      }
+      
+      // Log successful resolution
+      if (process.env.NODE_ENV === 'development') {
+        console.debug('[addPantryItem] Resolved household space:', {
+          space_id: space.id,
+          space_type: space.space_type,
+          household_id: resolvedHouseholdId,
+          member_id: resolvedAddedBy,
+        });
+      }
+    } else {
+      // Team or other space types - not supported for pantry items
+      throw new Error(
+        `Space type "${space.space_type}" is not supported for pantry items. Only shared/household spaces can have pantry items.`
+      );
+    }
+  } else if (spaceError) {
+    // Space lookup failed - might be a direct household ID
+    console.warn('[addPantryItem] Space lookup failed, assuming direct household ID:', {
+      householdId: params.householdId,
+      error: spaceError.message,
+    });
+    
+    // Validate it's a real household space
+    // Check if it's a space with context_type = 'household'
+    const { data: householdSpace, error: householdError } = await supabase
+      .from('spaces')
+      .select('id, context_type')
+      .eq('id', params.householdId)
+      .eq('context_type', 'household')
+      .maybeSingle();
+    
+    if (householdError || !householdSpace) {
+      throw new Error(
+        `Invalid household space ID: ${params.householdId}. Cannot create pantry item.`
+      );
+    }
+    
+    // Validate membership
+    const { data: membershipCheck, error: membershipError } = await supabase
+      .rpc('is_user_household_member', { hid: params.householdId });
+    
+    if (membershipError || !membershipCheck) {
+      throw new Error(
+        'You are not a member of this household. Cannot add pantry items to households you do not have access to.'
+      );
+    }
+    
+    resolvedHouseholdId = params.householdId;
+    
+    // Get current user's household_member ID for added_by
+    const { data: { user } } = await supabase.auth.getUser();
+    if (user) {
+      const { data: member, error: memberError } = await supabase
+        .from('household_members')
+        .select('id')
+        .eq('household_id', params.householdId)
+        .eq('auth_user_id', user.id)
+        .eq('status', 'active')
+        .maybeSingle();
+      
+      if (!memberError && member) {
+        resolvedAddedBy = member.id; // Use household_members.id, not auth.uid()
+      }
+      // If member not found, leave as null (RLS allows NULL)
+    }
+  } else {
+    // Space not found - assume it's a direct household ID
+    // Validate it's a real household space
+    // Check if it's a space with context_type = 'household'
+    const { data: householdSpace, error: householdError } = await supabase
+      .from('spaces')
+      .select('id, context_type')
+      .eq('id', params.householdId)
+      .eq('context_type', 'household')
+      .maybeSingle();
+    
+    if (householdError || !householdSpace) {
+      throw new Error(
+        `Invalid household space ID: ${params.householdId}. Cannot create pantry item.`
+      );
+    }
+    
+    // Validate membership
+    const { data: membershipCheck, error: membershipError } = await supabase
+      .rpc('is_user_household_member', { hid: params.householdId });
+    
+    if (membershipError || !membershipCheck) {
+      throw new Error(
+        'You are not a member of this household. Cannot add pantry items to households you do not have access to.'
+      );
+    }
+    
+    resolvedHouseholdId = params.householdId;
+    
+    // Get current user's household_member ID for added_by
+    const { data: { user } } = await supabase.auth.getUser();
+    if (user) {
+      const { data: member, error: memberError } = await supabase
+        .from('household_members')
+        .select('id')
+        .eq('household_id', params.householdId)
+        .eq('auth_user_id', user.id)
+        .eq('status', 'active')
+        .maybeSingle();
+      
+      if (!memberError && member) {
+        resolvedAddedBy = member.id; // Use household_members.id, not auth.uid()
+      }
+      // If member not found, leave as null (RLS allows NULL)
+    }
+  }
+  
+  // Final validation - must have resolved household ID
+  if (!resolvedHouseholdId) {
+    throw new Error(
+      'Failed to resolve household context. Cannot create pantry item.'
+    );
+  }
+
   // Get or create food item
   let foodItemId: string;
   if (params.foodItemId) {
@@ -476,10 +692,51 @@ export async function addPantryItem(params: {
     }
   }
 
+  // Normalize quantity to logical whole units (e.g., 1L bottle, 15 onions, 1kg carrots)
+  if (quantityValue && foodItemId) {
+    try {
+      const { normalizePantryQuantity } = await import('./pantryQuantityNormalizer');
+      const normalized = await normalizePantryQuantity(
+        quantityValue,
+        quantityUnit,
+        foodItemId,
+        itemName
+      );
+      quantityValue = normalized.quantityValue;
+      quantityUnit = normalized.quantityUnit;
+    } catch (error) {
+      console.warn('[addPantryItem] Failed to normalize quantity, using original:', error);
+      // Continue with original values if normalization fails
+    }
+  }
+
+  // ============================================================================
+  // 2. PREPARE INSERT PAYLOAD (after validation)
+  // ============================================================================
+  
+  // Use resolved added_by (from auth user) or provided memberId
+  const finalAddedBy = params.memberId || resolvedAddedBy;
+  
+  // Debug logging
+  if (process.env.NODE_ENV === 'development') {
+    console.debug('[addPantryItem] Insert payload:', {
+      household_id: resolvedHouseholdId,
+      original_householdId: params.householdId,
+      space_context_type: space?.context_type,
+      space_context_id: space?.context_id,
+      added_by: finalAddedBy,
+      food_item_id: foodItemId,
+    });
+  }
+
+  // ============================================================================
+  // 3. INSERT PANTRY ITEM (after all validations passed)
+  // ============================================================================
+  
   const { data, error } = await supabase
     .from('household_pantry_items')
     .insert({
-      household_id: params.householdId,
+      household_id: resolvedHouseholdId,
       food_item_id: foodItemId,
       item_name: itemName, // Store for backward compatibility (can be NULL after migration)
       category: category,
@@ -493,7 +750,11 @@ export async function addPantryItem(params: {
       location_id: params.locationId || null, // Preferred
       status: params.status || null,
       notes: params.notes || null,
-      added_by: params.memberId || null,
+      added_by: finalAddedBy, // Use resolved auth user ID
+      // Portion tracking fields
+      total_portions: params.totalPortions !== undefined ? params.totalPortions : null,
+      portion_unit: params.portionUnit || null,
+      // remaining_portions will be set automatically by trigger to match total_portions
     })
     .select(`
       *,
@@ -502,7 +763,19 @@ export async function addPantryItem(params: {
     `)
     .single();
 
-  if (error) throw error;
+  if (error) {
+    // Enhanced error logging
+    console.error('[addPantryItem] Insert failed:', {
+      code: error.code,
+      message: error.message,
+      resolved_household_id: resolvedHouseholdId,
+      original_householdId: params.householdId,
+      space_context_type: space?.context_type,
+      space_context_id: space?.context_id,
+      added_by: finalAddedBy,
+    });
+    throw error;
+  }
   
   // Ensure item_name is available for backward compatibility
   return {

@@ -26,12 +26,16 @@ import {
   BookOpen,
   CheckCircle2,
   Package,
+  Settings,
+  Check,
 } from 'lucide-react';
 import { WidgetType, TrackerAppContent } from '../../lib/fridgeCanvasTypes';
 import { createWidget, getDefaultWidgetContent } from '../../lib/fridgeCanvas';
 import { showToast } from '../Toast';
 import { SelectTrackerModal } from '../fridge-canvas/widgets/SelectTrackerModal';
 import { getTracker } from '../../lib/trackerStudio/trackerService';
+import { useUIPreferences } from '../../contexts/UIPreferencesContext';
+import { WIDGET_COLOR_TOKENS, type WidgetColorToken } from '../../lib/uiPreferencesTypes';
 
 interface MobileAddWidgetModalProps {
   isOpen: boolean;
@@ -223,6 +227,8 @@ export function MobileAddWidgetModal({ isOpen, onClose, householdId, onWidgetAdd
   const [isCreating, setIsCreating] = useState(false);
   const [showTrackerSelect, setShowTrackerSelect] = useState(false);
   const [pendingWidgetType, setPendingWidgetType] = useState<WidgetType | null>(null);
+  const [colorPickerWidget, setColorPickerWidget] = useState<WidgetOption | null>(null);
+  const { getWidgetColor, setWidgetColor, getTrackerColor } = useUIPreferences();
 
   const filteredWidgets = useMemo(() => {
     let widgets = widgetOptions;
@@ -244,6 +250,31 @@ export function MobileAddWidgetModal({ isOpen, onClose, householdId, onWidgetAdd
     return widgets;
   }, [searchTerm, selectedCategory]);
 
+  const handleWidgetClick = (option: WidgetOption, e: React.MouseEvent) => {
+    // If settings icon was clicked, show color picker
+    if ((e.target as HTMLElement).closest('[data-settings-button]')) {
+      e.stopPropagation();
+      setColorPickerWidget(option);
+      return;
+    }
+
+    // Otherwise, add the widget
+    handleAddWidget(option);
+  };
+
+  const handleColorSelect = async (color: WidgetColorToken) => {
+    if (!colorPickerWidget) return;
+
+    // Save the color preference for this widget type
+    if (colorPickerWidget.type !== 'graphics' && colorPickerWidget.type !== 'tracker_app') {
+      await setWidgetColor(colorPickerWidget.type as WidgetType, color);
+      showToast('success', `${colorPickerWidget.label} color updated`);
+    }
+
+    // Close color picker (user can click widget again to add it)
+    setColorPickerWidget(null);
+  };
+
   const handleAddWidget = async (option: WidgetOption) => {
     if (isCreating) return;
 
@@ -263,7 +294,39 @@ export function MobileAddWidgetModal({ isOpen, onClose, householdId, onWidgetAdd
     try {
       setIsCreating(true);
       const content = getDefaultWidgetContent(option.type as WidgetType);
-      await createWidget(householdId, option.type as WidgetType, content);
+      
+      // Get the user's color preference for this widget type
+      const widgetColor = getWidgetColor(option.type as WidgetType);
+      
+      // Map WidgetColorToken to color string for createWidget
+      // The createWidget function expects color strings like "blue", "cyan", etc.
+      const colorMap: Record<WidgetColorToken, string> = {
+        cyan: 'cyan',
+        blue: 'blue',
+        violet: 'violet',
+        pink: 'pink',
+        orange: 'orange',
+        green: 'green',
+        yellow: 'yellow',
+        neutral: 'slate',
+        red: 'red',
+        teal: 'teal',
+        emerald: 'emerald',
+        amber: 'amber',
+        indigo: 'indigo',
+        rose: 'rose',
+        sky: 'sky',
+        lime: 'lime',
+        fuchsia: 'fuchsia',
+        slate: 'slate',
+      };
+      
+      const colorString = colorMap[widgetColor] || 'yellow';
+      
+      await createWidget(householdId, option.type as WidgetType, content, {
+        color: colorString,
+      });
+      
       showToast('success', `${option.label} added successfully`);
       onWidgetAdded();
       onClose();
@@ -292,7 +355,35 @@ export function MobileAddWidgetModal({ isOpen, onClose, householdId, onWidgetAdd
           if (tracker) {
             widgetTitle = tracker.name;
             widgetIcon = tracker.icon || 'Activity';
-            widgetColor = tracker.color || 'indigo';
+            
+            // Check for custom color preference first, then fall back to tracker's color
+            const customColor = getTrackerColor(trackerId);
+            if (customColor) {
+            // Map WidgetColorToken to color string for createWidget
+            const colorMap: Record<WidgetColorToken, string> = {
+              cyan: 'cyan',
+              blue: 'blue',
+              violet: 'violet',
+              pink: 'pink',
+              orange: 'orange',
+              green: 'green',
+              yellow: 'yellow',
+              neutral: 'slate',
+              red: 'red',
+              teal: 'teal',
+              emerald: 'emerald',
+              amber: 'amber',
+              indigo: 'indigo',
+              rose: 'rose',
+              sky: 'sky',
+              lime: 'lime',
+              fuchsia: 'fuchsia',
+              slate: 'slate',
+            };
+              widgetColor = colorMap[customColor] || 'indigo';
+            } else {
+              widgetColor = tracker.color || 'indigo';
+            }
           }
         } catch (err) {
           console.error('Failed to fetch tracker:', err);
@@ -400,28 +491,119 @@ export function MobileAddWidgetModal({ isOpen, onClose, householdId, onWidgetAdd
           <div className="grid grid-cols-2 gap-4">
             {filteredWidgets.map((option) => {
               const Icon = option.icon;
+              const currentColor = getWidgetColor(option.type as WidgetType);
+              const colorInfo = WIDGET_COLOR_TOKENS[currentColor];
+              const colorRgb = colorInfo.rgb;
+              
               return (
-                <button
-                  key={option.type}
-                  onClick={() => handleAddWidget(option)}
-                  disabled={isCreating}
-                  className={`${option.color} rounded-2xl p-4 flex flex-col items-center justify-center gap-3 active:scale-95 transition-transform min-h-[120px] ${
-                    isCreating ? 'opacity-50 cursor-not-allowed' : ''
-                  }`}
-                >
-                  <div className={`p-3 rounded-xl bg-white ${option.iconColor}`}>
-                    <Icon size={32} />
-                  </div>
-                  <div className="text-center">
-                    <p className="font-semibold text-gray-900 text-sm">{option.label}</p>
-                    <p className="text-xs text-gray-600 mt-1">{option.description}</p>
-                  </div>
-                </button>
+                <div key={option.type} className="relative">
+                  <button
+                    onClick={(e) => handleWidgetClick(option, e)}
+                    disabled={isCreating}
+                    className={`${option.color} rounded-2xl p-4 flex flex-col items-center justify-center gap-3 active:scale-95 transition-transform min-h-[120px] w-full ${
+                      isCreating ? 'opacity-50 cursor-not-allowed' : ''
+                    }`}
+                  >
+                    <div 
+                      className="p-3 rounded-xl bg-white relative"
+                      style={{
+                        backgroundColor: `rgba(${colorRgb}, 0.15)`,
+                        border: `2px solid rgba(${colorRgb}, 0.4)`,
+                      }}
+                    >
+                      <Icon size={32} style={{ color: `rgb(${colorRgb})` }} />
+                    </div>
+                    <div className="text-center">
+                      <p className="font-semibold text-gray-900 text-sm">{option.label}</p>
+                      <p className="text-xs text-gray-600 mt-1">{option.description}</p>
+                    </div>
+                  </button>
+                  {/* Settings icon for color customization */}
+                  <button
+                    data-settings-button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setColorPickerWidget(option);
+                    }}
+                    className="absolute top-2 right-2 p-1.5 bg-white/90 hover:bg-white rounded-lg shadow-sm transition-colors z-10"
+                    aria-label="Customize color"
+                  >
+                    <Settings size={16} className="text-gray-600" />
+                  </button>
+                </div>
               );
             })}
           </div>
         )}
       </div>
+
+      {/* Color Picker Modal */}
+      {colorPickerWidget && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[60] flex items-center justify-center p-4">
+          <div
+            className="absolute inset-0"
+            onClick={() => setColorPickerWidget(null)}
+          />
+          <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden">
+            <div className="px-6 py-5 border-b border-gray-200">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="font-semibold text-gray-900">Customize Color</h3>
+                  <p className="text-sm text-gray-500 mt-0.5">
+                    Choose a color for {colorPickerWidget.label}
+                  </p>
+                </div>
+                <button
+                  onClick={() => setColorPickerWidget(null)}
+                  className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+                  aria-label="Close"
+                >
+                  <X size={20} className="text-gray-600" />
+                </button>
+              </div>
+            </div>
+
+            <div className="p-6">
+              <div className="grid grid-cols-5 gap-3 max-h-96 overflow-y-auto">
+                {(Object.keys(WIDGET_COLOR_TOKENS) as WidgetColorToken[]).map((colorKey) => {
+                  const color = WIDGET_COLOR_TOKENS[colorKey];
+                  const isSelected = getWidgetColor(colorPickerWidget.type as WidgetType) === colorKey;
+
+                  return (
+                    <button
+                      key={colorKey}
+                      onClick={() => handleColorSelect(colorKey)}
+                      className={`group relative flex flex-col items-center gap-2 p-3 rounded-xl transition-all hover:bg-gray-50 ${
+                        isSelected ? 'bg-gray-50 ring-2 ring-blue-600' : ''
+                      }`}
+                    >
+                      <div
+                        className="w-12 h-12 rounded-xl shadow-sm transition-transform group-hover:scale-110"
+                        style={{ backgroundColor: `rgb(${color.rgb})` }}
+                      />
+                      <span className="text-xs font-medium text-gray-700">{color.label}</span>
+                      {isSelected && (
+                        <div className="absolute top-1 right-1 w-5 h-5 bg-blue-600 rounded-full flex items-center justify-center">
+                          <Check size={12} className="text-white" />
+                        </div>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div className="px-6 pb-6">
+              <button
+                onClick={() => setColorPickerWidget(null)}
+                className="w-full px-4 py-3 bg-gray-100 hover:bg-gray-200 text-gray-700 font-medium rounded-xl transition-colors"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Loading Overlay */}
       {isCreating && (

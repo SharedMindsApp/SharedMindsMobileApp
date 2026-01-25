@@ -25,6 +25,8 @@ import { SharedSpaceSwitcher } from '../shared/SharedSpaceSwitcher';
 import { SharedSpacesManagementPanel } from '../shared/SharedSpacesManagementPanel';
 import { CreateSpaceModal } from '../shared/CreateSpaceModal';
 import { useActiveData } from '../../contexts/ActiveDataContext';
+import { useUIPreferences } from '../../contexts/UIPreferencesContext';
+import { WIDGET_COLOR_TOKENS } from '../../lib/uiPreferencesTypes';
 
 interface SpacesOSLauncherProps {
   widgets: WidgetWithLayout[];
@@ -34,9 +36,14 @@ interface SpacesOSLauncherProps {
 }
 
 // Constants
-const WIDGETS_PER_PAGE = 16; // 4x4 grid
-const GRID_COLS = 4;
-const GRID_ROWS = 4;
+const GRID_ROWS = 7; // 7 rows for mobile to fit 21 apps (3×7), 5 rows for larger screens
+// Grid columns are responsive: 3 on mobile, 4 on tablet, 5 on desktop
+
+// Drag and drop thresholds
+const DRAG_THRESHOLD_PX = 3; // Movement threshold to start dragging
+const TAP_THRESHOLD_PX = 8; // Maximum movement for tap/click to register
+const LONG_PRESS_MS_MOBILE = 350; // Long-press duration for mobile (touch)
+const LONG_PRESS_MS_DESKTOP = 200; // Click-and-hold duration for desktop (mouse)
 
 // Phase 9A: Widget type to icon mapping
 const WIDGET_ICON_MAP: Record<string, keyof typeof Icons> = {
@@ -97,6 +104,7 @@ export function SpacesOSLauncher({ widgets, householdId, householdName, onWidget
   const location = useLocation();
   const [searchParams, setSearchParams] = useSearchParams();
   const { state: adcState } = useActiveData();
+  const { getWidgetColor, getTrackerColor } = useUIPreferences();
   
   // Explicit launcher modes - single source of truth
   type LauncherMode = 'normal' | 'editing' | 'dragging';
@@ -105,7 +113,16 @@ export function SpacesOSLauncher({ widgets, householdId, householdName, onWidget
   
   // Long-press state (only for entering edit mode)
   const longPressTimerRef = useRef<NodeJS.Timeout | null>(null);
-  const longPressStartRef = useRef<{ widgetId: string; startX: number; startY: number } | null>(null);
+  const longPressStartRef = useRef<{ widgetId: string; startX: number; startY: number; pointerType: string; startTime: number } | null>(null);
+  // Pointer state tracking refs
+  const isPointerDownRef = useRef(false);
+  const activePointerTypeRef = useRef<'mouse' | 'touch' | 'pen' | null>(null);
+  const lastPointerRef = useRef<{ x: number; y: number } | null>(null);
+  const activePointerIdRef = useRef<number | null>(null);
+  // Prevent snap-back during reorder: stop deriving orderedWidgets from widgets while reordering
+  const isReorderingRef = useRef(false);
+  // Track the last committed widget order to gate re-derivation until backend catches up
+  const lastCommittedOrderRef = useRef<string | null>(null);
   
   // Drag state (only active in editing mode)
   const [draggedWidgetId, setDraggedWidgetId] = useState<string | null>(null);
@@ -142,9 +159,10 @@ export function SpacesOSLauncher({ widgets, householdId, householdName, onWidget
   const [tappedWidget, setTappedWidget] = useState<{ widget: WidgetWithLayout; rect: DOMRect } | null>(null);
   const [isTransitioning, setIsTransitioning] = useState(false);
   const [pageTransitionDirection, setPageTransitionDirection] = useState<'left' | 'right' | null>(null);
-  const [gridCols, setGridCols] = useState(4); // Responsive grid columns
+  const [gridCols, setGridCols] = useState(4); // Responsive grid columns: 3 mobile, 4 tablet, 5 desktop
   const [cellWidth, setCellWidth] = useState(112); // Dynamic cell width for drag calculations
   const [cellHeight, setCellHeight] = useState(116); // Dynamic cell height for drag calculations
+  const [swipeOffset, setSwipeOffset] = useState(0); // For smooth swipe animation
   const gridRef = useRef<HTMLDivElement>(null);
   
   // Keep refs in sync with state
@@ -157,8 +175,9 @@ export function SpacesOSLauncher({ widgets, householdId, householdName, onWidget
   useEffect(() => {
     const updateGridDimensions = () => {
       // Determine number of columns based on screen width
+      // 3 columns on mobile (< 480px), 4 on tablet (480-1024px), 5 on desktop (> 1024px)
       const screenWidth = window.innerWidth;
-      const cols = screenWidth < 480 ? 3 : 4;
+      const cols = screenWidth < 480 ? 3 : screenWidth < 1024 ? 4 : 5;
       setGridCols(cols);
       
       // Calculate cell dimensions based on screen width and responsive sizing
@@ -166,13 +185,13 @@ export function SpacesOSLauncher({ widgets, householdId, householdName, onWidget
       const horizontalPadding = screenWidth < 640 ? 24 : 32; // 12px * 2 or 16px * 2
       const availableWidth = screenWidth - horizontalPadding;
       
-      // Gap sizes: gap-4 (16px) on mobile, gap-6 (24px) on sm, gap-8 (32px) on md+
-      const gapSize = screenWidth < 640 ? 16 : screenWidth < 768 ? 24 : 32;
+      // Optimized gap sizes: gap-3 (12px) on mobile for 21 apps, gap-4 (16px) on sm, gap-5 (20px) on md+
+      const gapSize = screenWidth < 640 ? 12 : screenWidth < 768 ? 16 : 20;
       
       // Calculate cell width: (available width - (gaps * (cols - 1))) / cols
       const cellW = (availableWidth - (gapSize * (cols - 1))) / cols;
       
-      // Cell height: icon height (64px on mobile, 72px on sm, 80px on md+) + label (18-20px) + gap
+      // Keep original icon sizes: 64px on mobile, 72px on sm, 80px on md+
       const iconHeight = screenWidth < 640 ? 64 : screenWidth < 768 ? 72 : 80;
       const labelHeight = screenWidth < 640 ? 18 : 20;
       const verticalGap = gapSize;
@@ -236,12 +255,35 @@ export function SpacesOSLauncher({ widgets, householdId, householdName, onWidget
     return result;
   }, [widgets]);
 
-  // Initialize ordered widgets based on layout position_x (used as display order)
+  // IMPORTANT: position_x / position_y are canvas coordinates only.
+  // Launcher ordering MUST use launcher_order.
+  // Never mix these systems.
+  // Initialize ordered widgets based on layout launcher_order (used as display order)
   useEffect(() => {
+    if (isReorderingRef.current) {
+      const incomingKey = [...deduplicatedWidgets]
+        .sort((a, b) => {
+          const orderA = a.layout.launcher_order ?? Number.MAX_SAFE_INTEGER;
+          const orderB = b.layout.launcher_order ?? Number.MAX_SAFE_INTEGER;
+          return orderA - orderB;
+        })
+        .map(w => w.id)
+        .join('|');
+
+      // Backend has not caught up yet → keep optimistic UI
+      if (incomingKey !== lastCommittedOrderRef.current) {
+        return;
+      }
+
+      // Backend now matches → unlock derivation
+      isReorderingRef.current = false;
+    }
+
     if (deduplicatedWidgets.length > 0) {
       const sorted = [...deduplicatedWidgets].sort((a, b) => {
-        const orderA = a.layout.position_x ?? 0;
-        const orderB = b.layout.position_x ?? 0;
+        // Use MAX_SAFE_INTEGER for missing/null launcher_order so new widgets appear at the end
+        const orderA = a.layout.launcher_order ?? Number.MAX_SAFE_INTEGER;
+        const orderB = b.layout.launcher_order ?? Number.MAX_SAFE_INTEGER;
         return orderA - orderB;
       });
       setOrderedWidgets(sorted);
@@ -256,8 +298,10 @@ export function SpacesOSLauncher({ widgets, householdId, householdName, onWidget
   }, [deduplicatedWidgets, widgetsInitialized]);
 
   // Calculate total pages
-  // Calculate widgets per page based on responsive grid columns
-  const widgetsPerPage = gridCols * GRID_ROWS;
+  // Calculate widgets per page based on responsive grid columns and rows
+  // Mobile: 3 cols × 7 rows = 21 apps, Tablet: 4 cols × 5 rows = 20 apps, Desktop: 5 cols × 5 rows = 25 apps
+  const rowsPerPage = gridCols === 3 ? 7 : 5; // 7 rows on mobile (3 cols), 5 rows on larger screens
+  const widgetsPerPage = gridCols * rowsPerPage;
   const totalPages = Math.ceil(orderedWidgets.length / widgetsPerPage);
 
   // Adjust current page if grid columns change (e.g., screen resize)
@@ -369,30 +413,74 @@ export function SpacesOSLauncher({ widgets, householdId, householdName, onWidget
     }
   };
 
-  // Long-press handler - ONLY enters edit mode, never starts dragging
-  const handlePointerDown = (clientX: number, clientY: number, widget: WidgetWithLayout) => {
+  // Long-press handler - enters edit mode, or starts dragging in edit mode
+  const handlePointerDown = (clientX: number, clientY: number, widget: WidgetWithLayout, pointerType: string) => {
     // Clear any existing timer
     if (longPressTimerRef.current) {
       clearTimeout(longPressTimerRef.current);
       longPressTimerRef.current = null;
     }
 
-    // Only handle long-press in normal mode
-    if (launcherMode === 'normal') {
+    // In edit mode, allow immediate dragging (no long press needed)
+    if (launcherMode === 'editing') {
       longPressStartRef.current = {
         widgetId: widget.id,
         startX: clientX,
         startY: clientY,
+        pointerType,
+        startTime: Date.now(),
+      };
+      // Don't set drag position yet - wait for movement to start drag
+      // This prevents the widget from jumping before user moves
+      return;
+    }
+
+    // In normal mode, long-press/click-and-hold to enter edit mode
+    if (launcherMode === 'normal') {
+      const isMouse = pointerType === 'mouse';
+      const holdDuration = isMouse ? LONG_PRESS_MS_DESKTOP : LONG_PRESS_MS_MOBILE;
+      
+      longPressStartRef.current = {
+        widgetId: widget.id,
+        startX: clientX,
+        startY: clientY,
+        pointerType,
+        startTime: Date.now(),
       };
 
-      // Start long-press timer (350ms)
+      // Start long-press timer (different for mouse vs touch)
       longPressTimerRef.current = setTimeout(() => {
-        setLauncherMode('editing');
-        toggleWidgetSelection(widget.id);
-        showToast('info', 'Edit mode enabled. Tap to select, drag to reorder.');
+        // Check if pointer is still down
+        if (!isPointerDownRef.current || !longPressStartRef.current) return;
+        
+        const currentPointer = lastPointerRef.current || { x: clientX, y: clientY };
+        
+        // On desktop (mouse), immediately start dragging if pointer is still down
+        if (isMouse) {
+          // Start dragging at current pointer position so widget follows immediately
+          setLauncherMode('dragging');
+          setDraggedWidgetId(widget.id);
+          setDragPosition({ x: currentPointer.x, y: currentPointer.y });
+          
+          // IMPORTANT: Update longPressStartRef with current pointer position
+          longPressStartRef.current = {
+            widgetId: widget.id,
+            startX: currentPointer.x,
+            startY: currentPointer.y,
+            pointerType,
+            startTime: Date.now(),
+          };
+          
+          showToast('info', 'Drag to reorder apps.');
+        } else {
+          // On mobile (touch), enter editing mode first
+          setLauncherMode('editing');
+          toggleWidgetSelection(widget.id);
+          showToast('info', 'Edit mode enabled. Drag to reorder apps.');
+        }
         longPressTimerRef.current = null;
-        longPressStartRef.current = null;
-      }, 350);
+        // Keep longPressStartRef so dragging can start immediately
+      }, holdDuration);
     }
   };
 
@@ -406,39 +494,111 @@ export function SpacesOSLauncher({ widgets, householdId, householdName, onWidget
     // Only handle primary pointer (left mouse button or touch)
     if (e.button !== 0 && e.pointerType !== 'touch') return;
 
-    e.preventDefault();
-    handlePointerDown(e.clientX, e.clientY, widget);
+    e.stopPropagation();
+    
+    // Only prevent default for touch (to block scrolling)
+    if (e.pointerType === 'touch') {
+      e.preventDefault();
+    }
+    
+    // Update pointer state refs
+    isPointerDownRef.current = true;
+    activePointerTypeRef.current = e.pointerType as 'mouse' | 'touch' | 'pen';
+    activePointerIdRef.current = e.pointerId;
+    lastPointerRef.current = { x: e.clientX, y: e.clientY };
+    
+    // Use pointer position directly - widget will follow pointer
+    handlePointerDown(e.clientX, e.clientY, widget, e.pointerType);
+    
+    // Set pointer capture on the button element for reliable drag tracking
+    if (e.currentTarget instanceof HTMLElement) {
+      try {
+        e.currentTarget.setPointerCapture(e.pointerId);
+      } catch (err) {
+        // setPointerCapture may fail in some browsers, continue anyway
+        console.debug('setPointerCapture failed:', err);
+      }
+    }
   };
 
   // Handle pointer move - cancel long-press if moved too much, or handle drag in edit mode
   const handlePointerMove = (clientX: number, clientY: number) => {
-    // Cancel long-press if user moves more than 8px
-    if (launcherMode === 'normal' && longPressStartRef.current) {
-      const deltaX = Math.abs(clientX - longPressStartRef.current.startX);
-      const deltaY = Math.abs(clientY - longPressStartRef.current.startY);
-      const totalMovement = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
+    // Update last pointer position
+    lastPointerRef.current = { x: clientX, y: clientY };
+    
+    if (!longPressStartRef.current) return;
 
-      if (totalMovement > 8) {
-        // Cancel long-press timer
+    const deltaX = Math.abs(clientX - longPressStartRef.current.startX);
+    const deltaY = Math.abs(clientY - longPressStartRef.current.startY);
+    const totalMovement = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
+
+    // Cancel long-press if user moves more than TAP_THRESHOLD in normal mode
+    if (launcherMode === 'normal' && longPressStartRef.current) {
+      const isMouse = longPressStartRef.current.pointerType === 'mouse';
+
+      // ✅ Mouse: do NOT cancel long-press due to drift.
+      // We want click+hold to remain valid even if the mouse moves.
+      if (!isMouse) {
+        // Touch: still cancel long-press if user moves too much (so taps/scrolls behave)
+        if (totalMovement > TAP_THRESHOLD_PX) {
+          if (longPressTimerRef.current) {
+            clearTimeout(longPressTimerRef.current);
+            longPressTimerRef.current = null;
+          }
+          longPressStartRef.current = null;
+          // DO NOT set isPointerDownRef.current = false here - pointer-up is the only authority
+          return;
+        }
+      }
+
+      // Optional but recommended: if mouse moves beyond drag threshold while held,
+      // start dragging immediately (feels more OS-like).
+      if (isMouse && isPointerDownRef.current && totalMovement > DRAG_THRESHOLD_PX) {
+        // Start dragging right now without waiting for the timer
         if (longPressTimerRef.current) {
           clearTimeout(longPressTimerRef.current);
           longPressTimerRef.current = null;
         }
-        longPressStartRef.current = null;
-        return;
-      }
-    }
 
-    // Handle dragging ONLY in editing mode
-    if (launcherMode === 'editing' && longPressStartRef.current) {
-      const deltaX = Math.abs(clientX - longPressStartRef.current.startX);
-      const deltaY = Math.abs(clientY - longPressStartRef.current.startY);
-      const totalMovement = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
-
-      // Start dragging if moved more than 6px
-      if (totalMovement > 6 && !draggedWidgetId) {
         setLauncherMode('dragging');
         setDraggedWidgetId(longPressStartRef.current.widgetId);
+        setDragPosition({ x: clientX, y: clientY });
+
+        // Reset start point so subsequent movement deltas behave
+        longPressStartRef.current = {
+          ...longPressStartRef.current,
+          startX: clientX,
+          startY: clientY,
+          startTime: Date.now(),
+        };
+      }
+
+      // Don't process drag in normal mode - wait for edit mode or immediate drag start above
+      return;
+    }
+
+    // Handle dragging in editing mode
+    if (launcherMode === 'editing' && longPressStartRef.current && !draggedWidgetId) {
+      const isMouse = longPressStartRef.current.pointerType === 'mouse';
+      const timeSinceStart = Date.now() - (longPressStartRef.current.startTime || Date.now());
+      
+      // For mouse: start drag if moved > threshold OR held for > desktop hold time
+      // For touch: start drag if moved > threshold (already in edit mode from long-press)
+      const shouldStartDrag = totalMovement > DRAG_THRESHOLD_PX || 
+        (isMouse && timeSinceStart > LONG_PRESS_MS_DESKTOP);
+
+      if (shouldStartDrag) {
+        // Start dragging at current pointer position so widget follows immediately
+        setLauncherMode('dragging');
+        setDraggedWidgetId(longPressStartRef.current.widgetId);
+        setDragPosition({ x: clientX, y: clientY });
+        // Clear long press timer since we're now dragging
+        if (longPressTimerRef.current) {
+          clearTimeout(longPressTimerRef.current);
+          longPressTimerRef.current = null;
+        }
+      } else {
+        // Update drag position even if not dragging yet (for visual feedback)
         setDragPosition({ x: clientX, y: clientY });
       }
     }
@@ -448,17 +608,53 @@ export function SpacesOSLauncher({ widgets, householdId, householdName, onWidget
       setDragPosition({ x: clientX, y: clientY });
 
       // Calculate which grid position we're over
-      if (containerRef.current) {
-        const containerRect = containerRef.current.getBoundingClientRect();
-        const relativeX = clientX - containerRect.left;
-        const relativeY = clientY - containerRect.top;
+      if (gridRef.current) {
+        const gridRect = gridRef.current.getBoundingClientRect();
+        const relativeX = clientX - gridRect.left;
+        const relativeY = clientY - gridRect.top;
 
-        const gridX = Math.floor(relativeX / cellWidth);
-        const gridY = Math.floor(relativeY / cellHeight);
+        const rowsPerPage = gridCols === 3 ? 7 : 5;
+        const gapSize = window.innerWidth < 640 ? 12 : window.innerWidth < 768 ? 16 : 20;
+        
+        // Calculate grid position accounting for gaps
+        // Each cell is cellWidth wide with gapSize gap after it (except last in row)
+        let gridX = 0;
+        let gridY = 0;
+        
+        // Find which column by checking which cell range we're in
+        for (let col = 0; col < gridCols; col++) {
+          const cellStart = col * (cellWidth + gapSize);
+          const cellEnd = cellStart + cellWidth;
+          if (relativeX >= cellStart && relativeX < cellEnd) {
+            gridX = col;
+            break;
+          }
+          if (col === gridCols - 1 && relativeX >= cellStart) {
+            gridX = col;
+          }
+        }
+        
+        // Find which row by checking which cell range we're in
+        for (let row = 0; row < rowsPerPage; row++) {
+          const cellStart = row * (cellHeight + gapSize);
+          const cellEnd = cellStart + cellHeight;
+          if (relativeY >= cellStart && relativeY < cellEnd) {
+            gridY = row;
+            break;
+          }
+          if (row === rowsPerPage - 1 && relativeY >= cellStart) {
+            gridY = row;
+          }
+        }
+        
+        // Clamp to valid grid bounds
+        gridX = Math.max(0, Math.min(gridCols - 1, gridX));
+        gridY = Math.max(0, Math.min(rowsPerPage - 1, gridY));
 
-        if (gridX >= 0 && gridX < gridCols && gridY >= 0 && gridY < GRID_ROWS) {
-          const widgetsPerPage = gridCols * GRID_ROWS;
+        if (gridX >= 0 && gridX < gridCols && gridY >= 0 && gridY < rowsPerPage) {
+          const widgetsPerPage = gridCols * rowsPerPage;
           const targetIndex = gridY * gridCols + gridX + (currentPage * widgetsPerPage);
+          
           if (targetIndex >= 0 && targetIndex < orderedWidgets.length) {
             if (targetIndex !== draggedOverIndex) {
               setDraggedOverIndex(targetIndex);
@@ -469,27 +665,50 @@ export function SpacesOSLauncher({ widgets, householdId, householdName, onWidget
     }
   };
 
-  // Handle pointer move event
+  // Handle pointer move event (from button)
   const handlePointerMoveEvent = (e: React.PointerEvent) => {
     if (isGestureBlockedTarget(e.target)) {
       return;
     }
 
-    handlePointerMove(e.clientX, e.clientY);
-
-    // Prevent default scrolling while dragging
-    if (launcherMode === 'dragging') {
+    // Only prevent default for touch to block scrolling
+    // Mouse dragging does not require preventDefault() and blocking it suppresses movement events
+    if (e.pointerType === 'touch') {
       e.preventDefault();
     }
+
+    handlePointerMove(e.clientX, e.clientY);
   };
+
 
   // Handle pointer up - commit drag or toggle selection
   const handlePointerUp = (e: React.PointerEvent, widget: WidgetWithLayout) => {
+    // Update pointer state refs
+    isPointerDownRef.current = false;
+    activePointerTypeRef.current = null;
+    activePointerIdRef.current = null;
+    
+    // Release pointer capture from the button element
+    if (e.currentTarget instanceof HTMLElement) {
+      try {
+        e.currentTarget.releasePointerCapture(e.pointerId);
+      } catch (err) {
+        // releasePointerCapture may fail, continue anyway
+        console.debug('releasePointerCapture failed:', err);
+      }
+    }
+
     // Clear long-press timer
     if (longPressTimerRef.current) {
       clearTimeout(longPressTimerRef.current);
       longPressTimerRef.current = null;
     }
+
+    if (!longPressStartRef.current) return;
+
+    const deltaX = Math.abs(e.clientX - longPressStartRef.current.startX);
+    const deltaY = Math.abs(e.clientY - longPressStartRef.current.startY);
+    const totalMovement = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
 
     // Handle drag end
     if (launcherMode === 'dragging' && draggedWidgetId) {
@@ -501,6 +720,10 @@ export function SpacesOSLauncher({ widgets, householdId, householdName, onWidget
             const newOrder = [...orderedWidgets];
             newOrder.splice(oldIndex, 1);
             newOrder.splice(draggedOverIndex, 0, draggedItem);
+            // Track the committed order and mark reorder as in progress to prevent snap-back
+            const orderKey = newOrder.map(w => w.id).join('|');
+            lastCommittedOrderRef.current = orderKey;
+            isReorderingRef.current = true;
             setOrderedWidgets(newOrder);
             saveWidgetOrder(newOrder);
           }
@@ -513,31 +736,28 @@ export function SpacesOSLauncher({ widgets, householdId, householdName, onWidget
       setDraggedOverIndex(null);
       setDragPosition(null);
       longPressStartRef.current = null;
+      isPointerDownRef.current = false;
       return;
     }
 
     // Handle selection in edit mode (if not dragging)
-    if (launcherMode === 'editing' && longPressStartRef.current) {
-      const deltaX = Math.abs(e.clientX - longPressStartRef.current.startX);
-      const deltaY = Math.abs(e.clientY - longPressStartRef.current.startY);
-      const totalMovement = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
-
-      // Toggle selection if minimal movement
-      if (totalMovement < 10) {
+    if (launcherMode === 'editing' && longPressStartRef.current && !draggedWidgetId) {
+      // Toggle selection if minimal movement (didn't drag)
+      if (totalMovement < TAP_THRESHOLD_PX) {
         toggleWidgetSelection(widget.id);
       }
+      
+      // Clean up drag state
+      setDragPosition(null);
       longPressStartRef.current = null;
+      isPointerDownRef.current = false;
       return;
     }
 
-    // Handle normal tap (only in normal mode)
+    // Handle normal tap (only in normal mode) - open app
     if (launcherMode === 'normal' && longPressStartRef.current) {
-      const deltaX = Math.abs(e.clientX - longPressStartRef.current.startX);
-      const deltaY = Math.abs(e.clientY - longPressStartRef.current.startY);
-      const totalMovement = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
-
-      // Quick tap to open app
-      if (totalMovement < 10) {
+      // Only open app if movement was below tap threshold
+      if (totalMovement < TAP_THRESHOLD_PX) {
         const buttonElement = e.currentTarget as HTMLElement;
         // Check if element still exists before accessing getBoundingClientRect
         if (buttonElement && buttonElement.getBoundingClientRect) {
@@ -564,6 +784,7 @@ export function SpacesOSLauncher({ widgets, householdId, householdName, onWidget
         }
       }
       longPressStartRef.current = null;
+      isPointerDownRef.current = false;
     }
   };
 
@@ -572,76 +793,81 @@ export function SpacesOSLauncher({ widgets, householdId, householdName, onWidget
     setIsSaving(true);
     const originalOrder = [...orderedWidgets]; // Snapshot for rollback
     
-    // Phase 5: Validate state before saving
-    checkStateConsistency('widgets', newOrder, [
-      (w) => w.length > 0 ? null : 'Widget order cannot be empty',
-      (w) => w.every(widget => widget.id && widget.layout?.id) ? null : 'All widgets must have valid IDs',
-      (w) => {
-        const ids = w.map(widget => widget.id);
-        const uniqueIds = new Set(ids);
-        return ids.length === uniqueIds.size ? null : 'Widget IDs must be unique';
-      },
-    ], { component: 'SpacesOSLauncher', action: 'saveWidgetOrder' });
-    
-    // Ensure all widgets have valid layouts (they should, but double-check)
-    // Layouts are per-user (member_id), so each user in a shared space has their own arrangement
-    const widgetsWithoutLayouts = newOrder.filter(w => !w.layout || !w.layout.id);
-    if (widgetsWithoutLayouts.length > 0) {
-      console.error('Some widgets are missing layouts:', widgetsWithoutLayouts);
-      showToast('error', 'Some widgets are missing layouts. Please refresh and try again.');
-      setIsSaving(false);
-      return;
-    }
-    
-    // Phase 5: Execute with rollback protection
-    const result = await executeWithRollback(
-      `widget-reorder-${Date.now()}`,
-      originalOrder,
-      async () => {
-        // Update position_x for each widget to reflect its new order
-        // position_x acts as the display order in launcher view (0, 1, 2, ...)
-        // Each user has their own layout records (member_id), so this only affects the current user's arrangement
-        const updatePromises = newOrder.map((widget, index) => {
-          if (!widget.layout || !widget.layout.id) {
-            throw new Error(`Widget ${widget.id} is missing a layout`);
-          }
-          
-          return updateWidgetLayout(widget.layout.id, {
-            position_x: index,
-            position_y: 0, // Keep y at 0 for launcher view
-          });
+    try {
+      // Phase 5: Validate state before saving
+      checkStateConsistency('widgets', newOrder, [
+        (w) => w.length > 0 ? null : 'Widget order cannot be empty',
+        (w) => w.every(widget => widget.id && widget.layout?.id) ? null : 'All widgets must have valid IDs',
+        (w) => {
+          const ids = w.map(widget => widget.id);
+          const uniqueIds = new Set(ids);
+          return ids.length === uniqueIds.size ? null : 'Widget IDs must be unique';
+        },
+      ], { component: 'SpacesOSLauncher', action: 'saveWidgetOrder' });
+      
+      // Ensure all widgets have valid layouts (they should, but double-check)
+      // Layouts are per-user (member_id), so each user in a shared space has their own arrangement
+      const widgetsWithoutLayouts = newOrder.filter(w => !w.layout || !w.layout.id);
+      if (widgetsWithoutLayouts.length > 0) {
+        console.error('Some widgets are missing layouts:', widgetsWithoutLayouts);
+        showToast('error', 'Some widgets are missing layouts. Please refresh and try again.');
+        // Clear the flag on early return
+        isReorderingRef.current = false;
+        return;
+      }
+      
+      // IMPORTANT: position_x / position_y are canvas coordinates only.
+      // Launcher ordering MUST use launcher_order.
+      // Never mix these systems.
+      // Update launcher_order for each widget to reflect its new order
+      // launcher_order acts as the display order in launcher view (0, 1, 2, ...)
+      // Each user has their own layout records (member_id), so this only affects the current user's arrangement
+      // Normalize launcher_order to be contiguous (0, 1, 2, 3...) to prevent gaps
+      const updatePromises = newOrder.map(async (widget, index) => {
+        if (!widget.layout || !widget.layout.id) {
+          throw new Error(`Widget ${widget.id} is missing a layout`);
+        }
+        
+        // Update launcher_order to be the index (contiguous: 0, 1, 2, 3...)
+        // Do NOT update position_x or position_y - those are for canvas layout only
+        await updateWidgetLayout(widget.layout.id, {
+          launcher_order: index,
         });
-        
-        // Wait for all updates to complete
-        await Promise.all(updatePromises);
-        
-        // Update state after successful operation
-        // Note: This only updates the current user's view - other users' arrangements are unaffected
-        setOrderedWidgets(newOrder);
-      },
-      setOrderedWidgets,
-      { component: 'SpacesOSLauncher', action: 'saveWidgetOrder' }
-    );
-    
-    if (result.success) {
+      });
+      
+      // Wait for all updates to complete
+      await Promise.all(updatePromises);
+      
+      // Update state after successful operation
+      // Note: This only updates the current user's view - other users' arrangements are unaffected
+      setOrderedWidgets(newOrder);
+      
       showToast('success', 'Widget order saved');
-      // Trigger parent refresh to ensure data is in sync
+      
+      // Refresh widgets after a delay to ensure database has committed
+      // Keep isReorderingRef true during this time to prevent snap-back
       if (onWidgetsChange) {
-        // Small delay to allow database to update
         setTimeout(() => {
+          // Clear the flag right before refresh so the useEffect can process the new order
+          isReorderingRef.current = false;
           onWidgetsChange();
+        }, 500); // Delay to ensure DB commit completes
+      } else {
+        // If no callback, clear the flag after a delay
+        setTimeout(() => {
+          isReorderingRef.current = false;
         }, 500);
       }
-    } else {
-      console.error('Failed to save widget order:', result.error);
-      showToast('error', 'Failed to save order');
-      if (result.error) {
-        // State will be rolled back by executeWithRollback
-        showToast('error', 'Changes have been reverted');
-      }
+    } catch (error) {
+      console.error('Failed to save widget order:', error);
+      showToast('error', 'Failed to save order. Please try again.');
+      // Rollback to original order on error
+      setOrderedWidgets(originalOrder);
+      // Clear the flag immediately on error since we're rolling back
+      isReorderingRef.current = false;
+    } finally {
+      setIsSaving(false);
     }
-    
-    setIsSaving(false);
   };
 
   // Shared helper: Check if a target is in a gesture-blocked zone (global system UI)
@@ -658,7 +884,7 @@ export function SpacesOSLauncher({ widgets, householdId, householdName, onWidget
       return;
     }
     
-    // Don't handle swipe if we're not in normal mode
+    // Don't handle swipe if we're not in normal mode (editing/dragging takes priority)
     if (launcherMode !== 'normal') {
       return;
     }
@@ -675,6 +901,84 @@ export function SpacesOSLauncher({ widgets, householdId, householdName, onWidget
       y: touch.clientY,
       time: Date.now(),
     };
+    setSwipeOffset(0);
+  };
+
+  // Handle swipe move for smooth page transition
+  const handleSwipeMove = (e: React.TouchEvent) => {
+    if (!swipeStartRef.current || launcherMode !== 'normal') {
+      return;
+    }
+
+    const touch = e.touches[0];
+    const deltaX = touch.clientX - swipeStartRef.current.x;
+    const deltaY = touch.clientY - swipeStartRef.current.y;
+
+    // Only handle horizontal swipes (ignore if vertical movement is greater)
+    if (Math.abs(deltaY) > Math.abs(deltaX)) {
+      return;
+    }
+
+    // Prevent default scrolling during horizontal swipe
+    if (Math.abs(deltaX) > 10) {
+      e.preventDefault();
+    }
+
+    // Calculate swipe offset as percentage of screen width
+    const screenWidth = window.innerWidth;
+    const offsetPercent = (deltaX / screenWidth) * 100;
+    
+    // Clamp offset to prevent over-swiping
+    const maxOffset = 30; // Max 30% offset
+    const clampedOffset = Math.max(-maxOffset, Math.min(maxOffset, offsetPercent));
+    setSwipeOffset(clampedOffset);
+  };
+
+  // Handle swipe end to complete page transition
+  const handleSwipeEnd = (e: React.TouchEvent) => {
+    if (!swipeStartRef.current || launcherMode !== 'normal') {
+      setSwipeOffset(0);
+      return;
+    }
+
+    const touch = e.changedTouches[0];
+    const deltaX = touch.clientX - swipeStartRef.current.x;
+    const deltaY = touch.clientY - swipeStartRef.current.y;
+    const deltaTime = Date.now() - swipeStartRef.current.time;
+
+    // Only handle horizontal swipes
+    if (Math.abs(deltaY) > Math.abs(deltaX)) {
+      setSwipeOffset(0);
+      swipeStartRef.current = null;
+      return;
+    }
+
+    // Determine if swipe was significant enough to change page
+    const screenWidth = window.innerWidth;
+    const swipeThreshold = screenWidth * 0.25; // 25% of screen width
+    const velocity = Math.abs(deltaX) / deltaTime; // pixels per ms
+    const velocityThreshold = 0.3; // Fast swipe threshold
+
+    if (Math.abs(deltaX) > swipeThreshold || velocity > velocityThreshold) {
+      if (deltaX > 0 && currentPage > 0) {
+        // Swipe right - go to previous page
+        setPageTransitionDirection('right');
+        setCurrentPage(currentPage - 1);
+      } else if (deltaX < 0 && currentPage < totalPages - 1) {
+        // Swipe left - go to next page
+        setPageTransitionDirection('left');
+        setCurrentPage(currentPage + 1);
+      }
+    }
+
+    // Reset swipe state
+    setSwipeOffset(0);
+    swipeStartRef.current = null;
+    
+    // Clear transition direction after animation
+    setTimeout(() => {
+      setPageTransitionDirection(null);
+    }, 400);
   };
 
   // Exit edit mode
@@ -721,32 +1025,98 @@ export function SpacesOSLauncher({ widgets, householdId, householdName, onWidget
     return Icons[iconName] as any;
   };
 
-  // Phase 9A: Get color for widget
-  const getWidgetColor = (widget: WidgetWithLayout) => {
-    // For tracker_app widgets, use the widget's stored color if available
-    if (widget.widget_type === 'tracker_app' && widget.color) {
-      // Map tracker color to background color class
-      const colorMap: Record<string, string> = {
-        'blue': 'bg-blue-500',
-        'indigo': 'bg-indigo-500',
-        'purple': 'bg-purple-500',
-        'pink': 'bg-pink-500',
-        'red': 'bg-red-500',
-        'orange': 'bg-orange-500',
-        'yellow': 'bg-yellow-500',
-        'green': 'bg-green-500',
-        'teal': 'bg-teal-500',
-        'cyan': 'bg-cyan-500',
-        'emerald': 'bg-emerald-500',
-        'amber': 'bg-amber-500',
-        'violet': 'bg-violet-500',
-        'slate': 'bg-slate-500',
-        'gray': 'bg-gray-500',
-      };
-      return colorMap[widget.color] || `bg-${widget.color}-500`;
+  // Phase 9A: Get color for widget (uses user preferences)
+  const getWidgetColorClass = (widget: WidgetWithLayout) => {
+    // For tracker_app widgets, check for custom tracker color preference first
+    if (widget.widget_type === 'tracker_app') {
+      const content = widget.content as { tracker_id?: string };
+      if (content?.tracker_id) {
+        // Check for custom tracker color preference
+        const customColor = getTrackerColor(content.tracker_id);
+        if (customColor) {
+          // Map WidgetColorToken to Tailwind background class
+          const colorClassMap: Record<string, string> = {
+            'cyan': 'bg-cyan-500',
+            'blue': 'bg-blue-500',
+            'violet': 'bg-violet-500',
+            'pink': 'bg-pink-500',
+            'orange': 'bg-orange-500',
+            'green': 'bg-green-500',
+            'yellow': 'bg-yellow-500',
+            'neutral': 'bg-slate-500',
+            'red': 'bg-red-500',
+            'teal': 'bg-teal-500',
+            'emerald': 'bg-emerald-500',
+            'amber': 'bg-amber-500',
+            'indigo': 'bg-indigo-500',
+            'rose': 'bg-rose-500',
+            'sky': 'bg-sky-500',
+            'lime': 'bg-lime-500',
+            'fuchsia': 'bg-fuchsia-500',
+            'slate': 'bg-slate-500',
+          };
+          return colorClassMap[customColor] || 'bg-indigo-500';
+        }
+      }
+      
+      // Fall back to widget's stored color if no custom preference
+      if (widget.color) {
+        // Map tracker color to background color class
+        const colorMap: Record<string, string> = {
+          'blue': 'bg-blue-500',
+          'indigo': 'bg-indigo-500',
+          'purple': 'bg-purple-500',
+          'pink': 'bg-pink-500',
+          'red': 'bg-red-500',
+          'orange': 'bg-orange-500',
+          'yellow': 'bg-yellow-500',
+          'green': 'bg-green-500',
+          'teal': 'bg-teal-500',
+          'cyan': 'bg-cyan-500',
+          'emerald': 'bg-emerald-500',
+          'amber': 'bg-amber-500',
+          'violet': 'bg-violet-500',
+          'slate': 'bg-slate-500',
+          'gray': 'bg-gray-500',
+          'rose': 'bg-rose-500',
+          'sky': 'bg-sky-500',
+          'lime': 'bg-lime-500',
+          'fuchsia': 'bg-fuchsia-500',
+        };
+        return colorMap[widget.color] || `bg-${widget.color}-500`;
+      }
+      
+      // Default fallback for tracker apps
+      return 'bg-indigo-500';
     }
-    // Fall back to default mapping
-    return WIDGET_COLOR_MAP[widget.widget_type] || 'bg-gray-500';
+    
+    // Use user's color preference from UIPreferencesContext for other widget types
+    const colorToken = getWidgetColor(widget.widget_type);
+    const colorInfo = WIDGET_COLOR_TOKENS[colorToken];
+    
+    // Map WidgetColorToken to Tailwind background class
+    const colorClassMap: Record<string, string> = {
+      'cyan': 'bg-cyan-500',
+      'blue': 'bg-blue-500',
+      'violet': 'bg-violet-500',
+      'pink': 'bg-pink-500',
+      'orange': 'bg-orange-500',
+      'green': 'bg-green-500',
+      'yellow': 'bg-yellow-500',
+      'neutral': 'bg-slate-500',
+      'red': 'bg-red-500',
+      'teal': 'bg-teal-500',
+      'emerald': 'bg-emerald-500',
+      'amber': 'bg-amber-500',
+      'indigo': 'bg-indigo-500',
+      'rose': 'bg-rose-500',
+      'sky': 'bg-sky-500',
+      'lime': 'bg-lime-500',
+      'fuchsia': 'bg-fuchsia-500',
+      'slate': 'bg-slate-500',
+    };
+    
+    return colorClassMap[colorToken] || WIDGET_COLOR_MAP[widget.widget_type] || 'bg-gray-500';
   };
 
   // Phase 9A: Widget type to display name mapping
@@ -786,7 +1156,8 @@ export function SpacesOSLauncher({ widgets, householdId, householdName, onWidget
 
   // Calculate grid position for a widget index
   const getGridPosition = (index: number) => {
-    const widgetsPerPage = gridCols * GRID_ROWS;
+    const rowsPerPage = gridCols === 3 ? 7 : 5;
+    const widgetsPerPage = gridCols * rowsPerPage;
     const pageIndex = index % widgetsPerPage;
     const row = Math.floor(pageIndex / gridCols);
     const col = pageIndex % gridCols;
@@ -1106,7 +1477,7 @@ export function SpacesOSLauncher({ widgets, householdId, householdName, onWidget
           data-launcher-gesture-surface="true"
           className="relative"
           style={{
-            touchAction: launcherMode === 'dragging' ? 'none' : 'pan-x pan-y',
+            touchAction: launcherMode === 'dragging' ? 'none' : launcherMode === 'editing' ? 'none' : 'pan-x', // Disable touch actions when dragging/editing
           }}
           onTouchStart={(e) => {
             if (isGestureBlockedTarget(e.target)) {
@@ -1115,6 +1486,24 @@ export function SpacesOSLauncher({ widgets, householdId, householdName, onWidget
             // Only handle swipe start in normal mode
             if (launcherMode === 'normal') {
               handleSwipeStart(e);
+            }
+          }}
+          onTouchMove={(e) => {
+            if (isGestureBlockedTarget(e.target)) {
+              return;
+            }
+            // Only handle swipe move in normal mode
+            if (launcherMode === 'normal') {
+              handleSwipeMove(e);
+            }
+          }}
+          onTouchEnd={(e) => {
+            if (isGestureBlockedTarget(e.target)) {
+              return;
+            }
+            // Only handle swipe end in normal mode
+            if (launcherMode === 'normal') {
+              handleSwipeEnd(e);
             }
           }}
         >
@@ -1128,9 +1517,19 @@ export function SpacesOSLauncher({ widgets, householdId, householdName, onWidget
             const offset = pageIndex - currentPage;
             const shouldAnimate = pageTransitionDirection !== null;
             
-            // Calculate transform based on direction
+            // Calculate transform based on direction and swipe offset
             let translateX = offset * 100;
-            if (shouldAnimate) {
+            
+            // Apply swipe offset to current page for smooth dragging
+            if (offset === 0 && swipeOffset !== 0) {
+              translateX = swipeOffset;
+            } else if (offset === 1 && swipeOffset < 0) {
+              // Next page visible during left swipe
+              translateX = 100 + swipeOffset;
+            } else if (offset === -1 && swipeOffset > 0) {
+              // Previous page visible during right swipe
+              translateX = -100 + swipeOffset;
+            } else if (shouldAnimate) {
               if (pageTransitionDirection === 'left' && offset === 1) {
                 translateX = 0; // Next page coming in from right
               } else if (pageTransitionDirection === 'left' && offset === 0) {
@@ -1151,23 +1550,28 @@ export function SpacesOSLauncher({ widgets, householdId, householdName, onWidget
                   opacity: isActive ? 1 : 0,
                   zIndex: isActive ? 10 : 0,
                   pointerEvents: isActive ? 'auto' : 'none',
-                  transition: shouldAnimate
+                  transition: swipeOffset !== 0
+                    ? 'none' // No transition during swipe for immediate feedback
+                    : shouldAnimate
                     ? 'transform 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94), opacity 0.3s ease-out'
                     : 'opacity 0.3s ease-out',
                   willChange: shouldAnimate ? 'transform, opacity' : 'auto',
                 }}
               >
-              {/* Responsive grid: 3 columns on very small screens (< 480px), 4 columns on larger screens */}
+              {/* Responsive grid: 3 columns × 7 rows on mobile (21 apps), 4 columns × 5 rows on tablet (20 apps), 5 columns × 5 rows on desktop (25 apps) */}
               <div 
                 ref={pageIndex === currentPage ? gridRef : undefined}
-                className="grid grid-cols-3 sm:grid-cols-4 gap-4 sm:gap-6 md:gap-8 content-start justify-items-center pb-4"
+                className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-5 gap-3 sm:gap-4 md:gap-5 content-start justify-items-center pb-4"
+                style={{
+                  gridTemplateRows: gridCols === 3 ? 'repeat(7, minmax(0, 1fr))' : 'repeat(5, minmax(0, 1fr))',
+                }}
               >
                 {orderedWidgets
                   .slice(pageIndex * widgetsPerPage, (pageIndex + 1) * widgetsPerPage)
                   .map((widget, localIndex) => {
                     const globalIndex = pageIndex * widgetsPerPage + localIndex;
                     const IconComponent = getIconComponent(widget);
-                    const color = getWidgetColor(widget);
+                    const color = getWidgetColorClass(widget);
                     const name = getWidgetName(widget);
                     const isDragging = draggedWidgetId === widget.id;
                     const isDraggedOver = draggedOverIndex === globalIndex && draggedWidgetId !== widget.id && pageIndex === currentPage;
@@ -1214,7 +1618,7 @@ export function SpacesOSLauncher({ widgets, householdId, householdName, onWidget
                     return (
                       <div
                         key={widget.id}
-                        className="flex flex-col items-center gap-2 sm:gap-2.5 w-full max-w-[100px] sm:max-w-none"
+                        className="flex flex-col items-center gap-1.5 sm:gap-2 w-full"
                         style={{
                           transition: isAnimating && !isDragging
                             ? `transform 0.25s cubic-bezier(0.34, 1.56, 0.64, 1), opacity 0.3s ease-out`
@@ -1222,7 +1626,11 @@ export function SpacesOSLauncher({ widgets, householdId, householdName, onWidget
                           transform: (translateX !== 0 || translateY !== 0) && !isDragging
                             ? `translate3d(${translateX}px, ${translateY}px, 0)`
                             : 'translate3d(0, 0, 0)',
-                          opacity: pageIndex === currentPage && !isDragging ? 1 : (isDragging ? 0.95 : 0),
+                          // Show widget if: on current page and not dragging, OR it's the dragged widget
+                          // When dragging, show dragged widget at full opacity, show placeholder at original position with reduced opacity
+                          // Show widget wrapper: always visible on current page, or if it's the dragged widget
+                          // When dragging, show placeholder at original position with reduced opacity
+                          opacity: (pageIndex === currentPage && !isDragging) || (isDragging && draggedWidgetId === widget.id) ? 1 : (isDragging && pageIndex === currentPage && draggedWidgetId !== widget.id ? 0.4 : 0),
                           animation: pageIndex === currentPage && !isAnimating && !isDragging && pageTransitionDirection === null && launcherMode === 'normal'
                             ? `fadeInScale 0.3s cubic-bezier(0.34, 1.56, 0.64, 1) ${animationDelay}s both`
                             : 'none',
@@ -1232,17 +1640,61 @@ export function SpacesOSLauncher({ widgets, householdId, householdName, onWidget
                         <button
                           ref={isDragging ? draggedWidgetRef : null}
                           data-widget-button="true"
+                          data-widget-id={widget.id}
                           onPointerDown={(e) => {
                             e.stopPropagation();
+                            
+                            // Only prevent default for touch to block scrolling
+                            if (e.pointerType === 'touch') {
+                              e.preventDefault();
+                            }
+                            
                             handlePointerDownEvent(e, widget);
                           }}
                           onPointerMove={(e) => {
                             e.stopPropagation();
+                            // Always handle move to detect drag start
                             handlePointerMoveEvent(e);
                           }}
                           onPointerUp={(e) => {
                             e.stopPropagation();
+                            e.preventDefault();
                             handlePointerUp(e, widget);
+                          }}
+                          onPointerCancel={(e) => {
+                            e.stopPropagation();
+                            e.preventDefault();
+                            
+                            // Update pointer state refs
+                            isPointerDownRef.current = false;
+                            activePointerTypeRef.current = null;
+                            activePointerIdRef.current = null;
+                            
+                            // Release pointer capture from the button element
+                            if (e.currentTarget instanceof HTMLElement) {
+                              try {
+                                e.currentTarget.releasePointerCapture(e.pointerId);
+                              } catch (err) {
+                                console.debug('releasePointerCapture failed:', err);
+                              }
+                            }
+                            
+                            // Handle pointer cancel (e.g., when scrolling starts)
+                            if (launcherMode === 'dragging') {
+                              // Cancel drag and return to editing mode
+                              setLauncherMode('editing');
+                              setDraggedWidgetId(null);
+                              setDraggedOverIndex(null);
+                              setDragPosition(null);
+                            }
+                            
+                            // Clear long press timer
+                            if (longPressTimerRef.current) {
+                              clearTimeout(longPressTimerRef.current);
+                              longPressTimerRef.current = null;
+                            }
+                            
+                            longPressStartRef.current = null;
                           }}
                           onClick={(e) => {
                             // Only handle click in normal mode
@@ -1258,12 +1710,17 @@ export function SpacesOSLauncher({ widgets, householdId, householdName, onWidget
                               : ''
                           } ${isDragging ? 'z-50' : 'z-auto'} ${isDraggedOver ? 'ring-2 ring-blue-400 rounded-2xl' : ''} ${isSelected ? 'ring-2 ring-blue-600 rounded-2xl' : ''}`}
                           style={{
-                            touchAction: launcherMode !== 'normal' ? 'none' : 'manipulation',
+                            touchAction: launcherMode === 'editing' || launcherMode === 'dragging' ? 'none' : 'manipulation',
                             WebkitTapHighlightColor: 'transparent',
                             userSelect: launcherMode !== 'normal' ? 'none' : 'auto',
+                            WebkitUserSelect: launcherMode !== 'normal' ? 'none' : 'auto',
                             position: isDragging ? 'fixed' : 'relative',
+                            top: isDragging ? 0 : 'auto',
+                            left: isDragging ? 0 : 'auto',
+                            pointerEvents: 'auto',
+                            cursor: launcherMode === 'editing' ? 'grab' : launcherMode === 'dragging' ? 'grabbing' : 'pointer',
                             transform: isDragging && dragPosition
-                              ? `translate3d(calc(${dragPosition.x}px - 50%), calc(${dragPosition.y}px - 50%), 0) scale(1.15)`
+                              ? `translate3d(${dragPosition.x}px, ${dragPosition.y}px, 0) translate(-50%, -50%) scale(1.1)`
                               : tappedWidget?.widget.id === widget.id && isTransitioning
                                 ? `translate3d(0, 0, 0) scale(0.85)`
                                 : 'translate3d(0, 0, 0) scale(1)',
@@ -1274,14 +1731,14 @@ export function SpacesOSLauncher({ widgets, householdId, householdName, onWidget
                                 : isAnimating
                                   ? 'transform 0.25s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.25s cubic-bezier(0.4, 0.0, 0.2, 1), opacity 0.2s cubic-bezier(0.4, 0.0, 0.2, 1)'
                                   : 'transform 0.2s cubic-bezier(0.4, 0.0, 0.2, 1), box-shadow 0.2s cubic-bezier(0.4, 0.0, 0.2, 1)',
-                            opacity: isDragging ? 0.95 : tappedWidget?.widget.id === widget.id && isTransitioning ? 0.7 : 1,
+                            opacity: isDragging ? 1 : (tappedWidget?.widget.id === widget.id && isTransitioning ? 0.7 : 1),
                             zIndex: isDragging ? 1000 : tappedWidget?.widget.id === widget.id && isTransitioning ? 999 : 'auto',
                             boxShadow: isDragging
                               ? '0 20px 40px rgba(0, 0, 0, 0.35), 0 8px 16px rgba(0, 0, 0, 0.25)'
                               : isDraggedOver
                                 ? '0 4px 12px rgba(59, 130, 246, 0.4)'
                                 : 'none',
-                            willChange: isDragging || isTransitioning ? 'transform, opacity' : 'auto',
+                            willChange: (isDragging || isTransitioning) ? 'transform, opacity' : 'auto',
                           }}
                         >
                           {/* Phase 9A: App icon - OS-native style, flat, no shadows, confident design - Responsive sizing */}
@@ -1328,7 +1785,7 @@ export function SpacesOSLauncher({ widgets, householdId, householdName, onWidget
                         <span
                           className="text-[10px] sm:text-xs text-gray-900 font-medium text-center max-w-[100%] px-0.5 truncate leading-tight"
                           style={{
-                            opacity: isDragging || (tappedWidget?.widget.id === widget.id && isTransitioning) ? 0 : 1,
+                            opacity: isDragging ? 0 : (tappedWidget?.widget.id === widget.id && isTransitioning ? 0 : 1),
                             transition: 'opacity 0.15s cubic-bezier(0.4, 0.0, 0.2, 1), transform 0.15s cubic-bezier(0.4, 0.0, 0.2, 1)',
                             transform: tappedWidget?.widget.id === widget.id && isTransitioning ? 'scale(0.9)' : 'scale(1)',
                           }}

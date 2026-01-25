@@ -11,7 +11,7 @@
  */
 
 import { useState, useEffect } from 'react';
-import { X, Edit2, Trash2, Lock, Share2, Calendar, Clock, MapPin, Eye, EyeOff } from 'lucide-react';
+import { X, Edit2, Trash2, Lock, Share2, Calendar, Clock, MapPin, Eye, EyeOff, Repeat } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { showToast } from '../Toast';
 import { ConfirmDialogInline } from '../ConfirmDialogInline';
@@ -150,6 +150,46 @@ export function EventDetailModal({
       state: { date: eventDate.toISOString() },
     });
     onClose();
+  };
+
+  // Navigate to habit tracker for habit events
+  const handleGoToHabit = async () => {
+    if (event.event_type !== 'habit' || !(event as any).activity_id) {
+      return;
+    }
+
+    try {
+      // Find habit tracker
+      const { listTrackers } = await import('../../lib/trackerStudio/trackerService');
+      const { isHabitTracker } = await import('../../lib/trackerStudio/habitTrackerUtils');
+      const trackers = await listTrackers(false);
+      const habitTracker = trackers.find(t => isHabitTracker(t));
+
+      if (!habitTracker) {
+        // Fallback: navigate to tracker studio
+        navigate('/tracker-studio/my-trackers');
+        onClose();
+        return;
+      }
+
+      const eventDate = new Date(event.startAt);
+      const dateStr = eventDate.toISOString().split('T')[0];
+      const habitId = (event as any).activity_id;
+
+      // Navigate to habit tracker with date and habit context
+      navigate(`/tracker-studio/tracker/${habitTracker.id}`, {
+        state: {
+          date: dateStr,
+          habit_id: habitId,
+        },
+      });
+      onClose();
+    } catch (error) {
+      console.error('[EventDetailModal] Error navigating to habit tracker:', error);
+      // Fallback: navigate to tracker studio
+      navigate('/tracker-studio/my-trackers');
+      onClose();
+    }
   };
 
   const handleSaved = () => {
@@ -293,26 +333,40 @@ export function EventDetailModal({
       )}
 
       {/* Navigation Actions */}
-      {mode !== 'day' && (
-        <div className="flex items-center gap-2 pt-2 border-t border-gray-100">
+      <div className="flex items-center gap-2 pt-2 border-t border-gray-100 flex-wrap">
+        {/* Habit Navigation (if habit event) */}
+        {event.event_type === 'habit' && (event as any).activity_id && (
           <button
-            onClick={handleGoToDay}
-            className="text-sm text-blue-600 hover:text-blue-700 flex items-center gap-1"
+            onClick={handleGoToHabit}
+            className="text-sm text-indigo-600 hover:text-indigo-700 flex items-center gap-1.5"
           >
-            <Clock size={14} />
-            Go to Day View
+            <Repeat size={14} />
+            View Habit
           </button>
-          {mode !== 'week' && (
+        )}
+        
+        {/* Calendar Navigation */}
+        {mode !== 'day' && (
+          <>
             <button
-              onClick={handleGoToWeek}
+              onClick={handleGoToDay}
               className="text-sm text-blue-600 hover:text-blue-700 flex items-center gap-1"
             >
-              <Calendar size={14} />
-              Go to Week View
+              <Clock size={14} />
+              Go to Day View
             </button>
-          )}
-        </div>
-      )}
+            {mode !== 'week' && (
+              <button
+                onClick={handleGoToWeek}
+                className="text-sm text-blue-600 hover:text-blue-700 flex items-center gap-1"
+              >
+                <Calendar size={14} />
+                Go to Week View
+              </button>
+            )}
+          </>
+        )}
+      </div>
     </>
   );
 

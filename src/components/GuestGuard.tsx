@@ -33,13 +33,29 @@ export function GuestGuard({ children }: GuestGuardProps) {
     // User is authenticated, check household
     const checkUserHousehold = async (userId: string) => {
       try {
-        const { data: memberData } = await supabase
-          .from('members')
-          .select('household_id')
+        // Get user's profile
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('id')
           .eq('user_id', userId)
           .maybeSingle();
 
-        setHasHousehold(!!memberData?.household_id);
+        if (!profile) {
+          setHasHousehold(false);
+          setLoading(false);
+          return;
+        }
+
+        // Check if user is a member of any household space (context_type = 'household')
+        const { data: householdMembership } = await supabase
+          .from('space_members')
+          .select('space_id, spaces!inner(context_type)')
+          .eq('user_id', profile.id)
+          .eq('status', 'active')
+          .eq('spaces.context_type', 'household')
+          .maybeSingle();
+
+        setHasHousehold(!!householdMembership);
       } catch (error) {
         console.error('Error checking household:', error);
         setHasHousehold(false);

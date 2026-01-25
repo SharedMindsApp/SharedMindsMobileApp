@@ -36,6 +36,12 @@ import { supabase } from '../../../lib/supabase';
 import { GoalDetailModal } from './GoalDetailModal';
 import { TagPicker } from '../../tags/TagPicker';
 import { TagSelector } from '../../tags/TagSelector';
+import { GoalContextSection } from './GoalContextSection';
+import { WhyThisMattersSection } from '../../shared/WhyThisMattersSection';
+import { CurrentFocusSection } from '../../shared/CurrentFocusSection';
+import { getWhyThisMattersForGoal } from '../../../lib/trackerContext/meaningHelpers';
+import { getCurrentOrientationSignals } from '../../../lib/trackerContext/orientationHelpers';
+import { getHabitsForGoal, getGoalMomentumInsight } from '../../../lib/goals/goalContextHelpers';
 
 // ============================================================================
 // Types
@@ -77,6 +83,7 @@ export function GoalTrackerCore({
   useEffect(() => {
     if (FEATURE_HABITS_GOALS) {
       loadGoals();
+      loadOrientationSignals();
     }
   }, [ownerUserId]);
 
@@ -138,6 +145,18 @@ export function GoalTrackerCore({
     }
   }, [ownerUserId]);
 
+  const loadOrientationSignals = async () => {
+    try {
+      const signals = await getCurrentOrientationSignals(ownerUserId);
+      // Filter to goal-related signals only
+      const goalSignals = signals.filter(s => s.entityType === 'goal');
+      setOrientationSignals(goalSignals);
+    } catch (err) {
+      console.error('[GoalTrackerCore] Error loading orientation signals:', err);
+      // Non-fatal: continue without signals
+    }
+  };
+
   const loadGoals = async () => {
     try {
       const userGoals = await listGoals(ownerUserId, { includeTags: true });
@@ -171,7 +190,7 @@ export function GoalTrackerCore({
   const showDetails = permissions.detail_level === 'detailed';
 
   return (
-    <div className={`${isCompact ? 'p-4' : 'p-6'} space-y-${isCompact ? '4' : '6'}`}>
+    <div className={`${isCompact ? 'p-4 space-y-4' : 'p-6 space-y-6'}`}>
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
@@ -214,8 +233,15 @@ export function GoalTrackerCore({
         />
       )}
 
+      {/* Current Focus Section (Orientation Signals) */}
+      {orientationSignals.length > 0 && (
+        <div className="mb-4">
+          <CurrentFocusSection signals={orientationSignals} compact={isCompact} />
+        </div>
+      )}
+
       {/* Goals List */}
-      <div className={`grid gap-${isCompact ? '3' : '4'}`}>
+      <div className={`grid ${isCompact ? 'gap-3' : 'gap-4'}`}>
         {goals.map(goal => (
           <GoalCard
             key={goal.id}
@@ -231,7 +257,7 @@ export function GoalTrackerCore({
 
       {/* Empty State */}
       {goals.length === 0 && (
-        <div className={`text-center py-${isCompact ? '8' : '12'} text-gray-500`}>
+        <div className={`text-center ${isCompact ? 'py-8' : 'py-12'} text-gray-500`}>
           <Target size={isCompact ? 36 : 48} className="mx-auto mb-4 text-gray-300" />
           <p>{isReadOnly ? 'No goals to display.' : 'No goals yet. Create your first goal to get started!'}</p>
         </div>
@@ -411,6 +437,17 @@ function GoalCard({
   const [progress, setProgress] = useState<GoalProgress | null>(null);
   const [loading, setLoading] = useState(true);
   const [showDetailModal, setShowDetailModal] = useState(false);
+  
+  // Context data (read-only)
+  const [habitContributors, setHabitContributors] = useState<Array<{
+    habit: { id: string; title: string; description: string | null };
+    requirement: any;
+    summary: { currentStreak: number; completionRate7d: number; trend: 'up' | 'down' | 'stable' | null } | null;
+    status: 'on_track' | 'inconsistent' | 'stalled' | 'unknown';
+  }>>([]);
+  const [momentumInsight, setMomentumInsight] = useState<string | null>(null);
+  const [whyThisMatters, setWhyThisMatters] = useState<any>(null);
+  
   const isCompact = layout === 'compact';
   const showDetails = permissions.detail_level === 'detailed';
   const canEdit = permissions.can_edit;
@@ -420,8 +457,15 @@ function GoalCard({
     if (showDetails) {
       loadProgress();
     } else {
-      setLoading(false);
+      // In overview mode, still load progress for percentage display
+      loadProgress();
     }
+    
+    // Always load context (read-only, lightweight) - shows habits even in compact view
+    loadGoalContext();
+    
+    // Load "why this matters" context
+    loadWhyThisMatters();
   }, [goal.id, showDetails]);
 
   const loadProgress = async () => {
@@ -435,13 +479,37 @@ function GoalCard({
     }
   };
 
+  // Load goal context (habits, momentum) - read-only
+  const loadGoalContext = async () => {
+    try {
+      // Load habits and momentum insight in parallel
+      const [habits, insight] = await Promise.all([
+        getHabitsForGoal(userId, goal.id),
+        getGoalMomentumInsight(userId, goal.id),
+      ]);
+      
+      setHabitContributors(habits);
+      setMomentumInsight(insight?.insight || null);
+    } catch (error) {
+      console.error('[GoalTrackerCore] Error loading goal context:', error);
+      // Non-fatal: continue without context
+    }
+  };
+
+  // Load "why this matters" context
+  const loadWhyThisMatters = async () => {
+    try {
+      const context = await getWhyThisMattersForGoal(userId, goal.id);
+      setWhyThisMatters(context);
+    } catch (error) {
+      console.error('[GoalTrackerCore] Error loading why this matters:', error);
+      // Non-fatal: continue without meaning context
+    }
+  };
+
   // Overview mode: show only title, percent, and end date
+  // Note: Progress is already loaded in useEffect above
   if (!showDetails) {
-    // Load minimal progress for overview
-    useEffect(() => {
-      loadProgress();
-    }, [goal.id]);
-    
     return (
       <>
         <div
@@ -469,6 +537,19 @@ function GoalCard({
               </>
             ) : null}
           </div>
+          
+          {/* Goal Context Section (Habits, Momentum Insight) - Always visible if context exists */}
+          <GoalContextSection
+            habits={habitContributors}
+            momentumInsight={momentumInsight}
+            compact={isCompact}
+          />
+
+          {/* Why This Matters Section */}
+          <WhyThisMattersSection
+            context={whyThisMatters}
+            compact={isCompact}
+          />
         </div>
         {showDetailModal && (
           <GoalDetailModal
@@ -542,7 +623,7 @@ function GoalCard({
             </div>
           </div>
 
-          <div className={`flex items-center gap-${isCompact ? '3' : '4'} text-sm text-gray-600`}>
+          <div className={`flex items-center ${isCompact ? 'gap-3' : 'gap-4'} text-sm text-gray-600`}>
             <div className="flex items-center gap-1">
               <Target size={16} />
               <span>{progress.completedCount}/{progress.totalCount} requirements</span>
@@ -554,6 +635,19 @@ function GoalCard({
               </div>
             )}
           </div>
+
+          {/* Goal Context Section (Habits, Momentum Insight) - Always visible if context exists */}
+          <GoalContextSection
+            habits={habitContributors}
+            momentumInsight={momentumInsight}
+            compact={isCompact}
+          />
+
+          {/* Why This Matters Section */}
+          <WhyThisMattersSection
+            context={whyThisMatters}
+            compact={isCompact}
+          />
         </div>
       </div>
 

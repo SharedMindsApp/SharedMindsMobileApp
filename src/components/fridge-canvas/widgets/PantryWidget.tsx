@@ -21,12 +21,15 @@ import {
 import { FoodPicker } from '../../shared/FoodPicker';
 import { getFoodItemNames, getOrCreateFoodItem, type FoodItem } from '../../../lib/foodItems';
 import { getPantryBasedRecipeSuggestions } from '../../../lib/foodIntelligence';
-import { getMealLibrary } from '../../../lib/mealPlanner';
+import { getMealLibrary, getWeekStartDate } from '../../../lib/mealPlanner';
 import { showToast } from '../../Toast';
 import { Sparkles, ChefHat } from 'lucide-react';
 import { useSpaceContext } from '../../../hooks/useSpaceContext';
 import { WidgetHeader } from '../../shared/WidgetHeader';
+import { SpaceContextSwitcher } from '../../shared/SpaceContextSwitcher';
 import { MakeableRecipesModal } from '../../shared/MakeableRecipesModal';
+import { WeeklyPantryCheckSheet } from '../../meal-planner/WeeklyPantryCheckSheet';
+import { Calendar } from 'lucide-react';
 import { 
   getPantryLocations, 
   createPantryLocation, 
@@ -150,6 +153,7 @@ export function PantryWidget({ householdId, viewMode }: PantryWidgetProps) {
   
   // Track if we're switching contexts to prevent stale updates
   const contextSpaceIdRef = useRef(currentSpaceId);
+  const previousSpaceIdRef = useRef<string | null>(null);
   
   // Edit state
   const [editingItem, setEditingItem] = useState<PantryItem | null>(null);
@@ -179,10 +183,15 @@ export function PantryWidget({ householdId, viewMode }: PantryWidgetProps) {
   // Makeable recipes modal state
   const [showMakeableRecipes, setShowMakeableRecipes] = useState(false);
   
+  // Weekly pantry check state
+  const [showPantryCheck, setShowPantryCheck] = useState(false);
+  
   // Pending item form state (for adding new items)
   const [pendingQuantityValue, setPendingQuantityValue] = useState('');
   const [pendingQuantityUnit, setPendingQuantityUnit] = useState('');
   const [pendingExpiresOn, setPendingExpiresOn] = useState('');
+  const [pendingTotalPortions, setPendingTotalPortions] = useState('');
+  const [pendingPortionUnit, setPendingPortionUnit] = useState('');
 
   // Update ref when space changes
   useEffect(() => {
@@ -196,28 +205,60 @@ export function PantryWidget({ householdId, viewMode }: PantryWidgetProps) {
     }
   }, [currentSpaceId]);
 
-  // Load pantry items when space context changes
+  // Clear all space-specific data and reload when space changes
+  // This ensures seamless switching between households/spaces
   useEffect(() => {
-    // Cancel any in-flight requests if switching
-    const abortSignal = getAbortSignal();
+    // Only refresh if space actually changed (not on initial mount)
+    const spaceChanged = previousSpaceIdRef.current !== null && previousSpaceIdRef.current !== currentSpaceId;
     
-    // Only load if not currently switching
-    if (!isSwitching()) {
-      loadPantryItems(abortSignal);
+    if (currentSpaceId && spaceChanged) {
+      console.log('[PantryWidget] Space changed, refreshing data:', {
+        previous: previousSpaceIdRef.current,
+        current: currentSpaceId
+      });
+      
+      // Clear existing data immediately to avoid showing stale data from previous space
+      setPantryItems([]);
+      setPantryLocations([]);
+      setRecipeSuggestions(0);
+      // Reset any edit states when context changes
+      setEditingItem(null);
+      setEditingQuantityId(null);
+      setPendingFoodItem(null);
+      setPendingQuantityValue('');
+      setPendingQuantityUnit('');
+      setPendingExpiresOn('');
+      setPendingTotalPortions('');
+      setPendingPortionUnit('');
+      setSearchQuery('');
+      setSelectedLocationFilter(null);
+      // Set loading state to show we're loading new data
+      setLoading(true);
+      
+      // Reload data for the new space immediately
+      loadPantryItems(getAbortSignal());
+      loadPantryLocations();
     }
     
-    // Cleanup: reset any edit states when context changes
-    setEditingItem(null);
-    setEditingQuantityId(null);
-    setPendingFoodItem(null);
-    setPendingQuantityValue('');
-    setPendingQuantityUnit('');
-    setPendingExpiresOn('');
+    // Update previous space ID ref AFTER checking for changes
+    if (currentSpaceId) {
+      previousSpaceIdRef.current = currentSpaceId;
+    }
+  }, [currentSpaceId]);
+
+  // Load pantry items on initial mount (when space hasn't changed)
+  useEffect(() => {
+    // Skip if we just switched spaces (handled by the space change effect above)
+    const spaceJustChanged = previousSpaceIdRef.current !== null && previousSpaceIdRef.current !== currentSpaceId;
+    if (spaceJustChanged) {
+      return; // Space change effect will handle the refresh
+    }
     
-    return () => {
-      // Cleanup on unmount or space change
-      setPantryItems([]);
-    };
+    // Only load if not currently switching
+    if (!currentSpaceId || isSwitching()) return;
+    
+    const abortSignal = getAbortSignal();
+    loadPantryItems(abortSignal);
   }, [currentSpaceId]);
 
   useEffect(() => {
@@ -313,6 +354,11 @@ export function PantryWidget({ householdId, viewMode }: PantryWidgetProps) {
     if (!pendingFoodItem) return;
 
     try {
+      // Parse total portions if provided
+      const totalPortions = pendingTotalPortions.trim() 
+        ? parseInt(pendingTotalPortions.trim(), 10) 
+        : null;
+      
       await addPantryItem({
         householdId: currentSpaceId,
         foodItemId: pendingFoodItem.id,
@@ -321,6 +367,8 @@ export function PantryWidget({ householdId, viewMode }: PantryWidgetProps) {
         quantityUnit: pendingQuantityUnit.trim() || undefined,
         expiresOn: pendingExpiresOn || undefined,
         status: 'have',
+        totalPortions: totalPortions && totalPortions > 0 ? totalPortions : null,
+        portionUnit: pendingPortionUnit.trim() || null,
       });
       
       // Remember last used location per space
@@ -334,6 +382,8 @@ export function PantryWidget({ householdId, viewMode }: PantryWidgetProps) {
       setPendingQuantityValue('');
       setPendingQuantityUnit('');
       setPendingExpiresOn('');
+      setPendingTotalPortions('');
+      setPendingPortionUnit('');
       
       await loadPantryItems(getAbortSignal());
       setPendingFoodItem(null);
@@ -668,8 +718,24 @@ export function PantryWidget({ householdId, viewMode }: PantryWidgetProps) {
           (loading || spacesLoading) ? (
             <span className="animate-pulse">Loading...</span>
           ) : (
-            filteredItems.length + ' ' + (filteredItems.length === 1 ? 'item' : 'items') +
-            (searchQuery || selectedLocationFilter ? ` (of ${pantryItems.length})` : '')
+            <div className="flex items-center gap-2">
+              <span>
+                {filteredItems.length + ' ' + (filteredItems.length === 1 ? 'item' : 'items') +
+                (searchQuery || selectedLocationFilter ? ` (of ${pantryItems.length})` : '')}
+              </span>
+              {/* Mobile-visible space switcher */}
+              {availableSpaces.length > 1 && !spacesLoading && (
+                <div className="sm:hidden flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
+                  <span className="text-stone-500 text-xs">•</span>
+                  <SpaceContextSwitcher
+                    currentSpaceId={currentSpaceId}
+                    onSpaceChange={setCurrentSpace}
+                    availableSpaces={availableSpaces}
+                    className="[&_button]:bg-stone-400/20 [&_button]:border-stone-400/30 [&_button]:text-stone-700 [&_button:hover]:bg-stone-400/30 [&_button]:text-xs [&_button]:px-2 [&_button]:py-0.5 [&_button]:h-auto [&_button]:min-h-0 [&_button_span]:text-stone-600 [&_button_span]:font-normal [&_button_svg]:text-stone-600 [&_button_svg]:w-3 [&_button_svg]:h-3 [&_div]:text-xs"
+                  />
+                </div>
+              )}
+            </div>
           )
         }
         currentSpaceId={currentSpaceId}
@@ -677,29 +743,47 @@ export function PantryWidget({ householdId, viewMode }: PantryWidgetProps) {
         availableSpaces={availableSpaces}
         showSpaceSwitcher={availableSpaces.length > 1 && !spacesLoading}
         actions={
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => setShowMakeableRecipes(true)}
-              className="p-2 bg-orange-500 hover:bg-orange-600 text-white rounded-lg transition-colors flex items-center gap-1.5"
-              title="What can I make?"
-            >
-              <ChefHat size={18} />
-              <span className="hidden sm:inline text-sm font-medium">What can I make?</span>
-            </button>
-            <button
-              onClick={() => setShowManageLocations(true)}
-              className="p-2 bg-stone-400 hover:bg-stone-500 text-white rounded-lg transition-colors"
-              title="Manage locations"
-            >
-              <Settings size={18} />
-            </button>
-            <button
-              onClick={() => setShowFoodPicker(true)}
-              className="p-2 bg-stone-500 hover:bg-stone-600 text-white rounded-lg transition-colors"
-              title="Add to pantry"
-            >
-              <Plus size={20} />
-            </button>
+          <div className="flex items-center gap-2.5 sm:gap-3">
+            {/* Primary Actions - Meal Planning & Recipes (grouped together) */}
+            <div className="flex items-center gap-2 sm:gap-2.5">
+              <button
+                onClick={() => setShowPantryCheck(true)}
+                className="px-3 py-2 sm:px-4 sm:py-2.5 bg-blue-500 hover:bg-blue-600 active:bg-blue-700 text-white rounded-lg transition-colors flex items-center gap-1.5 sm:gap-2 min-h-[44px] touch-manipulation shadow-sm hover:shadow-md"
+                title="Check meal planner ingredients"
+              >
+                <Calendar size={18} className="flex-shrink-0" />
+                <span className="hidden sm:inline text-sm font-medium whitespace-nowrap">Meal Check</span>
+              </button>
+              <button
+                onClick={() => setShowMakeableRecipes(true)}
+                className="px-3 py-2 sm:px-4 sm:py-2.5 bg-orange-500 hover:bg-orange-600 active:bg-orange-700 text-white rounded-lg transition-colors flex items-center gap-1.5 sm:gap-2 min-h-[44px] touch-manipulation shadow-sm hover:shadow-md"
+                title="What can I make?"
+              >
+                <ChefHat size={18} className="flex-shrink-0" />
+                <span className="hidden sm:inline text-sm font-medium whitespace-nowrap">What can I make?</span>
+              </button>
+            </div>
+            
+            {/* Divider for visual separation */}
+            <div className="hidden sm:block w-px h-8 bg-stone-300" />
+            
+            {/* Secondary Actions - Settings & Add (grouped together) */}
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setShowManageLocations(true)}
+                className="p-2.5 sm:p-2.5 bg-stone-400 hover:bg-stone-500 active:bg-stone-600 text-white rounded-lg transition-colors min-h-[44px] min-w-[44px] flex items-center justify-center touch-manipulation shadow-sm hover:shadow-md"
+                title="Manage locations"
+              >
+                <Settings size={18} />
+              </button>
+              <button
+                onClick={() => setShowFoodPicker(true)}
+                className="p-2.5 sm:p-2.5 bg-stone-500 hover:bg-stone-600 active:bg-stone-700 text-white rounded-lg transition-colors min-h-[44px] min-w-[44px] flex items-center justify-center touch-manipulation shadow-sm hover:shadow-md"
+                title="Add to pantry"
+              >
+                <Plus size={20} />
+              </button>
+            </div>
           </div>
         }
       />
@@ -924,6 +1008,18 @@ export function PantryWidget({ householdId, viewMode }: PantryWidgetProps) {
                                       'Add quantity'
                                     )}
                                   </button>
+                                )}
+                                
+                                {/* Portion Tracking Display */}
+                                {(item as any).total_portions !== null && (item as any).total_portions !== undefined && (
+                                  <div className="flex items-center gap-1 text-xs">
+                                    <span className="text-blue-600 font-medium">
+                                      {(item as any).remaining_portions || 0} / {(item as any).total_portions} {(item as any).portion_unit || 'serving'}{((item as any).remaining_portions || 0) !== 1 ? 's' : ''}
+                                    </span>
+                                    {(item as any).remaining_portions === 0 && (
+                                      <span className="text-red-500 text-xs">(Depleted)</span>
+                                    )}
+                                  </div>
                                 )}
                                 
                                 {/* Expiry Date Display (Soft Awareness) */}
@@ -1273,6 +1369,8 @@ export function PantryWidget({ householdId, viewMode }: PantryWidgetProps) {
           setPendingQuantityValue('');
           setPendingQuantityUnit('');
           setPendingExpiresOn('');
+          setPendingTotalPortions('');
+          setPendingPortionUnit('');
         }}
         onSelect={handleLocationSelect}
         locations={pantryLocations}
@@ -1287,6 +1385,10 @@ export function PantryWidget({ householdId, viewMode }: PantryWidgetProps) {
         onQuantityValueChange={setPendingQuantityValue}
         onQuantityUnitChange={setPendingQuantityUnit}
         onExpiresOnChange={setPendingExpiresOn}
+        totalPortions={pendingTotalPortions}
+        portionUnit={pendingPortionUnit}
+        onTotalPortionsChange={setPendingTotalPortions}
+        onPortionUnitChange={setPendingPortionUnit}
       />
 
       {/* Location Manager Modal */}
@@ -1298,6 +1400,24 @@ export function PantryWidget({ householdId, viewMode }: PantryWidgetProps) {
         spaceId={currentSpaceId}
         onLocationsUpdated={handleLocationsUpdated}
       />
+
+      {/* Weekly Pantry Check Sheet */}
+      {showPantryCheck && currentSpaceId && (
+        <WeeklyPantryCheckSheet
+          isOpen={showPantryCheck}
+          onClose={() => setShowPantryCheck(false)}
+          householdId={currentSpaceId}
+          weekStartDate={getWeekStartDate()}
+          onPantryUpdated={() => {
+            // Refresh pantry items after adding ingredients
+            loadPantryItems(getAbortSignal());
+            showToast('success', 'Pantry updated');
+          }}
+          onGroceryListUpdated={() => {
+            // Could refresh grocery list widget if needed
+          }}
+        />
+      )}
     </div>
   );
 }

@@ -213,3 +213,70 @@ export function normalizeRecipeIngredients(
 ): Array<{ quantity: string; unit: string; [key: string]: any }> {
   return ingredients.map(ingredient => normalizeIngredient(ingredient));
 }
+
+/**
+ * Convert piece-based units to grams for ingredients
+ * This is a post-processing step that should be called after normalizeRecipeIngredients
+ * when you have ingredient names or food_item_ids available
+ * 
+ * @param ingredients - Array of normalized ingredients (must have food_item_id or name)
+ * @returns Array of ingredients with piece units converted to grams where possible
+ */
+export async function convertPieceUnitsToGrams(
+  ingredients: Array<{ 
+    quantity: string; 
+    unit: string; 
+    food_item_id?: string;
+    name?: string;
+    [key: string]: any;
+  }>
+): Promise<Array<{ quantity: string; unit: string; [key: string]: any }>> {
+  const { convertPieceToGrams, convertPieceToGramsSync } = await import('./pieceToWeightConverter');
+  
+  const converted = await Promise.all(
+    ingredients.map(async (ingredient) => {
+      // Only convert if unit is "piece" or "pieces"
+      const normalizedUnit = ingredient.unit.toLowerCase().trim();
+      if (normalizedUnit !== 'piece' && normalizedUnit !== 'pieces') {
+        return ingredient;
+      }
+      
+      // Try to convert piece to grams
+      const quantityNum = parseFloat(ingredient.quantity);
+      if (isNaN(quantityNum)) {
+        return ingredient; // Can't convert if quantity is not numeric
+      }
+      
+      let convertedGrams: number | null = null;
+      
+      // Try with ingredient name first (if available)
+      if (ingredient.name) {
+        convertedGrams = convertPieceToGramsSync(quantityNum, ingredient.name);
+      }
+      
+      // If that didn't work and we have food_item_id, try async lookup
+      if (!convertedGrams && ingredient.food_item_id) {
+        convertedGrams = await convertPieceToGrams(quantityNum, undefined, ingredient.food_item_id);
+      }
+      
+      // If conversion succeeded, update the ingredient
+      if (convertedGrams !== null && convertedGrams > 0) {
+        // Round to reasonable precision (no decimals for large values, 1 decimal for smaller)
+        const roundedGrams = convertedGrams >= 100 
+          ? Math.round(convertedGrams)
+          : Math.round(convertedGrams * 10) / 10;
+        
+        return {
+          ...ingredient,
+          quantity: roundedGrams.toString(),
+          unit: 'g',
+        };
+      }
+      
+      // Conversion not possible, return as-is
+      return ingredient;
+    })
+  );
+  
+  return converted;
+}

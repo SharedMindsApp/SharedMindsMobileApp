@@ -31,6 +31,8 @@ interface UIPreferencesContextType {
   getWidgetColor: (widgetType: WidgetTypeId) => WidgetColorToken;
   setWidgetColor: (widgetType: WidgetTypeId, color: WidgetColorToken) => Promise<void>;
   getWidgetColors: () => WidgetColorPreferences;
+  getTrackerColor: (trackerId: string) => WidgetColorToken | null;
+  setTrackerColor: (trackerId: string, color: WidgetColorToken) => Promise<void>;
 }
 
 const DEFAULT_CONFIG: UIPreferencesConfig = {
@@ -366,6 +368,21 @@ export function UIPreferencesProvider({ children }: { children: ReactNode }) {
     await updateCustomOverride('widgetColors', updatedColors);
   };
 
+  const getTrackerColors = (): Record<string, WidgetColorToken> => {
+    return getCustomOverride('trackerColors', {});
+  };
+
+  const getTrackerColor = (trackerId: string): WidgetColorToken | null => {
+    const trackerColors = getTrackerColors();
+    return trackerColors[trackerId] || null;
+  };
+
+  const setTrackerColor = async (trackerId: string, color: WidgetColorToken) => {
+    const currentTrackerColors = getTrackerColors();
+    const updatedTrackerColors = { ...currentTrackerColors, [trackerId]: color };
+    await updateCustomOverride('trackerColors', updatedTrackerColors);
+  };
+
   return (
     <UIPreferencesContext.Provider
       value={{
@@ -386,6 +403,8 @@ export function UIPreferencesProvider({ children }: { children: ReactNode }) {
         getWidgetColor,
         setWidgetColor,
         getWidgetColors,
+        getTrackerColor,
+        setTrackerColor,
       }}
     >
       {children}

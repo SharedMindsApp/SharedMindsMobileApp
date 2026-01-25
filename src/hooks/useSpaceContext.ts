@@ -6,10 +6,11 @@
  * 
  * Features:
  * - Defaults to provided initialSpaceId
- * - Persists last-used space in sessionStorage
+ * - Persists last-used space in localStorage (survives app restarts and page refreshes)
  * - Provides stable API for all widgets
  * - Handles loading states
  * - Prevents cross-space data leakage
+ * - User has full control over space selection - persists their choice across sessions
  */
 
 import { useState, useEffect, useCallback, useRef } from 'react';
@@ -39,7 +40,16 @@ const STORAGE_KEY = 'last_used_space_id';
 
 export function useSpaceContext(initialSpaceId: string): UseSpaceContextReturn {
   const { user, profile } = useAuth();
-  const [currentSpaceId, setCurrentSpaceIdState] = useState<string>(initialSpaceId);
+  // Initialize from localStorage if available, otherwise use initialSpaceId
+  const [currentSpaceId, setCurrentSpaceIdState] = useState<string>(() => {
+    if (typeof window !== 'undefined') {
+      const persisted = localStorage.getItem(STORAGE_KEY);
+      if (persisted) {
+        return persisted;
+      }
+    }
+    return initialSpaceId;
+  });
   const [availableSpaces, setAvailableSpaces] = useState<SpaceOption[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -55,9 +65,18 @@ export function useSpaceContext(initialSpaceId: string): UseSpaceContextReturn {
   }, [user, profile]);
 
   // Sync currentSpaceId when initialSpaceId changes (e.g., from route changes)
+  // But only if there's no persisted value in localStorage
   useEffect(() => {
     if (initialSpaceId && initialSpaceId !== currentSpaceId) {
-      setCurrentSpaceIdState(initialSpaceId);
+      // Only update if there's no persisted value, or if the persisted value is invalid
+      if (typeof window !== 'undefined') {
+        const persisted = localStorage.getItem(STORAGE_KEY);
+        if (!persisted || persisted === initialSpaceId) {
+          setCurrentSpaceIdState(initialSpaceId);
+        }
+      } else {
+        setCurrentSpaceIdState(initialSpaceId);
+      }
     }
   }, [initialSpaceId]);
 
@@ -107,15 +126,29 @@ export function useSpaceContext(initialSpaceId: string): UseSpaceContextReturn {
       if (allSpaces.length > 0) {
         const isValidSpace = allSpaces.some(s => s.id === currentSpaceId);
         if (!isValidSpace) {
-          // Try to restore from sessionStorage
-          const lastUsedSpaceId = sessionStorage.getItem(STORAGE_KEY);
+          // Try to restore from localStorage (persists across app restarts)
+          const lastUsedSpaceId = typeof window !== 'undefined' ? localStorage.getItem(STORAGE_KEY) : null;
           const restoredSpace = lastUsedSpaceId && allSpaces.find(s => s.id === lastUsedSpaceId);
           
           if (restoredSpace) {
             setCurrentSpaceIdState(restoredSpace.id);
+            // Ensure it's persisted
+            if (typeof window !== 'undefined') {
+              localStorage.setItem(STORAGE_KEY, restoredSpace.id);
+            }
           } else if (allSpaces.length > 0) {
             // Default to first available space (usually personal)
-            setCurrentSpaceIdState(allSpaces[0].id);
+            const defaultSpace = allSpaces[0];
+            setCurrentSpaceIdState(defaultSpace.id);
+            // Persist the default selection
+            if (typeof window !== 'undefined') {
+              localStorage.setItem(STORAGE_KEY, defaultSpace.id);
+            }
+          }
+        } else {
+          // Current space is valid - ensure it's persisted
+          if (typeof window !== 'undefined') {
+            localStorage.setItem(STORAGE_KEY, currentSpaceId);
           }
         }
       }
@@ -142,8 +175,10 @@ export function useSpaceContext(initialSpaceId: string): UseSpaceContextReturn {
     // Update state
     setCurrentSpaceIdState(spaceId);
 
-    // Persist to sessionStorage
-    sessionStorage.setItem(STORAGE_KEY, spaceId);
+    // Persist to localStorage (survives app restarts)
+    if (typeof window !== 'undefined') {
+      localStorage.setItem(STORAGE_KEY, spaceId);
+    }
 
     // Clear switching flag after a brief delay
     setTimeout(() => {

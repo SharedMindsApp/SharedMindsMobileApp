@@ -113,28 +113,44 @@ export function MakeableRecipesModal({
       }
       
       // Use the first active meal slot's mealTypeMapping, or fallback to recipe's meal_type
+      // recipe.meal_type is now an array, use first value
       const slot = activeSlots[0];
-      const mealType = slot.mealTypeMapping || recipe.meal_type;
+      const primaryMealType = Array.isArray(recipe.meal_type) && recipe.meal_type.length > 0
+        ? recipe.meal_type[0]
+        : 'dinner';
+      const mealType = slot.mealTypeMapping || primaryMealType;
       
-      await addMealToPlan(
+      const result = await addMealToPlan(
         spaceId,
-        recipe.id,
-        null,
+        null, // mealId = null for recipes
+        null, // customMealName = null for recipes
         mealType as 'breakfast' | 'lunch' | 'dinner' | 'snack',
         dayOfWeek,
         weekStartDate,
-        profile.id
+        profile.id,
+        recipe.id // recipeId parameter
       );
 
-      showToast('success', `Added ${recipe.name} to meal plan`);
+      const wasReplaced = (result as any)?.wasReplaced;
+      if (wasReplaced) {
+        showToast('success', `Meal replaced: ${recipe.name} in meal plan`);
+      } else {
+        showToast('success', `Added ${recipe.name} to meal plan`);
+      }
       
       // Call optional callback
       if (onAddToMealPlan) {
         onAddToMealPlan(recipe);
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Failed to add meal to plan:', error);
-      showToast('error', 'Failed to add meal to plan');
+      // Only show error if it's not a duplicate key error (which should be handled by replacement)
+      if (error.code === '23505') {
+        // This shouldn't happen anymore, but if it does, show a friendly message
+        showToast('error', 'A meal already exists in this slot. Please try again.');
+      } else {
+        showToast('error', error.message || 'Failed to add meal to plan');
+      }
     } finally {
       setAddingToPlan(null);
     }
@@ -227,9 +243,13 @@ export function MakeableRecipesModal({
                         </div>
                         
                         <div className="flex items-center gap-3 text-sm text-gray-600 mb-3">
-                          <span className="capitalize px-2 py-0.5 bg-orange-100 text-orange-700 rounded font-medium">
-                            {recipe.meal_type}
-                          </span>
+                          <div className="flex flex-wrap gap-1">
+                            {(Array.isArray(recipe.meal_type) ? recipe.meal_type : [recipe.meal_type]).map((mt, idx) => (
+                              <span key={idx} className="capitalize px-2 py-0.5 bg-orange-100 text-orange-700 rounded font-medium">
+                                {mt}
+                              </span>
+                            ))}
+                          </div>
                           {recipe.prep_time && recipe.cook_time && (
                             <div className="flex items-center gap-1">
                               <Clock size={14} />
@@ -340,9 +360,13 @@ export function MakeableRecipesModal({
                           </div>
                           
                           <div className="flex items-center gap-2 text-sm text-gray-600 mb-3">
-                            <span className="capitalize px-2 py-0.5 bg-orange-100 text-orange-700 rounded font-medium text-xs">
-                              {recipe.meal_type}
-                            </span>
+                            <div className="flex flex-wrap gap-1">
+                              {(Array.isArray(recipe.meal_type) ? recipe.meal_type : [recipe.meal_type]).map((mt, idx) => (
+                                <span key={idx} className="capitalize px-2 py-0.5 bg-orange-100 text-orange-700 rounded font-medium text-xs">
+                                  {mt}
+                                </span>
+                              ))}
+                            </div>
                             <span className="text-gray-500">
                               {totalRequired - missingCount}/{totalRequired} ingredients
                             </span>

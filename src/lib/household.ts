@@ -37,29 +37,82 @@ export type UpdateMemberInput = {
 };
 
 export async function createHousehold(name: string, spaceType: 'personal' | 'shared' = 'shared'): Promise<Household> {
+  console.log('[createHousehold] Starting with name:', name, 'spaceType:', spaceType);
+  
   const { data: userData } = await supabase.auth.getUser();
   if (!userData.user) {
+    console.error('[createHousehold] Not authenticated');
     throw new Error('Not authenticated');
   }
 
-  const { data: profile } = await supabase
+  console.log('[createHousehold] User authenticated:', userData.user.id);
+
+  const { data: profile, error: profileError } = await supabase
     .from('profiles')
     .select('id')
     .eq('user_id', userData.user.id)
     .maybeSingle();
 
+  if (profileError) {
+    console.error('[createHousehold] Profile query error:', profileError);
+    throw new Error(`Failed to fetch profile: ${profileError.message}`);
+  }
+
   if (!profile) {
+    console.error('[createHousehold] Profile not found');
     throw new Error('Profile not found. Please complete signup first.');
   }
 
+  console.log('[createHousehold] Profile found:', profile.id);
+
+  // Create space with household context
+  // Use a temporary context_id that will be updated to space.id after creation
+  const tempContextId = crypto.randomUUID();
+  
+  console.log('[createHousehold] Creating space with:', {
+    name,
+    billing_owner_id: profile.id,
+    space_type: spaceType,
+    context_type: 'household',
+    context_id: tempContextId,
+  });
+  
   const { data, error } = await supabase
     .from('spaces')
-    .insert({ name, billing_owner_id: profile.id, space_type: spaceType })
+    .insert({ 
+      name, 
+      billing_owner_id: profile.id, 
+      space_type: spaceType,
+      context_type: 'household',
+      context_id: tempContextId, // Temporary ID, will be updated to space.id after creation
+    })
     .select()
     .single();
 
-  if (error) throw error;
-  if (!data) throw new Error('No data returned from household creation');
+  if (error) {
+    console.error('[createHousehold] Space creation error:', error);
+    throw new Error(error.message || 'Failed to create household space');
+  }
+  
+  if (!data) {
+    console.error('[createHousehold] No data returned from space creation');
+    throw new Error('No data returned from household creation');
+  }
+
+  console.log('[createHousehold] Space created:', data.id);
+
+  // Update context_id to match space.id (household spaces use space.id as context_id)
+  const { error: updateError } = await supabase
+    .from('spaces')
+    .update({ context_id: data.id })
+    .eq('id', data.id);
+
+  if (updateError) {
+    console.error('[createHousehold] Context ID update error:', updateError);
+    throw new Error(`Failed to update space context: ${updateError.message}`);
+  }
+
+  console.log('[createHousehold] Context ID updated');
 
   const { error: memberError } = await supabase
     .from('space_members')
@@ -72,7 +125,13 @@ export async function createHousehold(name: string, spaceType: 'personal' | 'sha
       accepted_at: new Date().toISOString(),
     });
 
-  if (memberError) throw memberError;
+  if (memberError) {
+    console.error('[createHousehold] Member creation error:', memberError);
+    throw new Error(`Failed to add member: ${memberError.message}`);
+  }
+
+  console.log('[createHousehold] Member added successfully');
+  console.log('[createHousehold] Household creation complete:', data);
 
   return data;
 }
@@ -92,14 +151,17 @@ export async function getUserHousehold(): Promise<Household | null> {
 
   if (!profile) return null;
 
+  // Find household space (context_type = 'household') via space_members
   const { data: householdMember } = await supabase
     .from('space_members')
-    .select('space_id')
+    .select('space_id, spaces!inner(*)')
     .eq('user_id', profile.id)
     .eq('status', 'active')
+    .eq('spaces.context_type', 'household')
     .maybeSingle();
 
-  if (!householdMember) {
+  if (!householdMember || !householdMember.spaces) {
+    // Fallback to old system for legacy data
     const { data: oldMember } = await supabase
       .from('members')
       .select('household_id')
@@ -112,18 +174,13 @@ export async function getUserHousehold(): Promise<Household | null> {
       .from('spaces')
       .select('*')
       .eq('id', oldMember.household_id)
+      .eq('context_type', 'household')
       .maybeSingle();
 
     return household;
   }
 
-  const { data: household } = await supabase
-    .from('spaces')
-    .select('*')
-    .eq('id', householdMember.space_id)
-    .maybeSingle();
-
-  return household;
+  return householdMember.spaces as unknown as Household;
 }
 
 export async function createMember(input: CreateMemberInput): Promise<Member> {

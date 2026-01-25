@@ -89,7 +89,8 @@ export function generateRecipeVariationsPrompt(
   dietaryRequirements?: string[],
   location?: string | null,
   selectedTags?: string[], // Tags selected by user for this meal type (e.g., ["quick-meal", "vegetarian"])
-  includeLocationInAI: boolean = true // Whether to include location in prompt (default: true)
+  includeLocationInAI: boolean = true, // Whether to include location in prompt (default: true)
+  courseType?: 'starter' | 'side' | 'main' | 'dessert' | 'shared' | 'snack' // Course/dish type (e.g., "dessert", "starter")
 ): string {
   let prompt = `Find 5 different FOOD OR DRINK recipe variations for: ${baseQuery}`;
   
@@ -111,6 +112,34 @@ export function generateRecipeVariationsPrompt(
   
   if (mealType) {
     prompt += `Meal type: ${mealType}\n`;
+  }
+  
+  // Add course/dish type to guide AI suggestions
+  if (courseType && courseType !== 'main') {
+    const courseTypeLabels: Record<string, string> = {
+      starter: 'starter/appetizer',
+      side: 'side dish',
+      main: 'main course',
+      dessert: 'dessert',
+      shared: 'shared dish (e.g., tapas, mezze, family-style)',
+      snack: 'snack',
+    };
+    prompt += `Dish type: ${courseTypeLabels[courseType] || courseType}\n`;
+    prompt += `IMPORTANT: All suggestions MUST be ${courseTypeLabels[courseType] || courseType} recipes. For example:\n`;
+    if (courseType === 'dessert') {
+      prompt += `- Return dessert recipes like cakes, cookies, ice cream, puddings, pies, tarts, etc.\n`;
+      prompt += `- DO NOT return main courses, starters, or side dishes\n`;
+    } else if (courseType === 'starter') {
+      prompt += `- Return starter/appetizer recipes like soups, salads, small plates, dips, etc.\n`;
+      prompt += `- DO NOT return main courses or desserts\n`;
+    } else if (courseType === 'side') {
+      prompt += `- Return side dish recipes like vegetables, salads, breads, rice dishes, etc.\n`;
+      prompt += `- DO NOT return main courses or desserts\n`;
+    } else if (courseType === 'shared') {
+      prompt += `- Return shared/family-style dishes like tapas, mezze, platters, etc.\n`;
+      prompt += `- These are dishes meant to be shared among multiple people\n`;
+    }
+    prompt += `\n`;
   }
   
   if (cuisine) {
@@ -443,7 +472,7 @@ export function generatePerplexityPrompt(
       {
         "name": "Exact ingredient name as written in recipe (e.g., 'chicken breast', 'olive oil', 'garlic cloves', 'all-purpose flour')",
         "quantity": "Amount (e.g., '2', '1/2', '250')",
-        "unit": "Unit (e.g., 'cup', 'tbsp', 'tsp', 'cloves', 'pieces', 'g', 'ml', or empty string if no unit)",
+        "unit": "Unit - PREFER measurable units: 'g' (grams), 'kg' (kilograms), 'oz' (ounces), 'ml' (milliliters), 'l' (liters), 'cup', 'tbsp', 'tsp'. AVOID 'piece' or 'pieces' unless absolutely necessary (e.g., for eggs, which are commonly measured by count). If you must use 'piece', provide the weight equivalent in grams or ounces instead when possible.",
         "optional": false,
         "notes": "Preparation notes if any (e.g., 'chopped', 'diced', 'minced', 'sliced')"
       }
@@ -501,14 +530,23 @@ EXAMPLE INGREDIENT FORMATTING:
 Good: "chicken breast", "olive oil", "garlic cloves", "all-purpose flour", "ground beef", "Kosher salt"
 Bad: "chicken", "oil", "garlic", "flour", "beef", "salt"
 
-UNIT RULE:
+UNIT RULE (CRITICAL):
+- PREFER measurable units (grams, ounces, milliliters, cups, tablespoons, teaspoons) over vague units like "piece" or "pieces"
+- For ingredients commonly measured by weight, use: "g" (grams), "kg" (kilograms), or "oz" (ounces)
+- For ingredients commonly measured by volume, use: "ml" (milliliters), "l" (liters), "cup", "tbsp", "tsp"
+- ONLY use "piece" or "pieces" for items that are genuinely counted (e.g., eggs, whole fruits for garnish)
+- If a recipe says "2 chicken breasts", convert to weight: use "340g" (approximately 170g per breast) instead of "2 pieces"
+- If a recipe says "1 onion", convert to weight: use "150g" instead of "1 piece"
 - If the unit is included inside the quantity string (e.g. "1/2 cup", "250g"), set unit to an empty string ""
 - Only use the unit field when quantity is purely numeric (e.g. "2" + "cloves", "3" + "tbsp")
 - Examples:
+  * quantity: "340", unit: "g" ✓ (for "2 chicken breasts")
+  * quantity: "150", unit: "g" ✓ (for "1 onion")
   * quantity: "1/2 cup", unit: "" ✓
   * quantity: "250g", unit: "" ✓
-  * quantity: "2", unit: "cloves" ✓
+  * quantity: "2", unit: "cloves" ✓ (garlic cloves are small and commonly counted)
   * quantity: "3", unit: "tbsp" ✓
+  * quantity: "2", unit: "piece" ✗ (WRONG - use weight instead)
   * quantity: "1/2 cup", unit: "cup" ✗ (WRONG - duplicate)
 
 NUTRITION DATA RULES:
@@ -850,15 +888,25 @@ export function validatePerplexityResponse(data: any): data is PerplexityRecipeR
     return false;
   }
   
-  // meal_type must be present (will be normalized later, but must exist)
-  if (!data.recipe.meal_type || typeof data.recipe.meal_type !== 'string') {
+  // meal_type must be present (can be string or array, will be normalized later)
+  if (!data.recipe.meal_type) {
     console.warn('[validatePerplexityResponse] Missing meal_type');
     return false;
   }
-  
+
   // Accept 'drink' as valid input (will be normalized to 'snack' later)
   const validMealTypes = ['breakfast', 'lunch', 'dinner', 'snack', 'drink'];
-  if (!validMealTypes.includes(data.recipe.meal_type.toLowerCase())) {
+  // Handle both string (single) and array (multiple) meal types
+  const mealTypes = Array.isArray(data.recipe.meal_type) 
+    ? data.recipe.meal_type 
+    : [data.recipe.meal_type];
+  
+  // All meal types must be valid
+  const allValid = mealTypes.every(mt => 
+    typeof mt === 'string' && validMealTypes.includes(mt.toLowerCase())
+  );
+  
+  if (!allValid) {
     console.warn('[validatePerplexityResponse] Invalid meal_type:', data.recipe.meal_type);
     return false;
   }

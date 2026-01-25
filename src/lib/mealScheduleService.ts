@@ -20,6 +20,209 @@ import { supabase } from './supabase';
 import type { MealSchedule, DailyMealSchedule, MealSlot } from './mealScheduleTypes';
 import { getDefaultMealSchedule, schedulesOverlap } from './mealScheduleTypes';
 import { getProfileIdFromAuthUserId } from './recipeGeneratorService';
+import type { SupabaseClient } from '@supabase/supabase-js';
+
+/**
+ * Require authenticated user before performing authenticated operations
+ * Single source of truth for auth readiness checks
+ * 
+ * Uses getUser() which is more reliable than getSession() because it:
+ * - Validates the token with the server
+ * - Returns null if token is invalid/expired
+ * - Ensures auth.uid() will be available in RLS policies
+ * 
+ * @param supabaseClient - Supabase client instance
+ * @returns Authenticated user object
+ * @throws Error if auth is not ready or user is not authenticated
+ */
+export async function requireAuthenticatedUser(
+  supabaseClient: SupabaseClient = supabase
+): Promise<{ id: string }> {
+  const { data, error } = await supabaseClient.auth.getUser();
+
+  if (error || !data?.user) {
+    throw new Error(
+      '[Auth] Attempted to perform authenticated operation before auth was ready. ' +
+      `Error: ${error?.message || 'No user found'}`
+    );
+  }
+
+  return data.user;
+}
+
+/**
+ * Resolve ownership for a meal schedule based on space type
+ * Returns exactly one of: profile_id (personal) OR household_id (household)
+ * 
+ * Invariant:
+ * - Spaces are NOT households
+ * - Household ownership is always via space.context_id
+ * - Invalid household references are legacy data and must degrade safely
+ * 
+ * CRITICAL: household_id must come from space.context_id, NOT space.id
+ * Spaces are not households - context_id references the actual household
+ * 
+ * @param space - Space object with context_type and context_id
+ * @param authUid - Authenticated user ID
+ * @returns Ownership object with exactly one of profile_id or household_id set
+ */
+async function resolveMealScheduleOwnership(
+  space: { id: string; context_type: string; context_id: string | null },
+  authUid: string
+): Promise<{ profile_id: string | null; household_id: string | null }> {
+  if (space.context_type === 'household') {
+    // Household schedule: use household_id from space.context_id (NOT space.id)
+    if (!space.context_id) {
+      // Invalid state: household space with null context_id
+      // Gracefully downgrade to personal ownership
+      if (process.env.NODE_ENV === 'development') {
+        console.warn(
+          `[meal_schedules] Household space ${space.id} has null context_id. ` +
+          'Downgrading to personal ownership.'
+        );
+      }
+      
+      // Resolve as personal schedule
+      const profileId = await getProfileIdFromAuthUserId(authUid);
+      if (!profileId) {
+        throw new Error('[meal_schedules] Profile not found for authenticated user');
+      }
+      return {
+        profile_id: profileId,
+        household_id: null,
+      };
+    }
+
+    // Validate that context_id references an existing household space
+    // For household spaces, context_id = space.id (self-reference)
+    // So we check if a space exists with id = context_id and context_type = 'household'
+    const { data: householdSpace, error: householdError } = await supabase
+      .from('spaces')
+      .select('id, context_type')
+      .eq('id', space.context_id)
+      .eq('context_type', 'household')
+      .maybeSingle();
+
+    if (householdError) {
+      // Database error - log but don't crash, downgrade to personal
+      if (process.env.NODE_ENV === 'development') {
+        console.warn(
+          `[meal_schedules] Failed to validate household space ${space.context_id}: ${householdError.message}. ` +
+          'Downgrading to personal ownership.'
+        );
+      }
+      
+      // Resolve as personal schedule
+      const profileId = await getProfileIdFromAuthUserId(authUid);
+      if (!profileId) {
+        throw new Error('[meal_schedules] Profile not found for authenticated user');
+      }
+      return {
+        profile_id: profileId,
+        household_id: null,
+      };
+    }
+
+    if (!householdSpace) {
+      // Invalid state: household space doesn't exist (legacy data)
+      // Gracefully downgrade to personal ownership
+      if (process.env.NODE_ENV === 'development') {
+        console.warn(
+          `[meal_schedules] Household ${space.context_id} referenced by space ${space.id} does not exist. ` +
+          'This is likely legacy data. Downgrading to personal ownership.'
+        );
+      }
+      
+      // Resolve as personal schedule
+      const profileId = await getProfileIdFromAuthUserId(authUid);
+      if (!profileId) {
+        throw new Error('[meal_schedules] Profile not found for authenticated user');
+      }
+      return {
+        profile_id: profileId,
+        household_id: null,
+      };
+    }
+
+    // Validate household membership explicitly (pre-insert check)
+    // This ensures failures happen before hitting RLS
+    const { data: membershipCheck, error: membershipError } = await supabase
+      .rpc('is_user_household_member', { hid: space.context_id });
+
+    if (membershipError) {
+      // RPC error - log but don't crash, downgrade to personal
+      if (process.env.NODE_ENV === 'development') {
+        console.warn(
+          `[meal_schedules] Failed to check household membership: ${membershipError.message}. ` +
+          'Downgrading to personal ownership.'
+        );
+      }
+      
+      // Resolve as personal schedule
+      const profileId = await getProfileIdFromAuthUserId(authUid);
+      if (!profileId) {
+        throw new Error('[meal_schedules] Profile not found for authenticated user');
+      }
+      return {
+        profile_id: profileId,
+        household_id: null,
+      };
+    }
+
+    if (!membershipCheck) {
+      // User is not a member - this is a security check, throw error
+      throw new Error(
+        `[meal_schedules] User is not a member of household ${space.context_id} associated with space ${space.id}. ` +
+        'Cannot create meal schedule without household membership.'
+      );
+    }
+
+    // All validations passed - return household ownership
+    return {
+      household_id: space.context_id, // Use context_id, NOT space.id
+      profile_id: null,
+    };
+  } else {
+    // Personal schedule: resolve profile_id from auth user
+    const profileId = await getProfileIdFromAuthUserId(authUid);
+    if (!profileId) {
+      throw new Error('[meal_schedules] Profile not found for authenticated user');
+    }
+    return {
+      profile_id: profileId,
+      household_id: null,
+    };
+  }
+}
+
+/**
+ * Validate meal schedule ownership before insert
+ * Ensures exactly one of profile_id or household_id is set
+ * 
+ * @param insertData - Insert payload to validate
+ * @throws Error if ownership is invalid
+ */
+function validateMealScheduleOwnership(insertData: {
+  profile_id?: string | null;
+  household_id?: string | null;
+}): void {
+  const hasProfileId = insertData.profile_id !== null && insertData.profile_id !== undefined;
+  const hasHouseholdId = insertData.household_id !== null && insertData.household_id !== undefined;
+
+  if (hasProfileId && hasHouseholdId) {
+    throw new Error(
+      '[meal_schedules] Invalid ownership: both profile_id and household_id set. ' +
+      'Exactly one must be set: profile_id for personal schedules, household_id for household schedules.'
+    );
+  }
+
+  if (!hasProfileId && !hasHouseholdId) {
+    throw new Error(
+      '[meal_schedules] Invalid ownership: neither profile_id nor household_id set. ' +
+      'Exactly one must be set: profile_id for personal schedules, household_id for household schedules.'
+    );
+  }
+}
 
 /**
  * Get the default meal schedule for a space
@@ -51,10 +254,16 @@ export async function getDefaultMealScheduleForSpace(spaceId: string): Promise<M
   const defaultSchedule = getDefaultMealSchedule();
   defaultSchedule.space_id = spaceId;
 
-  // Determine if this is a household or personal space
+  // 1️⃣ HARD AUTH GATE: Block ALL inserts until auth is ready
+  // This ensures auth.uid() is available in RLS policies
+  const user = await requireAuthenticatedUser(supabase);
+  const authUid = user.id;
+
+  // 2️⃣ Resolve space and ownership explicitly
+  // Fetch full space record to get id, context_type and context_id
   const { data: space } = await supabase
     .from('spaces')
-    .select('context_type, context_id')
+    .select('id, context_type, context_id')
     .eq('id', spaceId)
     .single();
 
@@ -62,8 +271,25 @@ export async function getDefaultMealScheduleForSpace(spaceId: string): Promise<M
     throw new Error(`Space ${spaceId} not found`);
   }
 
-  const insertData: any = {
+  // 3️⃣ Resolve ownership explicitly (exactly one of profile_id OR household_id)
+  // CRITICAL: household_id comes from space.context_id, NOT space.id
+  // Spaces are not households - context_id references the actual household
+  const ownership = await resolveMealScheduleOwnership(space, authUid);
+
+  // 4️⃣ Construct insert payload with explicit ownership
+  const insertData: {
+    space_id: string;
+    profile_id: string | null;
+    household_id: string | null;
+    name: string;
+    is_default: boolean;
+    is_active: boolean;
+    start_date: null;
+    end_date: null;
+    schedules: DailyMealSchedule[];
+  } = {
     space_id: spaceId,
+    ...ownership, // Explicit ownership: exactly one of profile_id or household_id
     name: defaultSchedule.name,
     is_default: true,
     is_active: true,
@@ -72,38 +298,28 @@ export async function getDefaultMealScheduleForSpace(spaceId: string): Promise<M
     schedules: defaultSchedule.schedules,
   };
 
-  // 1️⃣ Gate inserts on authenticated session (mandatory)
-  // Check auth session BEFORE attempting any insert
-  const { data: sessionData } = await supabase.auth.getSession();
-  const authUid = sessionData?.session?.user?.id ?? null;
-  
-  if (!authUid) {
-    throw new Error('Attempted to create meal schedule before auth session was ready');
-  }
+  // 5️⃣ Defensive validation: ensure ownership is correct before insert
+  validateMealScheduleOwnership(insertData);
 
-  if (space.context_type === 'household') {
-    insertData.household_id = space.context_id;
-    insertData.profile_id = null;
-  } else {
-    // For personal spaces, get the profile ID from the auth user
-    // Ensure profile resolution also depends on session
-    if (!authUid) {
-      throw new Error('No auth UID when resolving active profile');
-    }
-    const profileId = await getProfileIdFromAuthUserId(authUid);
-    if (!profileId) {
-      throw new Error('Profile not found for authenticated user');
-    }
-    insertData.profile_id = profileId;
-    insertData.household_id = null;
+  // 6️⃣ Diagnostic logging (dev only) - must never log authUid: null
+  if (process.env.NODE_ENV === 'development') {
+    console.debug('[meal_schedules insert]', {
+      spaceId: space.id,
+      spaceContextType: space.context_type,
+      spaceContextId: space.context_id,
+      resolvedOwnership: {
+        profileId: insertData.profile_id,
+        householdId: insertData.household_id,
+      },
+      // Never log auth.uid() in production - only in dev
+      authUid: user.id, // Must never be null at this point
+      validation: {
+        hasProfileId: insertData.profile_id !== null,
+        hasHouseholdId: insertData.household_id !== null,
+        exactlyOneOwner: (insertData.profile_id !== null) !== (insertData.household_id !== null),
+      },
+    });
   }
-
-  // Log auth check right before insert
-  console.log('[MealSchedule] auth check', {
-    authUid,
-    profileId: insertData.profile_id,
-    householdId: insertData.household_id,
-  });
 
   const { data: created, error: createError } = await supabase
     .from('meal_schedules')
@@ -217,10 +433,16 @@ export async function createMealSchedule(
       .eq('is_default', true);
   }
 
-  // Determine if this is a household or personal space
+  // 1️⃣ HARD AUTH GATE: Block ALL inserts until auth is ready
+  // This ensures auth.uid() is available in RLS policies
+  const user = await requireAuthenticatedUser(supabase);
+  const authUid = user.id;
+
+  // 2️⃣ Resolve space and ownership explicitly
+  // Fetch full space record to get id, context_type and context_id
   const { data: space } = await supabase
     .from('spaces')
-    .select('context_type, context_id')
+    .select('id, context_type, context_id')
     .eq('id', spaceId)
     .single();
 
@@ -228,8 +450,25 @@ export async function createMealSchedule(
     throw new Error(`Space ${spaceId} not found`);
   }
 
-  const insertData: any = {
+  // 3️⃣ Resolve ownership explicitly (exactly one of profile_id OR household_id)
+  // CRITICAL: household_id comes from space.context_id, NOT space.id
+  // Spaces are not households - context_id references the actual household
+  const ownership = await resolveMealScheduleOwnership(space, authUid);
+
+  // 4️⃣ Construct insert payload with explicit ownership
+  const insertData: {
+    space_id: string;
+    profile_id: string | null;
+    household_id: string | null;
+    name: string;
+    is_default: boolean;
+    is_active: boolean;
+    start_date: string | null;
+    end_date: string | null;
+    schedules: DailyMealSchedule[];
+  } = {
     space_id: spaceId,
+    ...ownership, // Explicit ownership: exactly one of profile_id or household_id
     name,
     is_default: isDefault,
     is_active: isActive,
@@ -238,38 +477,28 @@ export async function createMealSchedule(
     schedules,
   };
 
-  // 1️⃣ Gate inserts on authenticated session (mandatory)
-  // Check auth session BEFORE attempting any insert
-  const { data: sessionData } = await supabase.auth.getSession();
-  const authUid = sessionData?.session?.user?.id ?? null;
-  
-  if (!authUid) {
-    throw new Error('Attempted to create meal schedule before auth session was ready');
-  }
+  // 5️⃣ Defensive validation: ensure ownership is correct before insert
+  validateMealScheduleOwnership(insertData);
 
-  if (space.context_type === 'household') {
-    insertData.household_id = space.context_id;
-    insertData.profile_id = null;
-  } else {
-    // For personal spaces, get the profile ID from the auth user
-    // Ensure profile resolution also depends on session
-    if (!authUid) {
-      throw new Error('No auth UID when resolving active profile');
-    }
-    const profileId = await getProfileIdFromAuthUserId(authUid);
-    if (!profileId) {
-      throw new Error('Profile not found for authenticated user');
-    }
-    insertData.profile_id = profileId;
-    insertData.household_id = null;
+  // 6️⃣ Diagnostic logging (dev only) - must never log authUid: null
+  if (process.env.NODE_ENV === 'development') {
+    console.debug('[meal_schedules insert]', {
+      spaceId: space.id,
+      spaceContextType: space.context_type,
+      spaceContextId: space.context_id,
+      resolvedOwnership: {
+        profileId: insertData.profile_id,
+        householdId: insertData.household_id,
+      },
+      // Never log auth.uid() in production - only in dev
+      authUid: user.id, // Must never be null at this point
+      validation: {
+        hasProfileId: insertData.profile_id !== null,
+        hasHouseholdId: insertData.household_id !== null,
+        exactlyOneOwner: (insertData.profile_id !== null) !== (insertData.household_id !== null),
+      },
+    });
   }
-
-  // Log auth check right before insert
-  console.log('[MealSchedule] auth check', {
-    authUid,
-    profileId: insertData.profile_id,
-    householdId: insertData.household_id,
-  });
 
   const { data, error } = await supabase
     .from('meal_schedules')

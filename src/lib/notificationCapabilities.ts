@@ -164,6 +164,13 @@ export const NOTIFICATION_CAPABILITIES: Record<NotificationFeature, Notification
       supportsInApp: true,
       supportsPush: true,
     },
+    {
+      feature: 'habit',
+      signalType: 'update',
+      description: 'Habit invitations and updates',
+      supportsInApp: true,
+      supportsPush: true,
+    },
   ],
   sleep: [
     {

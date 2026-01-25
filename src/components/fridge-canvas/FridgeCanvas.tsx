@@ -133,7 +133,7 @@ export function FridgeCanvas({ householdId }: FridgeCanvasProps) {
     return !dismissed && window.innerWidth < 768;
   });
 
-  const { preferences } = useUIPreferences();
+  const { preferences, getTrackerColor } = useUIPreferences();
   const reducedMotion = preferences?.reduce_motion || false;
 
   // Centralised permissions hook
@@ -413,9 +413,36 @@ const handleAddWidget = async (type: WidgetType) => {
         const tracker = await getTracker(trackerId);
         if (tracker) {
           widgetTitle = tracker.name;
-          // Use tracker's icon/color if available, otherwise use template's
           widgetIcon = tracker.icon || 'Activity';
-          widgetColor = tracker.color || 'indigo';
+          
+          // Check for custom color preference first, then fall back to tracker's color
+          const customColor = getTrackerColor(trackerId);
+          if (customColor) {
+            // Map WidgetColorToken to color string for createWidget
+            const colorMap: Record<string, string> = {
+              cyan: 'cyan',
+              blue: 'blue',
+              violet: 'violet',
+              pink: 'pink',
+              orange: 'orange',
+              green: 'green',
+              yellow: 'yellow',
+              neutral: 'slate',
+              red: 'red',
+              teal: 'teal',
+              emerald: 'emerald',
+              amber: 'amber',
+              indigo: 'indigo',
+              rose: 'rose',
+              sky: 'sky',
+              lime: 'lime',
+              fuchsia: 'fuchsia',
+              slate: 'slate',
+            };
+            widgetColor = colorMap[customColor] || 'indigo';
+          } else {
+            widgetColor = tracker.color || 'indigo';
+          }
         }
       } catch (err) {
         console.error('Failed to fetch tracker:', err);

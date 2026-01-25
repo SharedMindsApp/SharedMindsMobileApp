@@ -1,25 +1,63 @@
 /**
  * Hook for managing meal schedules
+ * 
+ * Ensures auth + profile + space are ready before attempting to load/create schedules
+ * Prevents RLS failures from auth.uid() being NULL during inserts
  */
 
 import { useState, useEffect, useRef } from 'react';
 import { getDefaultMealScheduleForSpace, type MealSchedule } from '../lib/mealScheduleService';
 import { getAllSlotsForDay, getActiveMealSlots, type MealSlot } from '../lib/mealScheduleTypes';
+import { useAuth } from '../contexts/AuthContext';
+import { supabase } from '../lib/supabase';
 
 export function useMealSchedule(spaceId: string | null) {
   const [schedule, setSchedule] = useState<MealSchedule | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
+  const { user, profile, loading: authLoading } = useAuth();
+  
+  // Track auth readiness: auth must have resolved at least once (not just session exists)
+  const [authReady, setAuthReady] = useState(false);
   
   // Prevent double-run inserts (React StrictMode)
   // Only mark as initialized on success, allowing retries on failure
   const hasInitializedRef = useRef(false);
   const currentSpaceIdRef = useRef<string | null>(null);
 
+  // Monitor auth readiness: auth is ready when loading is false AND user/profile are resolved
   useEffect(() => {
-    if (!spaceId) {
-      setSchedule(null);
-      setLoading(false);
+    if (!authLoading) {
+      // Auth has resolved (either user exists or doesn't)
+      // Check if we have a valid authenticated user
+      const checkAuthReady = async () => {
+        try {
+          const { data, error } = await supabase.auth.getUser();
+          if (!error && data?.user) {
+            setAuthReady(true);
+          } else {
+            setAuthReady(false);
+          }
+        } catch {
+          setAuthReady(false);
+        }
+      };
+      checkAuthReady();
+    }
+  }, [authLoading, user]);
+
+  useEffect(() => {
+    // Early return: wait for all prerequisites
+    if (!spaceId || !authReady || !user || !profile) {
+      // Don't set loading to false if we're still waiting for prerequisites
+      // This prevents flickering UI
+      if (!spaceId || authLoading) {
+        setLoading(true);
+      } else if (authReady && (!user || !profile)) {
+        // Auth resolved but user/profile missing - this is an error state
+        setLoading(false);
+        setError(new Error('Authentication required to load meal schedule'));
+      }
       hasInitializedRef.current = false;
       currentSpaceIdRef.current = null;
       return;
@@ -71,7 +109,7 @@ export function useMealSchedule(spaceId: string | null) {
     return () => {
       cancelled = true;
     };
-  }, [spaceId]);
+  }, [spaceId, authReady, user, profile, authLoading]);
 
   const getSlotsForDay = (dayOfWeek: number): MealSlot[] => {
     if (!schedule) return [];

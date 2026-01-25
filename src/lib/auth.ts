@@ -137,11 +137,23 @@ export async function checkUserHasHousehold(): Promise<boolean> {
   const user = await getCurrentUser();
   if (!user) return false;
 
-  const { data } = await supabase
-    .from('members')
-    .select('household_id')
+  // Get user's profile
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('id')
     .eq('user_id', user.id)
     .maybeSingle();
 
-  return !!data?.household_id;
+  if (!profile) return false;
+
+  // Check if user is a member of any household space (context_type = 'household')
+  const { data: householdMembership } = await supabase
+    .from('space_members')
+    .select('space_id, spaces!inner(context_type)')
+    .eq('user_id', profile.id)
+    .eq('status', 'active')
+    .eq('spaces.context_type', 'household')
+    .maybeSingle();
+
+  return !!householdMembership;
 }

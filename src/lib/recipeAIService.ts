@@ -16,7 +16,7 @@ import { getProviderAdapter } from './guardrails/ai/providerFactory';
 import type { NormalizedAIRequest } from './guardrails/ai/providerAdapter';
 import type { ResolvedRoute } from './guardrails/ai/providerRegistryTypes';
 import { normalizeMealCategories, normalizeCuisine, normalizeMealType } from './recipeCategoryNormalizer';
-import { normalizeRecipeIngredients } from './unitNormalization';
+import { normalizeRecipeIngredients, convertPieceUnitsToGrams } from './unitNormalization';
 import { supabase } from './supabase';
 import { getRuntimeEnvironment, canMakeBrowserCalls } from './runtimeEnvironment';
 import { showToast } from '../components/Toast';
@@ -948,28 +948,67 @@ export async function generateRecipeFromQuery(
   }
 
   // Normalize and validate meal_type
-  const normalizedMealType = normalizeMealType(processed.recipe.meal_type);
-  if (!normalizedMealType) {
-    console.error('[recipeAIService] Invalid AI recipe: missing or invalid meal_type', {
-      providedMealType: processed.recipe.meal_type,
-      normalizedMealType,
-      fullRecipe: processed.recipe,
-    });
-    throw new Error(
-      `Invalid AI recipe: missing or invalid meal_type. ` +
-      `Provided: "${processed.recipe.meal_type}". ` +
-      `Must be one of: breakfast, lunch, dinner, snack, or drink.`
-    );
+  // Handle both single values and arrays from AI response
+  let normalizedMealTypeArray: MealType[];
+  if (Array.isArray(processed.recipe.meal_type)) {
+    // Already an array - normalize each value
+    const normalized = processed.recipe.meal_type
+      .map(mt => normalizeMealType(mt))
+      .filter((mt): mt is MealType => mt !== null);
+    
+    if (normalized.length === 0) {
+      console.error('[recipeAIService] Invalid AI recipe: no valid meal_type values in array', {
+        providedMealType: processed.recipe.meal_type,
+        fullRecipe: processed.recipe,
+      });
+      throw new Error(
+        `Invalid AI recipe: no valid meal_type values in array. ` +
+        `Provided: ${JSON.stringify(processed.recipe.meal_type)}. ` +
+        `Must be one of: breakfast, lunch, dinner, snack, or drink.`
+      );
+    }
+    normalizedMealTypeArray = normalized;
+  } else {
+    // Single value - normalize and convert to array
+    const normalizedMealType = normalizeMealType(processed.recipe.meal_type);
+    if (!normalizedMealType) {
+      console.error('[recipeAIService] Invalid AI recipe: missing or invalid meal_type', {
+        providedMealType: processed.recipe.meal_type,
+        normalizedMealType,
+        fullRecipe: processed.recipe,
+      });
+      throw new Error(
+        `Invalid AI recipe: missing or invalid meal_type. ` +
+        `Provided: "${processed.recipe.meal_type}". ` +
+        `Must be one of: breakfast, lunch, dinner, snack, or drink.`
+      );
+    }
+    normalizedMealTypeArray = [normalizedMealType];
   }
 
   // Normalize ingredient units to canonical metric format before saving
-  const normalizedIngredients = normalizeRecipeIngredients(processed.recipe.ingredients);
+  let normalizedIngredients = normalizeRecipeIngredients(processed.recipe.ingredients);
+  
+  // Convert piece-based units to grams where possible
+  // Add ingredient names to the normalized ingredients for conversion
+  // Use original perplexityResponse to get ingredient names (before food_item_id mapping)
+  const ingredientsWithNames = normalizedIngredients.map((ing, index) => {
+    const originalIngredient = perplexityResponse.recipe.ingredients[index];
+    // Get food item name from the original ingredient (before mapping to food_item_id)
+    const foodItemName = originalIngredient?.name || '';
+    return {
+      ...ing,
+      name: foodItemName,
+    };
+  });
+  
+  normalizedIngredients = await convertPieceUnitsToGrams(ingredientsWithNames);
 
   // Create recipe input with validated and normalized fields
   const recipeInput: CreateRecipeInput = {
     name: processed.recipe.name.trim(), // Ensure no leading/trailing whitespace
     description: processed.recipe.description || null,
-    meal_type: normalizedMealType, // Use normalized meal_type
+    meal_type: normalizedMealTypeArray, // Use normalized meal_type array
     servings: processed.recipe.servings,
     ingredients: normalizedIngredients,
     instructions: processed.recipe.instructions || null,
@@ -1034,11 +1073,12 @@ export async function generateRecipeVariations(
   foodProfile?: import('./foodProfileTypes').UserFoodProfile | null,
   location?: string | null,
   selectedTags?: string[], // Tags selected by user for this meal type (e.g., ["quick-meal", "vegetarian"])
-  includeLocationInAI: boolean = true // Whether to include location in AI prompts (default: true)
+  includeLocationInAI: boolean = true, // Whether to include location in AI prompts (default: true)
+  courseType?: 'starter' | 'side' | 'main' | 'dessert' | 'shared' | 'snack' // Course/dish type (e.g., "dessert", "starter")
 ): Promise<RecipeVariation[]> {
   // Generate prompt for variations (food profile constraints will be applied when generating actual recipes)
-  // Include selected tags in the prompt to tailor suggestions
-  const prompt = generateRecipeVariationsPrompt(baseQuery, mealType, cuisine, dietaryRequirements, location, selectedTags, includeLocationInAI);
+  // Include selected tags and course type in the prompt to tailor suggestions
+  const prompt = generateRecipeVariationsPrompt(baseQuery, mealType, cuisine, dietaryRequirements, location, selectedTags, includeLocationInAI, courseType);
 
   try {
     // Use AI routing to get Perplexity adapter

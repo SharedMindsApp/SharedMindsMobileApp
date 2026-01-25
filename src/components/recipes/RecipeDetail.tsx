@@ -5,8 +5,8 @@
  * ADHD-first design: clear, calm, no pressure
  */
 
-import { useState, useEffect } from 'react';
-import { Clock, Users, ChefHat, Edit, Trash2, X, ChevronDown, ChevronUp, CheckCircle2, AlertTriangle, HelpCircle, TrendingUp, Eye, Package, Calendar } from 'lucide-react';
+import { useState, useEffect, useMemo } from 'react';
+import { Clock, Users, ChefHat, Edit, Trash2, X, ChevronDown, ChevronUp, CheckCircle2, AlertTriangle, HelpCircle, TrendingUp, Eye, Package, Calendar, ShoppingBag, Loader2, Minus, Plus, Home, Info } from 'lucide-react';
 import type { Recipe } from '../../lib/recipeGeneratorTypes';
 import { getFoodItemsByIds, type FoodItem } from '../../lib/foodItems';
 import { getValidationStatus, type RecipeValidationStatus } from '../../lib/recipeValidationService';
@@ -14,8 +14,16 @@ import { getRecipeUsageStats, trackRecipeView, type RecipeUsageStats } from '../
 import { RecipeFeedback } from './RecipeFeedback';
 import { useUIPreferences } from '../../contexts/UIPreferencesContext';
 import { convertIngredientForDisplay } from '../../lib/unitConversion';
+import { convertIngredientPieceToGramsSync } from '../../lib/pieceToWeightConverter';
 import { MealPrepModal } from '../meal-planner/MealPrepModal';
 import { AddRecipeToMealModal } from '../meal-planner/AddRecipeToMealModal';
+import { scaleIngredients, getScalingInfo, type ScaledIngredient } from '../../lib/ingredientScaling';
+import { updateMealPlanPreparation } from '../../lib/mealPlanner';
+import { findPortionTrackedItems } from '../../lib/pantryPortionService';
+import { getOrCreateFoodItem } from '../../lib/foodItems';
+import { addPantryItem } from '../../lib/intelligentGrocery';
+import { showToast } from '../Toast';
+import { supabase } from '../../lib/supabase';
 
 interface RecipeDetailProps {
   recipe: Recipe;
@@ -25,6 +33,9 @@ interface RecipeDetailProps {
   showActions?: boolean;
   isEditable?: boolean;
   spaceId?: string; // Optional spaceId for meal prep
+  planServings?: number; // Optional servings from meal plan (for scaling)
+  mealPlanId?: string; // Optional meal plan ID (indicates meal planner context)
+  onMealAdded?: () => void; // Optional callback when meal is added to plan (for navigation/refresh)
 }
 
 export function RecipeDetail({
@@ -35,6 +46,9 @@ export function RecipeDetail({
   showActions = true,
   isEditable = false,
   spaceId,
+  planServings, // Optional servings from meal plan
+  mealPlanId, // Optional meal plan ID (indicates meal planner context)
+  onMealAdded, // Optional callback when meal is added to plan
 }: RecipeDetailProps) {
   const { measurementSystem } = useUIPreferences();
   const [foodItemMap, setFoodItemMap] = useState<Map<string, FoodItem>>(new Map());
@@ -43,6 +57,39 @@ export function RecipeDetail({
   const [usageStats, setUsageStats] = useState<RecipeUsageStats | null>(null);
   const [showMealPrepModal, setShowMealPrepModal] = useState(false);
   const [showAddToMealModal, setShowAddToMealModal] = useState(false);
+  
+  // Meal planner context state
+  const isMealPlannerContext = !!mealPlanId;
+  const [preparationMode, setPreparationMode] = useState<'scratch' | 'pre_bought'>('scratch');
+  const [previousMode, setPreviousMode] = useState<'scratch' | 'pre_bought' | null>(null);
+  const [pantryItemId, setPantryItemId] = useState<string | null>(null);
+  const [pantryItem, setPantryItem] = useState<any>(null);
+  const [loadingMealPlan, setLoadingMealPlan] = useState(false);
+  const [updatingPreparation, setUpdatingPreparation] = useState(false);
+  const [creatingPantryItem, setCreatingPantryItem] = useState(false);
+  const [addingAnotherPantryItem, setAddingAnotherPantryItem] = useState(false);
+  const [newPantryItemPortions, setNewPantryItemPortions] = useState<number>(6); // Default portions for new pantry item
+  
+  // Space context detection for pantry/pre-made functionality
+  const [spaceContext, setSpaceContext] = useState<{ space_type: string | null } | null>(null);
+  const [loadingSpaceContext, setLoadingSpaceContext] = useState(false);
+  // Check if household space - shared spaces are household spaces (not personal)
+  const isHouseholdSpace = spaceContext?.space_type?.toLowerCase() === 'shared' || spaceContext?.space_type?.toLowerCase() === 'household';
+  
+  // State safety: prevent duplicate operations
+  const isAnyOperationInProgress = updatingPreparation || creatingPantryItem || addingAnotherPantryItem || loadingMealPlan;
+
+  // Scale ingredients if planServings is provided (from meal planner)
+  const effectiveServings = planServings ?? recipe.servings ?? 1;
+  const scalingInfo = getScalingInfo(recipe.servings ?? 1, effectiveServings);
+  
+  const scaledIngredients = useMemo(() => {
+    return scaleIngredients(
+      recipe.ingredients,
+      recipe.servings ?? 1,
+      effectiveServings
+    );
+  }, [recipe.ingredients, recipe.servings, effectiveServings]);
 
   useEffect(() => {
     const loadFoodItems = async () => {
@@ -86,6 +133,233 @@ export function RecipeDetail({
     loadUsageStats();
     trackView(); // Track that recipe was viewed
   }, [recipe.ingredients, recipe.id, recipe.household_id]);
+
+  // Load space context to determine if pantry/pre-made is available
+  useEffect(() => {
+    if (!spaceId) {
+      setSpaceContext(null);
+      return;
+    }
+
+    const loadSpaceContext = async () => {
+      setLoadingSpaceContext(true);
+      try {
+        const { data: space, error } = await supabase
+          .from('spaces')
+          .select('space_type')
+          .eq('id', spaceId)
+          .maybeSingle();
+
+        if (error) {
+          console.error('[RecipeDetail] Error loading space context:', error);
+          setSpaceContext(null);
+          return;
+        }
+
+        if (space) {
+          const spaceType = space.space_type;
+          const isHousehold = spaceType?.toLowerCase() === 'shared' || spaceType?.toLowerCase() === 'household';
+          console.log('[RecipeDetail] Space context loaded:', {
+            spaceId,
+            space_type: spaceType,
+            isHousehold,
+          });
+          setSpaceContext({ space_type: spaceType });
+        } else {
+          console.warn('[RecipeDetail] Space not found:', spaceId);
+          setSpaceContext(null);
+        }
+      } catch (error) {
+        console.error('[RecipeDetail] Error loading space context:', error);
+        setSpaceContext(null);
+      } finally {
+        setLoadingSpaceContext(false);
+      }
+    };
+
+    loadSpaceContext();
+  }, [spaceId]);
+
+  // Load meal plan data if in meal planner context
+  useEffect(() => {
+    if (!isMealPlannerContext || !mealPlanId || !spaceId) return;
+
+    const loadMealPlan = async () => {
+      setLoadingMealPlan(true);
+      try {
+        const { data, error } = await supabase
+          .from('meal_plans')
+          .select('id, preparation_mode, pantry_item_id, servings')
+          .eq('id', mealPlanId)
+          .single();
+
+        if (error) throw error;
+
+        if (data) {
+          const mode = (data.preparation_mode || 'scratch') as 'scratch' | 'pre_bought';
+          setPreparationMode(mode);
+          setPreviousMode(mode); // Track initial mode
+          setPantryItemId(data.pantry_item_id || null);
+
+          // Initialize new pantry item portions based on recipe servings
+          const defaultPortions = recipe.servings || 6;
+          if (newPantryItemPortions === 6 && defaultPortions !== 6) {
+            setNewPantryItemPortions(defaultPortions);
+          }
+
+          // Load pantry item if pre_bought (only in household spaces)
+          if (mode === 'pre_bought' && data.pantry_item_id && isHouseholdSpace) {
+            const { data: pantryData, error: pantryError } = await supabase
+              .from('household_pantry_items')
+              .select('id, total_portions, remaining_portions, portion_unit, food_item:food_items(name)')
+              .eq('id', data.pantry_item_id)
+              .single();
+
+            if (!pantryError && pantryData) {
+              setPantryItem(pantryData);
+            }
+          }
+        }
+      } catch (error) {
+        console.error('[RecipeDetail] Error loading meal plan:', error);
+      } finally {
+        setLoadingMealPlan(false);
+      }
+    };
+
+    loadMealPlan();
+  }, [isMealPlannerContext, mealPlanId, spaceId, recipe.servings, isHouseholdSpace]);
+
+  // Find or create pantry item when switching to pre_bought
+  const handlePreparationModeChange = async (newMode: 'scratch' | 'pre_bought') => {
+    if (!isMealPlannerContext || !mealPlanId || !spaceId) return;
+    
+    // Don't do anything if already in this mode
+    if (newMode === preparationMode) {
+      return;
+    }
+
+    setUpdatingPreparation(true);
+    try {
+      let targetPantryItemId: string | null = null;
+
+      if (newMode === 'pre_bought') {
+        // Try to find existing portion-tracked pantry item (only in household spaces)
+        if (isHouseholdSpace) {
+          try {
+            const foodItem = await getOrCreateFoodItem(recipe.name);
+            const existingItems = await findPortionTrackedItems(foodItem.id, spaceId);
+
+          if (existingItems.length > 0) {
+            // Use first available item
+            targetPantryItemId = existingItems[0].id;
+            setPantryItemId(targetPantryItemId);
+
+            // Load pantry item details
+            const { data: pantryData, error: pantryError } = await supabase
+              .from('household_pantry_items')
+              .select('id, total_portions, remaining_portions, portion_unit, food_item:food_items(name)')
+              .eq('id', targetPantryItemId)
+              .single();
+
+            if (!pantryError && pantryData) {
+              setPantryItem(pantryData);
+            }
+          }
+            // If no existing item, targetPantryItemId stays null
+            // The mode will still be updated, and user can create pantry item via button
+          } catch (error) {
+            console.error('[RecipeDetail] Error finding pantry item:', error);
+            // Continue anyway - allow mode change, user can create pantry item later
+          }
+        }
+        // In personal spaces, we allow pre_bought mode but won't link to pantry items
+      }
+
+      // Update meal plan preparation mode (works in both personal and household spaces)
+      // Preparation mode is just metadata - pantry item linking only happens in household spaces
+      await updateMealPlanPreparation({
+        mealPlanId,
+        preparationMode: newMode,
+        pantryItemId: targetPantryItemId, // Will be null in personal spaces or if no item found
+        servings: effectiveServings,
+      });
+
+      setPreviousMode(preparationMode); // Track previous mode for confirmation message
+      setPreparationMode(newMode);
+      if (newMode === 'scratch') {
+        setPantryItemId(null);
+        setPantryItem(null);
+      }
+
+      showToast('success', newMode === 'pre_bought' ? 'Switched to pre-made mode' : 'Switched to cooking from scratch');
+    } catch (error) {
+      console.error('[RecipeDetail] Error updating preparation mode:', error);
+      showToast('error', 'Failed to update preparation mode');
+    } finally {
+      setUpdatingPreparation(false);
+    }
+  };
+
+  // Create pantry item and link to meal plan
+  const handleCreatePantryItem = async () => {
+    if (!isMealPlannerContext || !mealPlanId || !spaceId) return;
+
+    // UI guard: prevent pantry item creation in personal spaces
+    if (!isHouseholdSpace) {
+      showToast('info', 'Pantry items belong to households. Switch to a household space to use pre-made meals.');
+      return;
+    }
+
+    setCreatingPantryItem(true);
+    try {
+      // Get or create food item
+      const foodItem = await getOrCreateFoodItem(recipe.name);
+
+      // Create pantry item with user-specified portions
+      const portionsToUse = newPantryItemPortions > 0 ? newPantryItemPortions : (recipe.servings || 6);
+      const pantryItem = await addPantryItem({
+        householdId: spaceId,
+        foodItemId: foodItem.id,
+        totalPortions: portionsToUse,
+        portionUnit: 'serving',
+        status: 'have',
+      });
+
+      setPantryItemId(pantryItem.id);
+
+      // Load pantry item details
+      const { data: pantryData, error: pantryError } = await supabase
+        .from('household_pantry_items')
+        .select('id, total_portions, remaining_portions, portion_unit, food_item:food_items(name)')
+        .eq('id', pantryItem.id)
+        .single();
+
+      if (!pantryError && pantryData) {
+        setPantryItem(pantryData);
+      }
+
+      // Update meal plan to link pantry item and allocate portions (only in household spaces)
+      if (isHouseholdSpace) {
+        await updateMealPlanPreparation({
+          mealPlanId,
+          preparationMode: 'pre_bought',
+          pantryItemId: pantryItem.id,
+          servings: effectiveServings,
+        });
+      }
+
+      setPreparationMode('pre_bought');
+      showToast('success', `Added ${recipe.name} to pantry (${portionsToUse} servings)`);
+      // Reset portion input to default for next time
+      setNewPantryItemPortions(recipe.servings || 6);
+    } catch (error) {
+      console.error('[RecipeDetail] Error creating pantry item:', error);
+      showToast('error', 'Failed to add item to pantry');
+    } finally {
+      setCreatingPantryItem(false);
+    }
+  };
 
   const getFoodItemName = (foodItemId: string): string => {
     return foodItemMap.get(foodItemId)?.name || 'Loading...';
@@ -387,11 +661,335 @@ export function RecipeDetail({
           </div>
         )}
 
-        {/* Ingredients - Mobile optimized */}
-        <div>
-          <h3 className="text-lg sm:text-xl font-semibold text-gray-900 mb-3 sm:mb-4">Ingredients</h3>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-2 sm:gap-3">
-            {recipe.ingredients.map((ingredient, index) => {
+        {/* Preparation Mode Toggle - Only show in meal planner context */}
+        {isMealPlannerContext && (
+          <div className="p-4 bg-gradient-to-br from-green-50 to-emerald-50 border-2 border-green-200 rounded-xl">
+            <label className="block text-sm sm:text-base font-medium text-gray-900 mb-3">
+              How is this meal prepared?
+            </label>
+            
+
+            <div className="grid grid-cols-2 gap-3">
+              <button
+                onClick={() => handlePreparationModeChange('scratch')}
+                disabled={isAnyOperationInProgress}
+                className={`px-4 py-3 rounded-lg font-medium text-sm sm:text-base transition-all touch-manipulation min-h-[60px] flex flex-col items-center justify-center gap-1 ${
+                  preparationMode === 'scratch'
+                    ? 'bg-green-600 text-white shadow-md scale-[1.02]'
+                    : 'bg-white text-gray-700 hover:bg-green-50 border-2 border-green-200'
+                } disabled:opacity-50`}
+              >
+                <span className="text-xl">👨‍🍳</span>
+                <span>Cooking from scratch</span>
+              </button>
+              <button
+                onClick={() => handlePreparationModeChange('pre_bought')}
+                disabled={isAnyOperationInProgress}
+                className={`px-4 py-3 rounded-lg font-medium text-sm sm:text-base transition-all touch-manipulation min-h-[60px] flex flex-col items-center justify-center gap-1 ${
+                  preparationMode === 'pre_bought'
+                    ? 'bg-green-600 text-white shadow-md scale-[1.02]'
+                    : 'bg-white text-gray-700 hover:bg-green-50 border-2 border-green-200'
+                } disabled:opacity-50`}
+              >
+                <span className="text-xl">🛒</span>
+                <span>Pre-made / ready-made</span>
+              </button>
+            </div>
+            {updatingPreparation && (
+              <div className="flex items-center justify-center gap-2 mt-3 text-sm text-gray-600">
+                <Loader2 size={16} className="animate-spin" />
+                <span>Updating...</span>
+              </div>
+            )}
+            {/* Inline confirmation messaging when switching modes */}
+            {!updatingPreparation && !loadingMealPlan && preparationMode === 'pre_bought' && previousMode === 'scratch' && (
+              <p className="text-xs text-gray-600 mt-3 opacity-75 text-center px-2">
+                Ingredients will no longer be required for this meal. Portions will be taken from your pantry.
+              </p>
+            )}
+            {!updatingPreparation && !loadingMealPlan && preparationMode === 'scratch' && previousMode === 'pre_bought' && (
+              <p className="text-xs text-gray-600 mt-3 opacity-75 text-center px-2">
+                Any allocated pantry portions will be released back to your pantry.
+              </p>
+            )}
+            {preparationMode === 'pre_bought' && !pantryItemId && (
+              <div className="mt-4 p-3 bg-blue-50 border-2 border-blue-200 rounded-lg">
+                {!isHouseholdSpace && !loadingSpaceContext ? (
+                  <div className="space-y-2">
+                    <div className="flex items-start gap-2.5">
+                      <Info size={18} className="text-blue-600 flex-shrink-0 mt-0.5" />
+                      <div className="flex-1">
+                        <p className="text-xs sm:text-sm text-blue-900 font-semibold mb-1">
+                          Pantry tracking is available in household spaces.
+                        </p>
+                        <p className="text-xs text-blue-800">
+                          You can mark meals as pre-made here, but to track portions and inventory, switch to a household space.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <>
+                    <p className="text-sm text-blue-900 mb-3 font-medium">
+                      This item isn't in your pantry yet
+                    </p>
+                    <div className="mb-3">
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        How many portions in this item?
+                      </label>
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => setNewPantryItemPortions(Math.max(1, newPantryItemPortions - 1))}
+                          disabled={newPantryItemPortions <= 1}
+                          className="w-10 h-10 bg-white border-2 border-blue-300 rounded-lg flex items-center justify-center hover:bg-blue-50 active:bg-blue-100 disabled:opacity-50 disabled:cursor-not-allowed transition-colors touch-manipulation"
+                          aria-label="Decrease portions"
+                        >
+                          <Minus size={16} className="text-blue-600" />
+                        </button>
+                        <input
+                          type="number"
+                          min="1"
+                          value={newPantryItemPortions}
+                          onChange={(e) => {
+                            const value = parseInt(e.target.value, 10);
+                            if (!isNaN(value) && value > 0) {
+                              setNewPantryItemPortions(value);
+                            }
+                          }}
+                          className="flex-1 px-3 py-2 text-center text-lg font-semibold bg-white border-2 border-blue-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                        />
+                        <button
+                          onClick={() => setNewPantryItemPortions(newPantryItemPortions + 1)}
+                          className="w-10 h-10 bg-white border-2 border-blue-300 rounded-lg flex items-center justify-center hover:bg-blue-50 active:bg-blue-100 transition-colors touch-manipulation"
+                          aria-label="Increase portions"
+                        >
+                          <Plus size={16} className="text-blue-600" />
+                        </button>
+                      </div>
+                    </div>
+                    {isHouseholdSpace && (
+                      <button
+                        onClick={handleCreatePantryItem}
+                        disabled={isAnyOperationInProgress}
+                        className="w-full px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg transition-colors disabled:opacity-50 flex items-center justify-center gap-2 touch-manipulation min-h-[44px]"
+                      >
+                        {creatingPantryItem ? (
+                          <>
+                            <Loader2 size={16} className="animate-spin" />
+                            <span>Adding...</span>
+                          </>
+                        ) : (
+                          <>
+                            <Package size={16} />
+                            <span>Add to pantry</span>
+                          </>
+                        )}
+                      </button>
+                    )}
+                  </>
+                )}
+              </div>
+            )}
+            {preparationMode === 'pre_bought' && pantryItem && isHouseholdSpace && (
+              <div className="mt-4 p-3 bg-blue-50 border-2 border-blue-200 rounded-lg">
+                <div className="flex items-center gap-2 mb-2">
+                  <Package size={18} className="text-blue-600" />
+                  <span className="font-medium text-blue-900">Pantry Item</span>
+                </div>
+                <div className="text-sm text-blue-800 space-y-1">
+                  <div>
+                    <span className="font-medium">Item:</span> {pantryItem.food_item?.name || recipe.name}
+                  </div>
+                  <div>
+                    <span className="font-medium">Remaining:</span> {pantryItem.remaining_portions || 0} / {pantryItem.total_portions || 0} {pantryItem.portion_unit || 'serving'}{(pantryItem.remaining_portions || 0) !== 1 ? 's' : ''}
+                  </div>
+                  <div>
+                    <span className="font-medium">Using:</span> {effectiveServings} {pantryItem.portion_unit || 'serving'}{effectiveServings !== 1 ? 's' : ''}
+                  </div>
+                  {pantryItem.remaining_portions === 0 && (
+                    <div className="mt-3 pt-3 border-t border-blue-200">
+                      <p className="text-sm text-red-700 font-medium mb-3">
+                        ⚠️ This item has been fully used.
+                      </p>
+                      {!isHouseholdSpace && !loadingSpaceContext ? (
+                        <div className="mb-3 p-2.5 bg-blue-50 border border-blue-200 rounded-lg">
+                          <div className="flex items-start gap-2">
+                            <Info size={16} className="text-blue-600 flex-shrink-0 mt-0.5" />
+                            <p className="text-xs text-blue-800">
+                              Pantry items are shared at the household level. Switch to a household space to add more.
+                            </p>
+                          </div>
+                        </div>
+                      ) : (
+                        <>
+                          <div className="mb-3">
+                            <label className="block text-sm font-medium text-gray-700 mb-2">
+                              How many portions in this item?
+                            </label>
+                            <div className="flex items-center gap-2">
+                              <button
+                                onClick={() => setNewPantryItemPortions(Math.max(1, newPantryItemPortions - 1))}
+                                disabled={newPantryItemPortions <= 1}
+                                className="w-10 h-10 bg-white border-2 border-blue-300 rounded-lg flex items-center justify-center hover:bg-blue-50 active:bg-blue-100 disabled:opacity-50 disabled:cursor-not-allowed transition-colors touch-manipulation"
+                                aria-label="Decrease portions"
+                              >
+                                <Minus size={16} className="text-blue-600" />
+                              </button>
+                              <input
+                                type="number"
+                                min="1"
+                                value={newPantryItemPortions}
+                                onChange={(e) => {
+                                  const value = parseInt(e.target.value, 10);
+                                  if (!isNaN(value) && value > 0) {
+                                    setNewPantryItemPortions(value);
+                                  }
+                                }}
+                                className="flex-1 px-3 py-2 text-center text-lg font-semibold bg-white border-2 border-blue-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                              />
+                              <button
+                                onClick={() => setNewPantryItemPortions(newPantryItemPortions + 1)}
+                                className="w-10 h-10 bg-white border-2 border-blue-300 rounded-lg flex items-center justify-center hover:bg-blue-50 active:bg-blue-100 transition-colors touch-manipulation"
+                                aria-label="Increase portions"
+                              >
+                                <Plus size={16} className="text-blue-600" />
+                              </button>
+                            </div>
+                          </div>
+                          {isHouseholdSpace && (
+                            <div className="flex flex-col sm:flex-row gap-2">
+                              <button
+                                onClick={async () => {
+                                  if (isAnyOperationInProgress) return; // Guard against duplicate clicks
+                                  setAddingAnotherPantryItem(true);
+                                  try {
+                                    await handleCreatePantryItem();
+                                    // Reload pantry item after creation
+                                    if (pantryItemId) {
+                                      const { data: pantryData, error: pantryError } = await supabase
+                                        .from('household_pantry_items')
+                                        .select('id, total_portions, remaining_portions, portion_unit, food_item:food_items(name)')
+                                        .eq('id', pantryItemId)
+                                        .single();
+                                      
+                                      if (!pantryError && pantryData) {
+                                        setPantryItem(pantryData);
+                                      }
+                                    }
+                                  } finally {
+                                    setAddingAnotherPantryItem(false);
+                                  }
+                                }}
+                                disabled={isAnyOperationInProgress}
+                                className="flex-1 px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 touch-manipulation min-h-[36px]"
+                              >
+                                {addingAnotherPantryItem ? (
+                                  <>
+                                    <Loader2 size={14} className="animate-spin" />
+                                    <span>Adding...</span>
+                                  </>
+                                ) : (
+                                  <>
+                                    <Package size={14} />
+                                    <span>Add another to pantry</span>
+                                  </>
+                                )}
+                              </button>
+                              <button
+                                onClick={async () => {
+                                  if (isAnyOperationInProgress) return; // Guard against duplicate clicks
+                                  setUpdatingPreparation(true);
+                                  try {
+                                    if (isHouseholdSpace) {
+                                      await updateMealPlanPreparation({
+                                        mealPlanId: mealPlanId!,
+                                        preparationMode: 'scratch',
+                                        pantryItemId: null,
+                                        servings: effectiveServings,
+                                      });
+                                      showToast('success', 'Switched back to cooking from scratch');
+                                    } else {
+                                      // Personal space - just update local state, no backend call
+                                      showToast('info', 'Switched back to cooking from scratch');
+                                    }
+                                    setPreviousMode('pre_bought');
+                                    setPreparationMode('scratch');
+                                    setPantryItemId(null);
+                                    setPantryItem(null);
+                                  } catch (error) {
+                                    console.error('[RecipeDetail] Error switching to scratch:', error);
+                                    showToast('error', 'Failed to switch mode');
+                                  } finally {
+                                    setUpdatingPreparation(false);
+                                  }
+                                }}
+                                disabled={isAnyOperationInProgress}
+                                className="flex-1 px-3 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 text-sm font-medium rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 touch-manipulation min-h-[36px]"
+                              >
+                                <ChefHat size={14} />
+                                <span>Switch back to scratch</span>
+                              </button>
+                            </div>
+                          )}
+                        </>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Preparation Mode Badge - Show in header if pre_bought */}
+        {isMealPlannerContext && preparationMode === 'pre_bought' && (
+          <div className="mb-4 p-3 bg-green-50 border-2 border-green-200 rounded-lg">
+            <div className="flex items-center gap-2">
+              <ShoppingBag size={18} className="text-green-600" />
+              <span className="font-medium text-green-900">Pre-made / Ready-made</span>
+            </div>
+            <p className="text-xs text-green-700 mt-1">
+              This meal uses portions from your pantry, not ingredients.
+            </p>
+          </div>
+        )}
+
+        {/* Ingredients - Mobile optimized - Hide if pre_bought */}
+        {!(isMealPlannerContext && preparationMode === 'pre_bought') && (
+          <div>
+            <div className="flex items-center justify-between mb-3 sm:mb-4">
+              <h3 className="text-lg sm:text-xl font-semibold text-gray-900">Ingredients</h3>
+              {scalingInfo.isScaled && (
+                <span className="text-xs sm:text-sm text-orange-600 bg-orange-50 px-2 py-1 rounded-full font-medium border border-orange-200">
+                  Scaled for {effectiveServings} {effectiveServings === 1 ? 'portion' : 'portions'}
+                </span>
+              )}
+            </div>
+            {scalingInfo.isScaled && (
+              <p className="text-xs sm:text-sm text-gray-500 mb-3 italic">
+                Original recipe serves {recipe.servings ?? 1}
+              </p>
+            )}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-2 sm:gap-3">
+              {scaledIngredients.map((ingredient, index) => {
+              // Use scaled quantity if scaled, otherwise use original
+              let displayQuantity = ingredient.isScaled ? ingredient.displayQuantity : ingredient.quantity;
+              let displayUnit = ingredient.unit;
+              
+              // Convert piece units to grams if possible
+              const ingredientName = getFoodItemName(ingredient.food_item_id);
+              const pieceConverted = convertIngredientPieceToGramsSync({
+                quantity: displayQuantity,
+                unit: displayUnit,
+                name: ingredientName,
+                food_item_id: ingredient.food_item_id,
+              });
+              
+              if (pieceConverted.converted) {
+                displayQuantity = pieceConverted.quantity;
+                displayUnit = pieceConverted.unit;
+              }
+              
               return (
                 <div
                   key={index}
@@ -418,13 +1016,18 @@ export function RecipeDetail({
                     <div className="text-xs sm:text-sm text-gray-600 mt-1 break-words">
                       {(() => {
                         const converted = convertIngredientForDisplay(
-                          { quantity: ingredient.quantity, unit: ingredient.unit },
+                          { quantity: displayQuantity, unit: displayUnit },
                           measurementSystem
                         );
                         return (
                           <>
                             <span className="font-medium">{converted.value}</span>
                             {converted.unit && ` ${converted.unit}`}
+                            {ingredient.isScaled && ingredient.originalQuantity !== displayQuantity && (
+                              <span className="text-gray-400 text-[10px] ml-1">
+                                (was {ingredient.originalQuantity})
+                              </span>
+                            )}
                             {ingredient.notes && (
                               <span className="text-gray-500 italic"> • {ingredient.notes}</span>
                             )}
@@ -438,9 +1041,10 @@ export function RecipeDetail({
             })}
           </div>
         </div>
+        )}
 
-        {/* Instructions - Mobile optimized */}
-        {recipe.instructions && (
+        {/* Instructions - Mobile optimized - Hide if pre_bought */}
+        {recipe.instructions && !(isMealPlannerContext && preparationMode === 'pre_bought') && (
           <div>
             <h3 className="text-lg sm:text-xl font-semibold text-gray-900 mb-3 sm:mb-4">Instructions</h3>
             <div className="space-y-3 sm:space-y-4">
@@ -661,7 +1265,12 @@ export function RecipeDetail({
           recipe={recipe}
           spaceId={spaceId}
           onSuccess={() => {
-            // Optionally refresh data or show success message
+            // Close the modal
+            setShowAddToMealModal(false);
+            // Call callback to navigate back and refresh meal planner
+            if (onMealAdded) {
+              onMealAdded();
+            }
           }}
         />
       )}

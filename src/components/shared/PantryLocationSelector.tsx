@@ -32,6 +32,11 @@ interface PantryLocationSelectorProps {
   onQuantityValueChange?: (value: string) => void;
   onQuantityUnitChange?: (value: string) => void;
   onExpiresOnChange?: (value: string) => void;
+  // Portion tracking fields
+  totalPortions?: string;
+  portionUnit?: string;
+  onTotalPortionsChange?: (value: string) => void;
+  onPortionUnitChange?: (value: string) => void;
 }
 
 export function PantryLocationSelector({
@@ -48,6 +53,10 @@ export function PantryLocationSelector({
   onQuantityValueChange,
   onQuantityUnitChange,
   onExpiresOnChange,
+  totalPortions = '',
+  portionUnit = '',
+  onTotalPortionsChange,
+  onPortionUnitChange,
 }: PantryLocationSelectorProps) {
   const [showAddLocation, setShowAddLocation] = useState(false);
   const [newLocationName, setNewLocationName] = useState('');
@@ -183,7 +192,7 @@ export function PantryLocationSelector({
                       value={quantityValue}
                       onChange={(e) => onQuantityValueChange?.(e.target.value)}
                       placeholder="e.g., 3, half"
-                      className="w-full px-3 py-2 border border-stone-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-stone-500"
+                      className="w-full px-3 py-2.5 border border-stone-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-stone-500 min-h-[44px]"
                     />
                   </div>
                   <div>
@@ -193,7 +202,7 @@ export function PantryLocationSelector({
                       value={quantityUnit}
                       onChange={(e) => onQuantityUnitChange?.(e.target.value)}
                       placeholder="e.g., tins, packs"
-                      className="w-full px-3 py-2 border border-stone-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-stone-500"
+                      className="w-full px-3 py-2.5 border border-stone-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-stone-500 min-h-[44px]"
                     />
                   </div>
                 </div>
@@ -209,6 +218,40 @@ export function PantryLocationSelector({
                   />
                   <p className="text-xs text-gray-500 mt-1">
                     Only for your reference — nothing will happen automatically.
+                  </p>
+                </div>
+
+                {/* Portion Tracking (for pre-made items like ice cream, frozen pizza) */}
+                <div className="pt-2 border-t border-stone-200">
+                  <p className="text-xs text-gray-500 font-medium mb-2">Portion tracking (optional)</p>
+                  <p className="text-xs text-gray-500 mb-2">
+                    For items with fixed portions (e.g., 6 servings of ice cream, 8 slices of pizza)
+                  </p>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="block text-xs text-gray-600 mb-1">Total portions</label>
+                      <input
+                        type="number"
+                        min="1"
+                        value={totalPortions}
+                        onChange={(e) => onTotalPortionsChange?.(e.target.value)}
+                        placeholder="e.g., 6"
+                        className="w-full px-3 py-2.5 border border-stone-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-stone-500 min-h-[44px]"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs text-gray-600 mb-1">Portion unit</label>
+                      <input
+                        type="text"
+                        value={portionUnit}
+                        onChange={(e) => onPortionUnitChange?.(e.target.value)}
+                        placeholder="e.g., serving, slice"
+                        className="w-full px-3 py-2.5 border border-stone-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-stone-500 min-h-[44px]"
+                      />
+                    </div>
+                  </div>
+                  <p className="text-xs text-gray-500 mt-1">
+                    Leave empty if not tracking portions. Portions will be automatically consumed as you plan meals.
                   </p>
                 </div>
               </div>

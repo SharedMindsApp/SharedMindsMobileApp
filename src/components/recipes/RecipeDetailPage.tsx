@@ -5,7 +5,7 @@
  */
 
 import { useState, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { ArrowLeft, Loader2 } from 'lucide-react';
 import { getRecipeById } from '../../lib/recipeGeneratorService';
 import { RecipeDetail } from './RecipeDetail';
@@ -17,10 +17,21 @@ import { getUserHousehold } from '../../lib/household';
 export function RecipeDetailPage() {
   const { recipeId } = useParams<{ recipeId: string }>();
   const navigate = useNavigate();
+  const location = useLocation();
   const [recipe, setRecipe] = useState<Recipe | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [householdId, setHouseholdId] = useState<string>('');
+  
+  // Get meal plan context from location state (if opened from meal planner)
+  const mealPlanContext = location.state as { 
+    planServings?: number;
+    mealPlanId?: string;
+    spaceId?: string;
+  } | null;
+  const planServings = mealPlanContext?.planServings;
+  const mealPlanId = mealPlanContext?.mealPlanId;
+  const mealPlanSpaceId = mealPlanContext?.spaceId;
   
   // Get current space for meal prep functionality
   const { currentSpaceId } = useSpaceContext(householdId);
@@ -76,6 +87,15 @@ export function RecipeDetailPage() {
     navigate(-1); // Go back to previous page
   };
 
+  // Handle meal added - navigate back to meal planner and refresh
+  const handleMealAdded = () => {
+    // If we came from meal planner (indicated by mealPlanId in location state), navigate back
+    if (mealPlanId || mealPlanContext) {
+      navigate(-1); // Navigate back to meal planner
+      // The meal planner widget will automatically refresh when it re-renders
+    }
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -126,7 +146,10 @@ export function RecipeDetailPage() {
           recipe={recipe}
           showActions={true}
           isEditable={false}
-          spaceId={currentSpaceId}
+          spaceId={mealPlanSpaceId || currentSpaceId}
+          planServings={planServings} // Pass meal plan servings for scaling
+          mealPlanId={mealPlanId} // Pass meal plan ID for preparation mode controls
+          onMealAdded={handleMealAdded} // Handle navigation back to meal planner
         />
       </div>
     </div>

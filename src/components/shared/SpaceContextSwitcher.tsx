@@ -83,7 +83,7 @@ export function SpaceContextSwitcher({
             className="fixed inset-0 z-40"
             onClick={() => setIsOpen(false)}
           />
-          <div className="absolute top-full left-0 mt-1 bg-white border border-stone-300 rounded-lg shadow-lg z-50 min-w-[200px] max-h-[300px] overflow-y-auto">
+          <div className="absolute top-full left-0 mt-1 bg-white border border-stone-300 rounded-lg shadow-lg z-[60] min-w-[200px] max-w-[90vw] sm:max-w-[300px] max-h-[300px] overflow-y-auto">
             {spaces.map((space) => {
               const SpaceIcon = getIcon(space.type);
               const isSelected = space.id === currentSpaceId;

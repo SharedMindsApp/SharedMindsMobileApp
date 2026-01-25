@@ -69,7 +69,10 @@ const widgetOptions: WidgetOption[] = [
 
 const categories = ['All', 'Content', 'Planning', 'Tracking', 'Media', 'Organization'];
 
-const colorOptions: WidgetColorToken[] = ['cyan', 'blue', 'violet', 'pink', 'orange', 'green', 'yellow', 'neutral'];
+const colorOptions: WidgetColorToken[] = [
+  'cyan', 'blue', 'violet', 'pink', 'orange', 'green', 'yellow', 'neutral',
+  'red', 'teal', 'emerald', 'amber', 'indigo', 'rose', 'sky', 'lime', 'fuchsia', 'slate'
+];
 
 export function WidgetToolboxWithColorPicker({ onAddWidget, onAddGroup, onOpenSVGUpload, householdId, isMobile = false }: WidgetToolboxProps) {
   const [isExpanded, setIsExpanded] = useState(false);
@@ -228,7 +231,7 @@ export function WidgetToolboxWithColorPicker({ onAddWidget, onAddGroup, onOpenSV
             </div>
 
             <div className="flex-1 overflow-y-auto px-6 py-6 bg-gray-50">
-              <div className="grid grid-cols-4 gap-6">
+              <div className="grid grid-cols-5 gap-6">
                 {filteredWidgets.map((option) => {
                   const Icon = option.icon;
                   const color = getColorForWidget(option.type);
@@ -346,7 +349,7 @@ export function WidgetToolboxWithColorPicker({ onAddWidget, onAddGroup, onOpenSV
                 <p className="text-sm font-medium text-gray-700 mb-3">
                   Widget Colour <span className="text-gray-500">(applies to all {widgetOptions.find(w => w.type === selectedWidget)?.label} widgets)</span>
                 </p>
-                <div className="flex gap-3">
+                <div className="flex gap-3 flex-wrap max-h-64 overflow-y-auto">
                   {colorOptions.map((color) => {
                     const styles = getColorStyles(color);
                     const isActive = currentColor === color;

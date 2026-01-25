@@ -260,8 +260,9 @@ export interface WidgetLayout {
   id: string;
   widget_id: string;
   member_id: string;     // usually the user's id or household_member id
-  position_x: number;
-  position_y: number;
+  position_x: number | null; // canvas coordinates only - DO NOT use for launcher ordering
+  position_y: number | null; // canvas coordinates only - DO NOT use for launcher ordering
+  launcher_order: number | null; // launcher ordering only - DO NOT use for canvas layout
   size_mode: SizeMode;
   custom_width: number | null;
   custom_height: number | null;

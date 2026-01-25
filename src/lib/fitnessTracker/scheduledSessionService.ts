@@ -325,15 +325,21 @@ export class ScheduledSessionService {
 
     if (!profile) throw new Error('Profile not found');
 
-    // Get household_id (required for calendar_events)
-    const { data: household } = await supabase
-      .from('households')
-      .select('id')
-      .eq('user_id', user.id)
-      .eq('household_type', 'personal')
+    // Get personal space ID (required for calendar_events)
+    // Find personal space via space_members
+    const { data: membership, error: membershipError } = await supabase
+      .from('space_members')
+      .select('space_id, spaces!inner(context_type)')
+      .eq('user_id', profile.id)
+      .eq('status', 'active')
+      .eq('spaces.context_type', 'personal')
       .maybeSingle();
 
-    if (!household) throw new Error('Personal household not found');
+    if (membershipError || !membership) {
+      throw new Error('Personal space not found');
+    }
+
+    const household = { id: membership.space_id };
 
     const startDate = new Date(session.startDatetime);
     const endDate = session.durationMinutes

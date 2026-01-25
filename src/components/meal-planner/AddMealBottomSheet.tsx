@@ -8,8 +8,8 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Heart, Clock, Sparkles, CheckCircle2, Package, X, Tag, ShoppingBag, Utensils, Search } from 'lucide-react';
-import { getMealLibrary, getHouseholdFavourites, getCurrentUserFavourites, type MealLibraryItem } from '../../lib/mealPlanner';
+import { Heart, Clock, Sparkles, CheckCircle2, Package, X, Tag, ShoppingBag, Utensils, Search, Minus, Plus } from 'lucide-react';
+import { getMealLibrary, getHouseholdFavourites, getCurrentUserFavourites, type MealLibraryItem, type MealCourseType } from '../../lib/mealPlanner';
 import { compareRecipeAgainstPantry, type RecipePantryMatch } from '../../lib/foodIntelligence';
 import type { Recipe } from '../../lib/recipeGeneratorTypes';
 import { RecipeSearchWithAI } from '../recipes/RecipeSearchWithAI';
@@ -22,15 +22,18 @@ import { useUIPreferences } from '../../contexts/UIPreferencesContext';
 import { getFoodProfile } from '../../lib/foodProfileService';
 import type { UserFoodProfile } from '../../lib/foodProfileTypes';
 import { getPreferredTags, batchUpsertTagPreferences, type TagPreferenceInput } from '../../lib/tagPreferencesService';
+import { showToast } from '../Toast';
 
 interface AddMealPanelProps {
-  onSelectMeal: (meal: MealLibraryItem | null, customName?: string, recipeId?: string) => void;
+  onSelectMeal: (meal: MealLibraryItem | null, customName?: string, recipeId?: string, servings?: number, courseType?: MealCourseType, preparationMode?: 'scratch' | 'pre_bought', pantryItemId?: string | null) => void;
   onSelectExternalMeal?: (params: {
     name: string;
     vendor?: string | null;
     type: 'restaurant' | 'shop' | 'cafe' | 'takeaway' | 'other';
     scheduledAt?: string | null;
     notes?: string | null;
+    servings?: number;
+    courseType?: MealCourseType;
   }) => void;
   spaceId: string;
   dayName: string;
@@ -63,6 +66,14 @@ export function AddMealPanel({
   const [externalVendor, setExternalVendor] = useState('');
   const [externalType, setExternalType] = useState<'restaurant' | 'shop' | 'cafe' | 'takeaway' | 'other'>('shop');
   const [externalNotes, setExternalNotes] = useState('');
+  // Portion selector state (shared across all meal types)
+  const [servings, setServings] = useState(1);
+  // Course type selector state (shared across all meal types, sticky selection)
+  const [courseType, setCourseType] = useState<MealCourseType>('main');
+  // Preparation mode state (scratch vs pre_bought)
+  const [preparationMode, setPreparationMode] = useState<'scratch' | 'pre_bought'>('scratch');
+  // Pantry item state for pre_bought mode
+  const [selectedPantryItemId, setSelectedPantryItemId] = useState<string | null>(null);
   const [recentMeals, setRecentMeals] = useState<(MealLibraryItem & { source?: 'meal_library' | 'recipe' })[]>([]);
   const [favourites, setFavourites] = useState<(MealLibraryItem & { source?: 'meal_library' | 'recipe' })[]>([]);
   const [favouriteMeals, setFavouriteMeals] = useState<(MealLibraryItem & { source?: 'meal_library' })[]>([]);
@@ -156,7 +167,7 @@ export function AddMealPanel({
         loadFavourites();
       }
     }
-  }, [spaceId, mealType, activeSection]); // Reload when mealType or activeSection changes
+  }, [spaceId, mealType, activeSection, courseType]); // Reload when mealType, activeSection, or courseType changes
 
   // Load food profile for AI suggestions
   const loadFoodProfile = async () => {
@@ -182,7 +193,12 @@ export function AddMealPanel({
       const favMeals = favs.map(f => f.meal).filter(Boolean) as MealLibraryItem[];
       // Mark favourites as meal_library source (they come from meal_library table)
       filteredFavs = favMeals
-        .filter(m => m.meal_type === mealType || mealType === 'snack')
+        .filter(m => {
+          // For meal_library items, meal_type is a single value
+          // For recipes, meal_type is now an array
+          const mealTypes = Array.isArray(m.meal_type) ? m.meal_type : [m.meal_type];
+          return mealTypes.includes(mealType) || mealType === 'snack';
+        })
         .map(m => ({ ...m, source: 'meal_library' as const }));
       setFavourites(filteredFavs.slice(0, 6));
     } catch (err) {
@@ -195,7 +211,12 @@ export function AddMealPanel({
       const allMeals = await getMealLibrary({});
       // Mark recent meals as meal_library source (they come from meal_library table)
       recent = allMeals
-        .filter(m => m.meal_type === mealType || mealType === 'snack')
+        .filter(m => {
+          // For meal_library items, meal_type is a single value
+          // For recipes, meal_type is now an array
+          const mealTypes = Array.isArray(m.meal_type) ? m.meal_type : [m.meal_type];
+          return mealTypes.includes(mealType) || mealType === 'snack';
+        })
         .map(m => ({ ...m, source: 'meal_library' as const }))
         .slice(0, 6);
       setRecentMeals(recent);
@@ -220,10 +241,18 @@ export function AddMealPanel({
       
       // Convert recipes to MealLibraryItem format
       // IMPORTANT: Mark these as 'recipe' source so they route to recipeId, not mealId
-      const recipeMeals: (MealLibraryItem & { source?: 'recipe' })[] = recipes.map(recipe => ({
+      // Note: recipe.meal_type is now an array, but MealLibraryItem expects a single value
+      // We'll use the first meal_type for compatibility, or the one matching the current filter
+      const recipeMeals: (MealLibraryItem & { source?: 'recipe' })[] = recipes.map(recipe => {
+        // Get the primary meal_type (first in array, or one matching current filter)
+        const primaryMealType = recipe.meal_type.includes(mealType) 
+          ? mealType 
+          : recipe.meal_type[0] || 'dinner';
+        
+        return {
         id: recipe.id,
         name: recipe.name,
-        meal_type: recipe.meal_type,
+        meal_type: primaryMealType, // Use single value for compatibility
         servings: recipe.servings,
         prep_time: recipe.prep_time || null,
         cook_time: recipe.cook_time || null,
@@ -246,7 +275,8 @@ export function AddMealPanel({
         created_at: recipe.created_at,
         updated_at: recipe.updated_at,
         source: 'recipe' as const, // Discriminator: this is from recipes table, not meal_library
-      }));
+        };
+      });
 
       // Filter out recipes that are already in favourites or recent meals
       const existingIds = new Set([
@@ -267,9 +297,14 @@ export function AddMealPanel({
       setRecipeSuggestions(recipesToShow);
 
       // If we still don't have enough suggestions, query Perplexity AI
+      // Also check if courseType is set to something other than 'main' - in that case, 
+      // prioritize AI suggestions since database doesn't have course_type filtering
       const totalSuggestions = filteredFavs.length + recent.length + recipesToShow.length;
-      if (totalSuggestions === 0 && user && mealType !== 'snack') {
-        // No suggestions at all - load AI suggestions
+      const shouldUseAI = totalSuggestions === 0 || (courseType && courseType !== 'main');
+      
+      if (shouldUseAI && user && mealType !== 'snack') {
+        // No suggestions at all, or course type is specified (database can't filter by course_type)
+        // Load AI suggestions which can respect course type
         loadAISuggestions();
       }
     } catch (err) {
@@ -278,7 +313,9 @@ export function AddMealPanel({
       
       // If loading failed and we have no suggestions, try AI
       const totalSuggestions = filteredFavs.length + recent.length;
-      if (totalSuggestions === 0 && user && mealType !== 'snack') {
+      const shouldUseAI = totalSuggestions === 0 || (courseType && courseType !== 'main');
+      
+      if (shouldUseAI && user && mealType !== 'snack') {
         loadAISuggestions();
       }
     }
@@ -311,6 +348,7 @@ export function AddMealPanel({
     if (!user || mealType === 'snack') return;
 
     // Get user's preferred tags for this meal type, plus any selected tags
+    // Include courseType to guide AI suggestions
     let preferredTagsForMeal: string[] = [];
     try {
       if (spaceId) {
@@ -331,16 +369,30 @@ export function AddMealPanel({
     // Combine user preferences with selected tags (selected tags take priority)
     const tagsToUse = selectedTags.length > 0 ? selectedTags : preferredTagsForMeal;
 
-    // Create a generic query for the meal type
+    // Create a query for the meal type, incorporating course type if specified
     const mealTypeQueries: Record<string, string> = {
       breakfast: 'top breakfast recipes',
       lunch: 'top lunch recipes',
       dinner: 'top dinner recipes',
     };
 
-    const baseQuery = mealTypeQueries[mealType] || `${mealType} recipes`;
+    let baseQuery = mealTypeQueries[mealType] || `${mealType} recipes`;
     
-    // Create cache key from search parameters (include tags to cache different suggestions)
+    // If course type is specified and not 'main', modify the query to be more specific
+    if (courseType && courseType !== 'main') {
+      const courseTypeLabels: Record<string, string> = {
+        starter: 'starter',
+        side: 'side dish',
+        main: 'main course',
+        dessert: 'dessert',
+        shared: 'shared dish',
+        snack: 'snack',
+      };
+      const courseLabel = courseTypeLabels[courseType] || courseType;
+      baseQuery = `top ${courseLabel} recipes for ${mealType}`;
+    }
+    
+    // Create cache key from search parameters (include tags and courseType to cache different suggestions)
     const cacheKey = JSON.stringify({
       query: baseQuery,
       mealType,
@@ -348,6 +400,7 @@ export function AddMealPanel({
       foodProfileId: foodProfile?.id || null,
       recipeLocation,
       preferredTags: tagsToUse.sort().join(','), // Include tags in cache key
+      courseType, // Include course type in cache key so different course types get different suggestions
       source: 'addMealPanel', // Mark as from AddMealPanel to distinguish from other sources
     });
 
@@ -372,7 +425,7 @@ export function AddMealPanel({
     variationsLoadingRef.current.add(cacheKey);
 
     try {
-      // Get recipe variations from Perplexity, including user's preferred tags
+      // Get recipe variations from Perplexity, including user's preferred tags and course type
       const variations = await generateRecipeVariations(
         baseQuery,
         mealType,
@@ -383,7 +436,8 @@ export function AddMealPanel({
         foodProfile, // Pass food profile to respect constraints
         includeLocationInAI ? recipeLocation : null, // Only pass location if enabled
         tagsToUse, // Pass selected tags or user's preferred tags for this meal type
-        includeLocationInAI // Pass preference to control location in prompt
+        includeLocationInAI, // Pass preference to control location in prompt
+        courseType // Pass course type to filter AI suggestions (e.g., "dessert", "starter")
       );
 
       // Cache the results
@@ -423,10 +477,15 @@ export function AddMealPanel({
       
       // Convert to MealLibraryItem and select it
       // AI-generated recipes are from recipes table, so mark as 'recipe' source
+      // Get the primary meal_type (first in array, or one matching current filter)
+      const primaryMealType = generatedRecipe.meal_type.includes(mealType) 
+        ? mealType 
+        : generatedRecipe.meal_type[0] || 'dinner';
+      
       const mealItem: MealLibraryItem & { source?: 'recipe' } = {
         id: generatedRecipe.id,
         name: generatedRecipe.name,
-        meal_type: generatedRecipe.meal_type,
+        meal_type: primaryMealType, // Use single value for compatibility
         servings: generatedRecipe.servings,
         prep_time: generatedRecipe.prep_time || null,
         cook_time: generatedRecipe.cook_time || null,
@@ -486,7 +545,12 @@ export function AddMealPanel({
       
       // Filter by meal type and separate meals from recipes
       const meals = favourites
-        .filter(f => f.meal_id && f.meal && (f.meal.meal_type === mealType || mealType === 'snack'))
+        .filter(f => {
+          if (!f.meal_id || !f.meal) return false;
+          // For meal_library items, meal_type is a single value
+          const mealTypes = Array.isArray(f.meal.meal_type) ? f.meal.meal_type : [f.meal.meal_type];
+          return mealTypes.includes(mealType) || mealType === 'snack';
+        })
         .map(f => ({ ...f.meal!, source: 'meal_library' as const }))
         .filter(Boolean) as (MealLibraryItem & { source?: 'meal_library' })[];
       
@@ -495,9 +559,9 @@ export function AddMealPanel({
         .filter(f => f.recipe_id && f.recipe)
         .map(f => f.recipe!)
         .filter(recipe => {
-          // If recipe has meal_type, filter by it; otherwise show all for snack, or show if no meal_type specified
+          // recipe.meal_type is now an array
           if (mealType === 'snack') return true;
-          return recipe.meal_type === mealType || !recipe.meal_type;
+          return recipe.meal_type.includes(mealType) || recipe.meal_type.length === 0;
         })
         .map(r => ({ ...r, source: 'recipe' as const }))
         .filter(Boolean) as (Recipe & { source?: 'recipe' })[];
@@ -509,10 +573,16 @@ export function AddMealPanel({
       // Convert recipes to MealLibraryItem format for pantry comparison
       const allFavorites: MealLibraryItem[] = [
         ...meals,
-        ...recipes.map(recipe => ({
+        ...recipes.map(recipe => {
+          // Get the primary meal_type (first in array, or one matching current filter)
+          const primaryMealType = recipe.meal_type.includes(mealType) 
+            ? mealType 
+            : recipe.meal_type[0] || mealType;
+          
+          return {
           id: recipe.id,
           name: recipe.name,
-          meal_type: recipe.meal_type || mealType,
+          meal_type: primaryMealType, // Use single value for compatibility
           servings: recipe.servings || 4,
           prep_time: recipe.prep_time || null,
           cook_time: recipe.cook_time || null,
@@ -529,7 +599,8 @@ export function AddMealPanel({
           allergies: recipe.allergies || [],
           created_at: recipe.created_at || new Date().toISOString(),
           updated_at: recipe.updated_at || new Date().toISOString(),
-        }))
+          };
+        })
       ];
       
       if (allFavorites.length > 0) {
@@ -555,7 +626,7 @@ export function AddMealPanel({
 
   // Search is now handled by RecipeSearchWithAI component
 
-  const handleSelectMeal = (meal: MealLibraryItem & { source?: 'meal_library' | 'recipe' }) => {
+  const handleSelectMeal = async (meal: MealLibraryItem & { source?: 'meal_library' | 'recipe' }) => {
     // Route by semantic type, not by id presence
     // meal_library items → mealId
     // recipes → recipeId
@@ -568,16 +639,73 @@ export function AddMealPanel({
       source,
       isRecipe: source === 'recipe',
       isMealLibrary: source === 'meal_library',
+      servings,
+      preparationMode,
+      selectedPantryItemId,
     });
 
+    // If pre_bought mode, ensure pantry item is selected or created
+    if (preparationMode === 'pre_bought' && !selectedPantryItemId) {
+      try {
+        const { findPortionTrackedItems } = await import('../../lib/pantryPortionService');
+        const { getOrCreateFoodItem } = await import('../../lib/foodItems');
+        const { addPantryItem } = await import('../../lib/intelligentGrocery');
+        
+        // Get food item for the recipe/meal
+        const foodItem = await getOrCreateFoodItem(meal.name);
+        
+        // Look for existing portion-tracked pantry items
+        const existingItems = await findPortionTrackedItems(foodItem.id, spaceId);
+        
+        if (existingItems.length > 0) {
+          // Use first available item
+          setSelectedPantryItemId(existingItems[0].id);
+          // Continue with selection using the found item
+          if (source === 'recipe') {
+            onSelectMeal(null, undefined, meal.id, servings, courseType, preparationMode, existingItems[0].id);
+          } else {
+            onSelectMeal(meal, undefined, undefined, servings, courseType, preparationMode, existingItems[0].id);
+          }
+          if (onClose) onClose();
+          return;
+        } else {
+          // Auto-create a pantry item with default portions
+          // Default: 6 portions, unit: "serving"
+          const pantryItem = await addPantryItem({
+            householdId: spaceId,
+            foodItemId: foodItem.id,
+            totalPortions: 6,
+            portionUnit: 'serving',
+            status: 'have',
+          });
+          
+          setSelectedPantryItemId(pantryItem.id);
+          
+          // Continue with selection using the newly created item
+          if (source === 'recipe') {
+            onSelectMeal(null, undefined, meal.id, servings, courseType, preparationMode, pantryItem.id);
+          } else {
+            onSelectMeal(meal, undefined, undefined, servings, courseType, preparationMode, pantryItem.id);
+          }
+          if (onClose) onClose();
+          showToast('success', `Created pantry item: ${meal.name} (6 servings)`);
+          return;
+        }
+      } catch (error) {
+        console.error('[handleSelectMeal] Error finding/creating pantry item:', error);
+        showToast('error', 'Please add this item to your pantry first with portion tracking enabled');
+        return;
+      }
+    }
+
     // Pass the source information to parent via the existing callback signature
-    // The parent's handleSelectMeal will handle routing
+    // Include servings, courseType, preparationMode, and pantryItemId
     if (source === 'recipe') {
       // Pass as recipeId parameter
-      onSelectMeal(null, undefined, meal.id);
+      onSelectMeal(null, undefined, meal.id, servings, courseType, preparationMode, selectedPantryItemId);
     } else {
       // Pass as mealId (meal_library item)
-      onSelectMeal(meal);
+      onSelectMeal(meal, undefined, undefined, servings, courseType, preparationMode, selectedPantryItemId);
     }
     
     if (onClose) onClose();
@@ -599,6 +727,8 @@ export function AddMealPanel({
         vendor: externalVendor.trim() || null,
         type: externalType,
         notes: externalNotes.trim() || null,
+        servings: servings, // Include portion count for external meals
+        courseType: courseType, // Include course type for external meals
       });
       if (onClose) onClose();
     }
@@ -697,7 +827,7 @@ export function AddMealPanel({
   // Recipe cards are now rendered by RecipeSearchWithAI component
 
   return (
-    <div className="bg-white rounded-lg border border-gray-200 shadow-lg max-h-[85vh] sm:max-h-none flex flex-col">
+    <div className="bg-white rounded-lg border border-gray-200 shadow-lg h-full sm:max-h-none flex flex-col">
       {/* Header */}
       <div className="flex items-center justify-between px-4 sm:px-6 py-3 sm:py-4 border-b border-gray-200 flex-shrink-0 bg-white z-10">
         <h2 className="text-base sm:text-lg font-semibold text-gray-900">
@@ -714,14 +844,127 @@ export function AddMealPanel({
         )}
       </div>
 
-      {/* Content - Scrollable on mobile */}
+      {/* Content - Scrollable on mobile, with bottom padding for safe areas */}
       <div 
-        className="flex-1 overflow-y-auto p-4 sm:p-6"
+        className="flex-1 overflow-y-auto p-4 sm:p-6 pb-safe"
         style={{
           WebkitOverflowScrolling: 'touch',
           overscrollBehavior: 'contain',
+          paddingBottom: 'max(1rem, env(safe-area-inset-bottom))', // Ensure content isn't cut off on mobile
         }}
       >
+        {/* Course Type Selector - Show for all sections except external (external has its own) */}
+        {activeSection !== 'external' && (
+          <div className="mb-4 sm:mb-6 p-3 sm:p-4 bg-gradient-to-br from-blue-50 to-indigo-50 border-2 border-blue-200 rounded-xl">
+            <label className="block text-sm sm:text-base font-medium text-gray-900 mb-2 sm:mb-3">
+              Dish type
+            </label>
+            <div className="flex flex-wrap gap-2">
+              {[
+                { value: 'main' as MealCourseType, label: 'Main', icon: '🍲' },
+                { value: 'starter' as MealCourseType, label: 'Starter', icon: '🥟' },
+                { value: 'side' as MealCourseType, label: 'Side', icon: '🥗' },
+                { value: 'shared' as MealCourseType, label: 'Shared', icon: '🍞' },
+                { value: 'dessert' as MealCourseType, label: 'Dessert', icon: '🍰' },
+                { value: 'snack' as MealCourseType, label: 'Snack', icon: '🍪' },
+              ].map(({ value, label, icon }) => (
+                <button
+                  key={value}
+                  onClick={() => setCourseType(value)}
+                  className={`flex-1 min-w-[80px] sm:min-w-[100px] px-3 py-2.5 sm:py-3 rounded-lg font-medium text-sm sm:text-base transition-all touch-manipulation ${
+                    courseType === value
+                      ? 'bg-blue-600 text-white shadow-md scale-[1.02]'
+                      : 'bg-white text-gray-700 hover:bg-blue-50 border-2 border-blue-200'
+                  }`}
+                  aria-label={`Select ${label}`}
+                >
+                  <span className="text-lg sm:text-xl mr-1.5">{icon}</span>
+                  <span>{label}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Portion Selector - Show for all sections except external (external has its own) */}
+        {activeSection !== 'external' && (
+          <div className="mb-4 sm:mb-6 p-3 sm:p-4 bg-gradient-to-br from-orange-50 to-amber-50 border-2 border-orange-200 rounded-xl">
+            <label className="block text-sm sm:text-base font-medium text-gray-900 mb-2 sm:mb-3">
+              How many portions are you making?
+            </label>
+            <div className="flex items-center gap-3 sm:gap-4">
+              <button
+                onClick={() => setServings(Math.max(1, servings - 1))}
+                disabled={servings <= 1}
+                className="w-10 h-10 sm:w-12 sm:h-12 bg-white border-2 border-orange-300 rounded-lg flex items-center justify-center hover:bg-orange-50 active:bg-orange-100 disabled:opacity-50 disabled:cursor-not-allowed transition-colors touch-manipulation"
+                aria-label="Decrease portions"
+              >
+                <Minus size={18} className="text-orange-600" />
+              </button>
+              <div className="flex-1 text-center">
+                <div className="text-2xl sm:text-3xl font-bold text-orange-700">{servings}</div>
+                <div className="text-xs sm:text-sm text-gray-600 mt-0.5">
+                  {servings === 1 ? 'portion' : 'portions'}
+                </div>
+              </div>
+              <button
+                onClick={() => setServings(Math.min(12, servings + 1))}
+                disabled={servings >= 12}
+                className="w-10 h-10 sm:w-12 sm:h-12 bg-white border-2 border-orange-300 rounded-lg flex items-center justify-center hover:bg-orange-50 active:bg-orange-100 disabled:opacity-50 disabled:cursor-not-allowed transition-colors touch-manipulation"
+                aria-label="Increase portions"
+              >
+                <Plus size={18} className="text-orange-600" />
+              </button>
+            </div>
+            <p className="text-xs text-gray-600 mt-2 text-center">
+              {servings === 1 
+                ? "Making this just for yourself? Perfect! Ingredients will scale automatically."
+                : `Cooking for ${servings}? Ingredients will scale automatically.`}
+            </p>
+          </div>
+        )}
+
+        {/* Preparation Mode Toggle - Show for recipes only (not external meals) */}
+        {activeSection !== 'external' && (
+          <div className="mb-4 sm:mb-6 p-3 sm:p-4 bg-gradient-to-br from-green-50 to-emerald-50 border-2 border-green-200 rounded-xl">
+            <label className="block text-sm sm:text-base font-medium text-gray-900 mb-2 sm:mb-3">
+              How are you having this?
+            </label>
+            <div className="grid grid-cols-2 gap-3">
+              <button
+                onClick={() => {
+                  setPreparationMode('scratch');
+                  setSelectedPantryItemId(null);
+                }}
+                className={`px-4 py-3 rounded-lg font-medium text-sm sm:text-base transition-all touch-manipulation min-h-[60px] flex flex-col items-center justify-center gap-1 ${
+                  preparationMode === 'scratch'
+                    ? 'bg-green-600 text-white shadow-md scale-[1.02]'
+                    : 'bg-white text-gray-700 hover:bg-green-50 border-2 border-green-200'
+                }`}
+              >
+                <span className="text-xl">👨‍🍳</span>
+                <span>Making from scratch</span>
+              </button>
+              <button
+                onClick={() => setPreparationMode('pre_bought')}
+                className={`px-4 py-3 rounded-lg font-medium text-sm sm:text-base transition-all touch-manipulation min-h-[60px] flex flex-col items-center justify-center gap-1 ${
+                  preparationMode === 'pre_bought'
+                    ? 'bg-green-600 text-white shadow-md scale-[1.02]'
+                    : 'bg-white text-gray-700 hover:bg-green-50 border-2 border-green-200'
+                }`}
+              >
+                <span className="text-xl">🛒</span>
+                <span>Pre-bought / ready-made</span>
+              </button>
+            </div>
+            <p className="text-xs text-gray-600 mt-2 text-center">
+              {preparationMode === 'scratch'
+                ? "We'll check ingredients from your pantry."
+                : "We'll track portions from your pantry item."}
+            </p>
+          </div>
+        )}
+
         {/* Section Tabs - Horizontally scrollable on mobile */}
         <div className="mb-4 sm:mb-6">
           <div 
@@ -1082,6 +1325,73 @@ export function AddMealPanel({
               />
             </div>
 
+            {/* Course Type Selector for External Meals */}
+            <div className="mb-4 sm:mb-6 p-3 sm:p-4 bg-gradient-to-br from-blue-50 to-indigo-50 border-2 border-blue-200 rounded-xl">
+              <label className="block text-sm sm:text-base font-medium text-gray-900 mb-2 sm:mb-3">
+                Dish type
+              </label>
+              <div className="flex flex-wrap gap-2">
+                {[
+                  { value: 'main' as MealCourseType, label: 'Main', icon: '🍲' },
+                  { value: 'starter' as MealCourseType, label: 'Starter', icon: '🥟' },
+                  { value: 'side' as MealCourseType, label: 'Side', icon: '🥗' },
+                  { value: 'shared' as MealCourseType, label: 'Shared', icon: '🍞' },
+                  { value: 'dessert' as MealCourseType, label: 'Dessert', icon: '🍰' },
+                  { value: 'snack' as MealCourseType, label: 'Snack', icon: '🍪' },
+                ].map(({ value, label, icon }) => (
+                  <button
+                    key={value}
+                    onClick={() => setCourseType(value)}
+                    className={`flex-1 min-w-[80px] sm:min-w-[100px] px-3 py-2.5 sm:py-3 rounded-lg font-medium text-sm sm:text-base transition-all touch-manipulation ${
+                      courseType === value
+                        ? 'bg-blue-600 text-white shadow-md scale-[1.02]'
+                        : 'bg-white text-gray-700 hover:bg-blue-50 border-2 border-blue-200'
+                    }`}
+                    aria-label={`Select ${label}`}
+                  >
+                    <span className="text-lg sm:text-xl mr-1.5">{icon}</span>
+                    <span>{label}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Portion Selector for External Meals */}
+            <div className="p-3 sm:p-4 bg-gradient-to-br from-orange-50 to-amber-50 border-2 border-orange-200 rounded-xl">
+              <label className="block text-sm sm:text-base font-medium text-gray-900 mb-2 sm:mb-3">
+                How many portions?
+              </label>
+              <div className="flex items-center gap-3 sm:gap-4">
+                <button
+                  onClick={() => setServings(Math.max(1, servings - 1))}
+                  disabled={servings <= 1}
+                  className="w-10 h-10 sm:w-12 sm:h-12 bg-white border-2 border-orange-300 rounded-lg flex items-center justify-center hover:bg-orange-50 active:bg-orange-100 disabled:opacity-50 disabled:cursor-not-allowed transition-colors touch-manipulation"
+                  aria-label="Decrease portions"
+                >
+                  <Minus size={18} className="text-orange-600" />
+                </button>
+                <div className="flex-1 text-center">
+                  <div className="text-2xl sm:text-3xl font-bold text-orange-700">{servings}</div>
+                  <div className="text-xs sm:text-sm text-gray-600 mt-0.5">
+                    {servings === 1 ? 'portion' : 'portions'}
+                  </div>
+                </div>
+                <button
+                  onClick={() => setServings(Math.min(12, servings + 1))}
+                  disabled={servings >= 12}
+                  className="w-10 h-10 sm:w-12 sm:h-12 bg-white border-2 border-orange-300 rounded-lg flex items-center justify-center hover:bg-orange-50 active:bg-orange-100 disabled:opacity-50 disabled:cursor-not-allowed transition-colors touch-manipulation"
+                  aria-label="Increase portions"
+                >
+                  <Plus size={18} className="text-orange-600" />
+                </button>
+              </div>
+              <p className="text-xs text-gray-600 mt-2 text-center">
+                {servings === 1 
+                  ? "Just one? Perfect!"
+                  : `Getting ${servings}? Great!`}
+              </p>
+            </div>
+
             <button
               onClick={handleExternalMeal}
               disabled={!externalMealName.trim() || !onSelectExternalMeal}
@@ -1135,10 +1445,15 @@ export function AddMealPanel({
                     <div className="space-y-2 sm:space-y-3">
                       {favouriteRecipes.map(recipe => {
                         // Convert recipe to MealLibraryItem format for renderMealCard
+                        // Get the primary meal_type (first in array, or one matching current filter)
+                        const primaryMealType = recipe.meal_type.includes(mealType) 
+                          ? mealType 
+                          : recipe.meal_type[0] || mealType;
+                        
                         const mealItem: MealLibraryItem & { source?: 'recipe' } = {
                           id: recipe.id,
                           name: recipe.name,
-                          meal_type: recipe.meal_type || mealType,
+                          meal_type: primaryMealType, // Use single value for compatibility
                           servings: recipe.servings || 4,
                           prep_time: recipe.prep_time || null,
                           cook_time: recipe.cook_time || null,

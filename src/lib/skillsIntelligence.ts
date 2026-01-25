@@ -74,14 +74,9 @@ export const skillEvidenceService = {
 
     if (error) throw error;
 
-    // Update skill last_used_at and usage_count
-    await supabase
-      .from('user_skills')
-      .update({
-        last_used_at: evidence.occurred_at,
-        usage_count: supabase.rpc('increment', { x: 1 })
-      })
-      .eq('id', evidence.skill_id);
+    // Note: usage_count and last_used_at are updated by the caller
+    // This service only creates the evidence record
+    // The caller should handle user_skills updates to avoid race conditions
 
     return data as SkillEvidence;
   },

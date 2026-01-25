@@ -406,7 +406,7 @@ export function WidgetToolbox({ onAddWidget, onAddGroup, onOpenSVGUpload, househ
             </div>
 
             <div className="flex-1 overflow-y-auto px-6 py-6 bg-gray-50">
-              <div className="grid grid-cols-4 gap-4">
+              <div className="grid grid-cols-5 gap-4">
                 {(Object.keys(WIDGET_COLOR_TOKENS) as WidgetColorToken[]).map((colorKey) => {
                   const color = WIDGET_COLOR_TOKENS[colorKey];
                   const isCurrentDefault = getWidgetColor(colorPickerWidget) === colorKey;

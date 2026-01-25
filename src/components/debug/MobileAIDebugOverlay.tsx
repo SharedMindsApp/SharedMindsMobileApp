@@ -26,11 +26,6 @@ export function MobileAIDebugOverlay() {
   const [diagnostics, setDiagnostics] = useState<AIDiagnostic[]>([]);
   const env = getRuntimeEnvironment();
   
-  // Only show in development and on mobile
-  if (import.meta.env.PROD || !env.isMobile) {
-    return null;
-  }
-  
   useEffect(() => {
     // Load diagnostics from sessionStorage
     const loadDiagnostics = () => {
@@ -52,6 +47,11 @@ export function MobileAIDebugOverlay() {
     
     return () => clearInterval(interval);
   }, []);
+  
+  // Only show in development and on mobile
+  if (import.meta.env.PROD || !env.isMobile) {
+    return null;
+  }
   
   if (!isOpen) {
     return (

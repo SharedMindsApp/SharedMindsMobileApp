@@ -117,13 +117,13 @@ export async function loadHouseholdWidgets(
 
   // Phase 4: Network Resilience - Use supabaseQuery with timeout
   // Load widgets (exclude deleted ones)
+  // Note: Ordering by position_x happens after layouts are loaded and matched
   const { data: widgets, error: wErr } = await supabaseQuery(
     () => sb
       .from("fridge_widgets")
       .select("*")
       .eq("space_id", householdId)
-      .is("deleted_at", null)
-      .order("created_at", { ascending: true }),
+      .is("deleted_at", null),
     {
       timeout: 10000, // 10 second timeout
       maxRetries: 2,
@@ -169,9 +169,22 @@ export async function loadHouseholdWidgets(
     if (!layout.size_mode) layout.size_mode = "mini";
     if (layout.position_x == null) layout.position_x = 200;
     if (layout.position_y == null) layout.position_y = 200;
+    // Set launcher_order to MAX_SAFE_INTEGER if missing so new widgets appear at the end
+    if (layout.launcher_order == null) layout.launcher_order = Number.MAX_SAFE_INTEGER;
 
     results.push({ ...widget, layout });
   }
+
+  // IMPORTANT: position_x / position_y are canvas coordinates only.
+  // Launcher ordering MUST use launcher_order.
+  // Never mix these systems.
+  // Sort by launcher_order to ensure consistent ordering (launcher_order is the canonical source of launcher order)
+  // Use MAX_SAFE_INTEGER for missing/null launcher_order so new widgets appear at the end
+  results.sort((a, b) => {
+    const orderA = a.layout.launcher_order ?? Number.MAX_SAFE_INTEGER;
+    const orderB = b.layout.launcher_order ?? Number.MAX_SAFE_INTEGER;
+    return orderA - orderB;
+  });
 
   return results;
 }
@@ -214,6 +227,8 @@ export async function getWidgetById(widgetId: string): Promise<WidgetWithLayout 
   if (!widgetLayout.size_mode) widgetLayout.size_mode = "mini";
   if (widgetLayout.position_x == null) widgetLayout.position_x = 200;
   if (widgetLayout.position_y == null) widgetLayout.position_y = 200;
+  // Set launcher_order to MAX_SAFE_INTEGER if missing so new widgets appear at the end
+  if (widgetLayout.launcher_order == null) widgetLayout.launcher_order = Number.MAX_SAFE_INTEGER;
 
   return { ...widget, layout: widgetLayout };
 }
@@ -386,11 +401,13 @@ export async function updateWidgetLayout(
   const sb = await getSupabaseClient();
   
   // Phase 4: Network Resilience - Use supabaseQuery with timeout
-  const { error } = await supabaseQuery(
+  // Select both position_x and launcher_order to verify updates for both canvas and launcher layouts
+  const { data, error } = await supabaseQuery(
     () => sb
       .from("fridge_widget_layouts")
       .update(safe)
-      .eq("id", layoutId),
+      .eq("id", layoutId)
+      .select("id, position_x, launcher_order"), // Return updated fields to verify
     {
       timeout: 8000, // 8 second timeout for updates
       maxRetries: 2,
@@ -399,6 +416,11 @@ export async function updateWidgetLayout(
   );
 
   if (error) throw error;
+  
+  // Verify the update actually happened
+  if (!data || data.length === 0) {
+    throw new Error(`Failed to update layout ${layoutId} - no rows affected`);
+  }
 }
 
 /* ======================================================================

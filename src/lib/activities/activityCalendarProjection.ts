@@ -28,22 +28,36 @@ async function getProfileIdFromUserId(userId: string): Promise<string | null> {
 }
 
 /**
- * Get user's personal household ID
+ * Get user's personal space ID
  */
 async function getUserPersonalHouseholdId(userId: string): Promise<string | null> {
-  const { data, error } = await supabase
-    .from('households')
+  // Get user's profile
+  const { data: profile, error: profileError } = await supabase
+    .from('profiles')
     .select('id')
-    .eq('owner_id', userId)
-    .eq('space_type', 'personal')
+    .eq('user_id', userId)
     .maybeSingle();
 
-  if (error) {
-    console.error('[activityCalendarProjection] Error fetching personal household:', error);
+  if (profileError || !profile) {
+    console.error('[activityCalendarProjection] Error fetching profile:', profileError);
     return null;
   }
 
-  return data?.id || null;
+  // Find personal space via space_members
+  const { data: membership, error: membershipError } = await supabase
+    .from('space_members')
+    .select('space_id, spaces!inner(context_type)')
+    .eq('user_id', profile.id)
+    .eq('status', 'active')
+    .eq('spaces.context_type', 'personal')
+    .maybeSingle();
+
+  if (membershipError) {
+    console.error('[activityCalendarProjection] Error fetching personal space:', membershipError);
+    return null;
+  }
+
+  return membership?.space_id || null;
 }
 
 /**

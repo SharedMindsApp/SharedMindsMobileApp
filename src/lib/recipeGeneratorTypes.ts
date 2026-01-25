@@ -72,7 +72,7 @@ export interface Recipe {
   id: string;
   name: string;
   description: string | null;
-  meal_type: MealType;
+  meal_type: MealType[]; // Array to support multiple meal types (e.g., smoothies can be breakfast OR snack)
   servings: number;
   ingredients: RecipeIngredient[];
   instructions: string | null;
@@ -125,7 +125,7 @@ export interface RecipeVersion {
   // Full recipe snapshot
   name: string;
   description: string | null;
-  meal_type: MealType;
+  meal_type: MealType[]; // Array to support multiple meal types
   servings: number;
   ingredients: RecipeIngredient[];
   instructions: string | null;
@@ -161,7 +161,7 @@ export interface CreateRecipeInput {
   created_for_profile_id?: string | null; // For AI recipes in personal spaces: profile.id of user who requested it
   name: string;
   description?: string;
-  meal_type: MealType;
+  meal_type: MealType[]; // Array to support multiple meal types
   servings?: number;
   ingredients: RecipeIngredient[];
   instructions?: string;
@@ -193,6 +193,7 @@ export interface CreateRecipeInput {
 export interface UpdateRecipeInput {
   name?: string;
   description?: string;
+  meal_type?: MealType[]; // Array to support multiple meal types
   servings?: number;
   ingredients?: RecipeIngredient[];
   instructions?: string;

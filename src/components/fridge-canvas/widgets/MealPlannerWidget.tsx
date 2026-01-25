@@ -1,9 +1,10 @@
 import { useState, useEffect, useRef, startTransition } from 'react';
 import { createPortal } from 'react-dom';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { UtensilsCrossed, Coffee, Sun, Moon, X, Plus, Calendar, BookOpen, Heart, ChefHat, Clock, Edit, Trash2, Link as LinkIcon, Star, Search, Filter, ExternalLink, StickyNote, Package, ShoppingCart, CheckCircle2, AlertCircle, Sparkles, ChevronLeft, ChevronRight, Menu } from 'lucide-react';
+import { UtensilsCrossed, Coffee, Sun, Moon, X, Plus, Calendar, BookOpen, Heart, ChefHat, Clock, Edit, Trash2, Link as LinkIcon, Star, Search, Filter, ExternalLink, StickyNote, ShoppingCart, CheckCircle2, AlertCircle, Sparkles, ChevronLeft, ChevronRight, Menu } from 'lucide-react';
+import { Package } from 'lucide-react';
 import type { WidgetViewMode, MealPlannerContent } from '../../../lib/fridgeCanvasTypes';
-import { getWeeklyMealPlan, addMealToPlan, removeMealFromPlan, getWeekStartDate, getMealLibrary, getHouseholdFavourites, getCurrentUserFavourites, toggleMealFavourite, createCustomMeal, updateCustomMeal, deleteCustomMeal, getMealTypeLabel, type MealLibraryItem, type MealPlan, type MealFavourite } from '../../../lib/mealPlanner';
+import { getWeeklyMealPlan, addMealToPlan, removeMealFromPlan, getWeekStartDate, getMealLibrary, getHouseholdFavourites, getCurrentUserFavourites, toggleMealFavourite, createCustomMeal, updateCustomMeal, deleteCustomMeal, getMealTypeLabel, type MealLibraryItem, type MealPlan, type MealFavourite, type MealCourseType } from '../../../lib/mealPlanner';
 import { getHouseholdRecipeLinks, createRecipeLink, updateRecipeLink, deleteRecipeLink, toggleRecipeVote, updateRecipeIcon, getPlatformIcon, type RecipeLink } from '../../../lib/recipeLinks';
 import { getRecipeIcon } from '../../../lib/recipeIcons';
 import { MealPickerModal } from '../../meal-planner/MealPickerModal';
@@ -35,6 +36,8 @@ import { useMealSchedule } from '../../../hooks/useMealSchedule';
 import { isFastingSlot, type MealSlot } from '../../../lib/mealScheduleTypes';
 import { Moon as MoonIcon, Settings as SettingsIcon } from 'lucide-react';
 import { MealPlannerSettings } from '../../meal-planner/MealPlannerSettings';
+import { WeeklyPantryCheckSheet } from '../../meal-planner/WeeklyPantryCheckSheet';
+import { performWeeklyPantryCheck } from '../../../lib/weeklyPantryCheckService';
 import { getMealAssignments, getPreparedMeals } from '../../../lib/mealPrepService';
 import type { MealAssignment, PreparedMeal } from '../../../lib/mealPrepTypes';
 import { MealAssignmentModal } from '../../meal-planner/MealAssignmentModal';
@@ -55,13 +58,15 @@ function AddMealPanelOverlay({
   mealType,
 }: {
   onClose: () => void;
-  onSelectMeal: (meal: MealLibraryItem | null, customName?: string, recipeId?: string) => void;
+  onSelectMeal: (meal: MealLibraryItem | null, customName?: string, recipeId?: string, servings?: number, courseType?: MealCourseType, preparationMode?: 'scratch' | 'pre_bought', pantryItemId?: string | null) => void;
   onSelectExternalMeal?: (params: {
     name: string;
     vendor?: string | null;
     type: 'restaurant' | 'shop' | 'cafe' | 'takeaway' | 'other';
     scheduledAt?: string | null;
     notes?: string | null;
+    servings?: number;
+    courseType?: MealCourseType;
   }) => void;
   spaceId: string;
   dayName: string;
@@ -86,11 +91,12 @@ function AddMealPanelOverlay({
 
   return (
     <div 
-      className="fixed inset-0 z-50 bg-white"
+      className="fixed inset-0 z-50 bg-white safe-top safe-bottom"
       style={{
         overscrollBehavior: 'contain',
         WebkitOverflowScrolling: 'touch',
         touchAction: 'pan-y',
+        height: '100dvh', // Use dynamic viewport height for mobile (falls back to 100vh)
       }}
     >
       {/* Single scroll container for the entire overlay */}
@@ -100,9 +106,10 @@ function AddMealPanelOverlay({
           overscrollBehavior: 'contain',
           WebkitOverflowScrolling: 'touch',
           touchAction: 'pan-y',
+          minHeight: '100%', // Ensure full height
         }}
       >
-        <div className="max-w-2xl mx-auto">
+        <div className="max-w-2xl mx-auto h-full flex flex-col">
           <AddMealPanel
             onClose={onClose}
             onSelectMeal={onSelectMeal}
@@ -186,11 +193,14 @@ export function MealPlannerWidget({ householdId, viewMode, onViewModeChange, onF
   // Performance: Separate loading states for critical vs deferred
   const [loadingCritical, setLoadingCritical] = useState(true); // Meal plans (critical)
   const [loadingDeferred, setLoadingDeferred] = useState(false); // Favorites, library (deferred)
-  const [mealPlans, setMealPlans] = useState<Record<string, MealPlan>>({});
+  // Support multiple meals per time slot: Record<date-mealType, MealPlan[]>
+  const [mealPlans, setMealPlans] = useState<Record<string, MealPlan[]>>({});
   const [mealAssignments, setMealAssignments] = useState<Record<string, any>>({}); // date-mealType -> assignment
   const [preparedMeals, setPreparedMeals] = useState<any[]>([]);
   const [showMealPicker, setShowMealPicker] = useState(false);
   const [activeTab, setActiveTab] = useState<MealPlannerTab>('week');
+  const [showPantryCheck, setShowPantryCheck] = useState(false);
+  const [pantryCheckStatus, setPantryCheckStatus] = useState<'all-covered' | 'some-missing' | 'loading' | null>(null);
   const [allMeals, setAllMeals] = useState<MealLibraryItem[]>([]);
   const [favouriteMeals, setFavouriteMeals] = useState<MealLibraryItem[]>([]);
   const [favouriteRecipes, setFavouriteRecipes] = useState<Recipe[]>([]);
@@ -239,23 +249,115 @@ export function MealPlannerWidget({ householdId, viewMode, onViewModeChange, onF
   
   // Track if we're switching contexts to prevent stale updates
   const contextSpaceIdRef = useRef(currentSpaceId);
+  const previousSpaceIdRef = useRef<string | null>(null);
+  const previousPathnameRef = useRef<string | null>(null);
 
   // Update ref when space changes
   useEffect(() => {
     contextSpaceIdRef.current = currentSpaceId;
   }, [currentSpaceId]);
 
-  // Load meal plans when space or week changes
+  // Clear all space-specific data and reload when space changes
+  // This ensures seamless switching between households/spaces
   useEffect(() => {
-    if (currentSpaceId && !isSwitching()) {
-      loadMealPlans();
+    // Only refresh if space actually changed (not on initial mount)
+    const spaceChanged = previousSpaceIdRef.current !== null && previousSpaceIdRef.current !== currentSpaceId;
+    
+    if (currentSpaceId && spaceChanged) {
+      console.log('[MealPlanner] Space changed, refreshing data:', {
+        previous: previousSpaceIdRef.current,
+        current: currentSpaceId,
+        isSwitching: isSwitching()
+      });
+      
+      // Clear existing data immediately to avoid showing stale data from previous space
+      setMealPlans({});
+      setMealAssignments({});
+      setPreparedMeals([]);
+      setPantryCheckStatus(null);
+      setFavouriteMeals([]);
+      setFavouriteRecipes([]);
+      setFavouriteIds(new Set());
+      setRecipeLinks([]);
+      // Close any open modals/sheets when switching spaces
+      setShowMealPicker(false);
+      setShowAddMealSheet(false);
+      setShowMealDetailSheet(false);
+      setSelectedMealPlan(null);
+      setSelectedSlot(null);
+      // Set loading state to show we're loading new data
+      setLoadingCritical(true);
+      
+      // Use a small delay to ensure state clears first, then reload
+      const refreshTimer = setTimeout(() => {
+        console.log('[MealPlanner] Executing refresh for space:', currentSpaceId);
+        // Reload meal plans for the new space immediately
+        loadMealPlans();
+        
+        // Also reload data for the current tab if it's space-specific
+        if (activeTab === 'favourites') {
+          loadFavourites();
+        } else if (activeTab === 'recipes') {
+          loadRecipeLinks();
+        }
+      }, 50); // Small delay to let state clear
+      
+      return () => {
+        clearTimeout(refreshTimer);
+      };
     }
-  }, [currentSpaceId, startDate]);
+    
+    // Update previous space ID ref AFTER checking for changes
+    // This ensures we can detect the change on the next render
+    if (currentSpaceId) {
+      previousSpaceIdRef.current = currentSpaceId;
+    }
+  }, [currentSpaceId, startDate, activeTab]);
+
+  // Refresh meal plans when navigating back from recipe page
+  // This ensures the meal planner shows the newly added meal
+  useEffect(() => {
+    if (!currentSpaceId) return;
+    
+    const currentPathname = location.pathname;
+    const previousPathname = previousPathnameRef.current;
+    
+    // Check if we transitioned FROM a recipe route TO a non-recipe route
+    const wasOnRecipeRoute = previousPathname?.startsWith('/recipes/');
+    const isOnRecipeRoute = currentPathname.startsWith('/recipes/');
+    
+    // If we navigated back from a recipe page, refresh meal plans
+    if (wasOnRecipeRoute && !isOnRecipeRoute && previousPathname) {
+      console.log('[MealPlanner] Navigated back from recipe page, refreshing meal plans');
+      // Small delay to ensure navigation is complete
+      const refreshTimer = setTimeout(() => {
+        loadMealPlans();
+      }, 100);
+      
+      // Update ref for next comparison
+      previousPathnameRef.current = currentPathname;
+      
+      return () => clearTimeout(refreshTimer);
+    }
+    
+    // Update ref for next comparison
+    previousPathnameRef.current = currentPathname;
+  }, [location.pathname, currentSpaceId]);
 
   // Load data for current tab when widget mounts or tab changes
+  // This handles initial load and tab switches (but not space changes - that's handled above)
   useEffect(() => {
-    if (!currentSpaceId || isSwitching()) return;
+    if (!currentSpaceId) return;
     
+    // Skip if we just switched spaces (handled by the space change effect above)
+    // Only skip if space actually changed (not on initial mount)
+    const spaceJustChanged = previousSpaceIdRef.current !== null && previousSpaceIdRef.current !== currentSpaceId;
+    if (spaceJustChanged) {
+      // Space change effect will handle the refresh
+      return;
+    }
+    
+    // For initial load or tab changes, load the appropriate data
     if (activeTab === 'week') {
       loadMealPlans();
     } else if (activeTab === 'library') {
@@ -408,7 +510,8 @@ export function MealPlannerWidget({ householdId, viewMode, onViewModeChange, onF
         return;
       }
       
-      const plansMap: Record<string, MealPlan> = {};
+      // Support multiple meals per slot: collect all meals for each date-mealType combination
+      const plansMap: Record<string, MealPlan[]> = {};
 
       // Map plans by their actual date (week_start_date + day_of_week offset)
       allPlans.forEach(plan => {
@@ -416,11 +519,21 @@ export function MealPlannerWidget({ householdId, viewMode, onViewModeChange, onF
         planDate.setDate(planDate.getDate() + plan.day_of_week);
         const dateKey = planDate.toISOString().split('T')[0];
         const key = `${dateKey}-${plan.meal_type}`;
-        plansMap[key] = plan;
+        
+        // Initialize array if it doesn't exist, then push the plan
+        if (!plansMap[key]) {
+          plansMap[key] = [];
+        }
+        plansMap[key].push(plan);
       });
 
       setMealPlans(plansMap);
       MealPlannerMarks.dataLoaded();
+      
+      // Check pantry status for the current week (non-blocking)
+      if (weekStartDates.length > 0) {
+        checkPantryStatus(weekStartDates[0], expectedSpaceId);
+      }
     } catch (error: any) {
       if (error.name === 'AbortError' || abortSignal?.aborted) {
         return;
@@ -432,6 +545,26 @@ export function MealPlannerWidget({ householdId, viewMode, onViewModeChange, onF
         setLoadingCritical(false);
         MealPlannerMarks.interactive();
       }
+    }
+  };
+
+  // Check pantry status (non-blocking, updates badge)
+  const checkPantryStatus = async (weekStartDate: string, spaceId: string) => {
+    try {
+      setPantryCheckStatus('loading');
+      const result = await performWeeklyPantryCheck(spaceId, weekStartDate);
+      
+      // Update badge status
+      if (result.summary.allCovered) {
+        setPantryCheckStatus('all-covered');
+      } else if (result.summary.needsBuyingCount > 0) {
+        setPantryCheckStatus('some-missing');
+      } else {
+        setPantryCheckStatus('all-covered'); // Only manual check items remain
+      }
+    } catch (error) {
+      console.error('Failed to check pantry status:', error);
+      setPantryCheckStatus(null); // Hide badge on error
     }
   };
 
@@ -587,7 +720,15 @@ export function MealPlannerWidget({ householdId, viewMode, onViewModeChange, onF
     setShowMealDetailSheet(true);
   };
 
-  const handleSelectMeal = async (meal: MealLibraryItem | null, customName?: string, recipeId?: string) => {
+  const handleSelectMeal = async (
+    meal: MealLibraryItem | null,
+    customName?: string,
+    recipeId?: string,
+    servings: number = 1,
+    courseType: MealCourseType = 'main',
+    preparationMode: 'scratch' | 'pre_bought' = 'scratch',
+    pantryItemId?: string | null
+  ) => {
     if (!selectedSlot || !user) return;
 
     try {
@@ -634,9 +775,10 @@ export function MealPlannerWidget({ householdId, viewMode, onViewModeChange, onF
       });
 
       // Explicit branching based on source
+      let result: any;
       if (isRecipe) {
         // Recipe from recipes table → use recipeId
-        await addMealToPlan(
+        result = await addMealToPlan(
           currentSpaceId,
           null, // mealId = null for recipes
           null, // customMealName = null for recipes
@@ -644,11 +786,15 @@ export function MealPlannerWidget({ householdId, viewMode, onViewModeChange, onF
           dayOfWeek,
           weekStartDate,
           profile.id,
-          recipeId // recipeId parameter
+          recipeId, // recipeId parameter
+          servings, // portion count
+          courseType, // course type
+          pantryItemId, // pantry item ID (for pre_bought mode)
+          preparationMode // preparation mode
         );
       } else if (isMealLibrary && meal) {
         // Meal from meal_library → use mealId
-        await addMealToPlan(
+        result = await addMealToPlan(
           currentSpaceId,
           meal.id, // mealId from meal_library
           null, // customMealName = null
@@ -656,11 +802,15 @@ export function MealPlannerWidget({ householdId, viewMode, onViewModeChange, onF
           dayOfWeek,
           weekStartDate,
           profile.id,
-          null // recipeId = null
+          null, // recipeId = null
+          servings, // portion count
+          courseType, // course type
+          pantryItemId, // pantry item ID (for pre_bought mode)
+          preparationMode // preparation mode
         );
       } else if (isCustom) {
         // Custom meal → use customMealName
-        await addMealToPlan(
+        result = await addMealToPlan(
           currentSpaceId,
           null, // mealId = null
           customName, // customMealName
@@ -668,7 +818,11 @@ export function MealPlannerWidget({ householdId, viewMode, onViewModeChange, onF
           dayOfWeek,
           weekStartDate,
           profile.id,
-          null // recipeId = null
+          null, // recipeId = null
+          servings, // portion count
+          courseType, // course type
+          pantryItemId, // pantry item ID (for pre_bought mode)
+          preparationMode // preparation mode
         );
       } else {
         throw new Error('[handleSelectMeal] Unknown item type: must provide meal, recipeId, or customMealName');
@@ -677,10 +831,22 @@ export function MealPlannerWidget({ householdId, viewMode, onViewModeChange, onF
       await loadMealPlans();
       setShowAddMealSheet(false);
       setSelectedSlot(null);
-      showToast('success', isRecipe ? 'Recipe added to plan' : isCustom ? 'Custom meal added to plan' : 'Meal added to plan');
-    } catch (error) {
+      
+      const wasReplaced = (result as any)?.wasReplaced;
+      if (wasReplaced) {
+        showToast('success', isRecipe ? 'Recipe replaced in plan' : isCustom ? 'Custom meal replaced in plan' : 'Meal replaced in plan');
+      } else {
+        showToast('success', isRecipe ? 'Recipe added to plan' : isCustom ? 'Custom meal added to plan' : 'Meal added to plan');
+      }
+    } catch (error: any) {
       console.error('Failed to add meal/recipe:', error);
-      showToast('error', 'Failed to add to plan');
+      // Only show error if it's not a duplicate key error (which should be handled by replacement)
+      if (error.code === '23505') {
+        // This shouldn't happen anymore, but if it does, show a friendly message
+        showToast('error', 'A meal already exists in this slot. Please try again.');
+      } else {
+        showToast('error', error.message || 'Failed to add to plan');
+      }
     }
   };
 
@@ -690,6 +856,8 @@ export function MealPlannerWidget({ householdId, viewMode, onViewModeChange, onF
     type: 'restaurant' | 'shop' | 'cafe' | 'takeaway' | 'other';
     scheduledAt?: string | null;
     notes?: string | null;
+    servings?: number;
+    courseType?: MealCourseType;
   }) => {
     if (!selectedSlot || !user) return;
 
@@ -710,7 +878,7 @@ export function MealPlannerWidget({ householdId, viewMode, onViewModeChange, onF
       const weekStartDate = selectedSlot.weekStartDate || dayInfo.weekStartDate;
       const dayOfWeek = selectedSlot.dayOfWeek !== undefined ? selectedSlot.dayOfWeek : dayInfo.dayOfWeek;
 
-      await addExternalMealToPlan({
+      const result = await addExternalMealToPlan({
         name: params.name,
         vendor: params.vendor,
         type: params.type,
@@ -721,15 +889,29 @@ export function MealPlannerWidget({ householdId, viewMode, onViewModeChange, onF
         householdId: currentSpaceId,
         scheduledAt: params.scheduledAt,
         notes: params.notes,
+        servings: params.servings || 1, // Include portion count (default: 1)
+        courseType: params.courseType || 'main', // Include course type (default: 'main')
       });
 
       await loadMealPlans();
       setShowAddMealSheet(false);
       setSelectedSlot(null);
-      showToast('success', 'External meal added to plan');
-    } catch (error) {
+      
+      const wasReplaced = (result as any)?.wasReplaced;
+      if (wasReplaced) {
+        showToast('success', 'External meal replaced in plan');
+      } else {
+        showToast('success', 'External meal added to plan');
+      }
+    } catch (error: any) {
       console.error('Failed to add external meal:', error);
-      showToast('error', 'Failed to add external meal to plan');
+      // Only show error if it's not a duplicate key error (which should be handled by replacement)
+      if (error.code === '23505') {
+        // This shouldn't happen anymore, but if it does, show a friendly message
+        showToast('error', 'A meal already exists in this slot. Please try again.');
+      } else {
+        showToast('error', error.message || 'Failed to add external meal to plan');
+      }
     }
   };
 
@@ -841,7 +1023,11 @@ export function MealPlannerWidget({ householdId, viewMode, onViewModeChange, onF
   };
 
   const handleAddRecipeToPlanner = (recipe: MealLibraryItem) => {
-    setSelectedSlot({ day: 'Monday', dayIndex: 0, mealType: recipe.meal_type as any });
+    // recipe.meal_type is now an array, use first value
+    const primaryMealType = Array.isArray(recipe.meal_type) && recipe.meal_type.length > 0
+      ? recipe.meal_type[0]
+      : 'dinner';
+    setSelectedSlot({ day: 'Monday', dayIndex: 0, mealType: primaryMealType as any });
     setShowMealPicker(true);
   };
 
@@ -962,13 +1148,20 @@ export function MealPlannerWidget({ householdId, viewMode, onViewModeChange, onF
     }
   };
 
-  const getMealPlan = (dayIndex: number, mealType: string): MealPlan | null => {
+  // Get all meals for a slot (supports multiple meals per time slot)
+  const getMealPlans = (dayIndex: number, mealType: string): MealPlan[] => {
     // Use date-based key for lookup
     const dayInfo = displayDays[dayIndex];
-    if (!dayInfo) return null;
+    if (!dayInfo) return [];
     const dateKey = dayInfo.date.toISOString().split('T')[0];
     const key = `${dateKey}-${mealType}`;
-    return mealPlans[key] || null;
+    return mealPlans[key] || [];
+  };
+
+  // Legacy helper for backward compatibility (returns first meal or null)
+  const getMealPlan = (dayIndex: number, mealType: string): MealPlan | null => {
+    const plans = getMealPlans(dayIndex, mealType);
+    return plans.length > 0 ? plans[0] : null;
   };
 
   const getMealAssignment = (dayIndex: number, mealType: string): (MealAssignment & { preparedMeal: PreparedMeal }) | null => {
@@ -981,7 +1174,8 @@ export function MealPlannerWidget({ householdId, viewMode, onViewModeChange, onF
   };
 
   const getTotalMeals = () => {
-    return Object.keys(mealPlans).length;
+    // Count all meals across all slots (mealPlans is now Record<string, MealPlan[]>)
+    return Object.values(mealPlans).reduce((total, plans) => total + plans.length, 0);
   };
 
   const getMealIcon = (mealType: string) => {
@@ -1017,7 +1211,7 @@ export function MealPlannerWidget({ householdId, viewMode, onViewModeChange, onF
     }));
   };
 
-  // Render a meal slot (meal or fasting)
+  // Render a meal slot (meal or fasting) - supports multiple meals per slot
   const renderMealSlot = (
     slot: MealSlot,
     dayIndex: number,
@@ -1026,12 +1220,8 @@ export function MealPlannerWidget({ householdId, viewMode, onViewModeChange, onF
     const isFasting = isFastingSlot(slot);
     const mealType = slot.mealTypeMapping || slot.id;
     const assignment = getMealAssignment(dayIndex, mealType);
-    const plan = getMealPlan(dayIndex, mealType);
-    const isExternalMeal = plan?.meal_source === 'external';
-    const mealName = isExternalMeal 
-      ? plan.external_name 
-      : assignment?.preparedMeal.recipe_name || plan?.meal?.name || plan?.recipe?.name || plan?.custom_meal_name;
-    const isPreparedMeal = !!assignment;
+    const plans = getMealPlans(dayIndex, mealType); // Get all meals for this slot
+    const hasMeals = plans.length > 0;
     
     // External meal type icons and labels
     const externalTypeConfig = {
@@ -1041,7 +1231,6 @@ export function MealPlannerWidget({ householdId, viewMode, onViewModeChange, onF
       takeaway: { icon: '🥡', label: 'Takeaway', color: 'bg-orange-100 text-orange-700' },
       other: { icon: '📦', label: 'Bought', color: 'bg-gray-100 text-gray-700' },
     };
-    const externalConfig = plan?.external_type ? externalTypeConfig[plan.external_type] : externalTypeConfig.other;
 
     // Color scheme per meal type (ADHD-first: calm, soft)
     const mealTypeStyles: Record<string, any> = {
@@ -1072,6 +1261,127 @@ export function MealPlannerWidget({ householdId, viewMode, onViewModeChange, onF
       text: 'text-gray-700',
     };
 
+    // Helper function to render a single meal card
+    const renderMealCard = (plan: MealPlan, index: number) => {
+      const isExternalMeal = plan.meal_source === 'external';
+      const mealName = isExternalMeal 
+        ? plan.external_name 
+        : assignment?.preparedMeal.recipe_name || plan.meal?.name || plan.recipe?.name || plan.custom_meal_name;
+      const isPreparedMeal = !!assignment;
+      const externalConfig = plan.external_type ? externalTypeConfig[plan.external_type] : externalTypeConfig.other;
+
+      return (
+        <button
+          key={plan.id || index}
+          onClick={() => handleMealCardClick(plan)}
+          className={`w-full text-left ${styles.bg} ${styles.border} border-2 rounded-xl ${isFullscreen ? 'p-4' : 'p-3'} hover:shadow-md active:scale-[0.98] transition-all mb-2`}
+          style={{ touchAction: 'pan-y' }}
+        >
+          <div className="flex items-start gap-3">
+            {/* Meal Image or Icon */}
+            {isExternalMeal ? (
+              <div className={`${isFullscreen ? 'w-20 h-20' : 'w-16 h-16'} ${styles.bg} ${styles.border} border-2 rounded-lg flex items-center justify-center text-3xl flex-shrink-0`}>
+                {externalConfig.icon}
+              </div>
+            ) : plan.meal?.image_url || plan.recipe?.image_url ? (
+              <img
+                src={(plan.meal?.image_url || plan.recipe?.image_url) || undefined}
+                alt={mealName || undefined}
+                className={`${isFullscreen ? 'w-20 h-20' : 'w-16 h-16'} rounded-lg object-cover flex-shrink-0`}
+                onError={(e) => {
+                  (e.target as HTMLImageElement).style.display = 'none';
+                }}
+              />
+            ) : (
+              <div className={`${isFullscreen ? 'w-20 h-20' : 'w-16 h-16'} ${styles.bg} ${styles.border} border-2 rounded-lg flex items-center justify-center text-3xl flex-shrink-0`}>
+                {styles.icon}
+              </div>
+            )}
+
+            {/* Meal Info */}
+            <div className="flex-1 min-w-0">
+              <div className="flex items-start justify-between gap-2 mb-1">
+                <h4 className={`font-semibold text-gray-900 ${isFullscreen ? 'text-base' : 'text-sm'} line-clamp-2`}>
+                  {mealName}
+                </h4>
+                <div className="flex items-center gap-1.5 flex-shrink-0">
+                  {/* Prominent Portion Indicator */}
+                  {plan.servings && plan.servings > 0 && (
+                    <span className="px-2 py-1 bg-orange-100 text-orange-700 text-xs font-bold rounded-full border border-orange-300">
+                      {plan.servings}x
+                    </span>
+                  )}
+                  {/* Preparation Mode Badge */}
+                  {(plan as any).preparation_mode === 'pre_bought' && (
+                    <span className="px-2 py-0.5 bg-green-100 text-green-700 text-xs font-medium rounded-full border border-green-300">
+                      🛒 Pre-made
+                    </span>
+                  )}
+                  {isExternalMeal && (
+                    <span className={`px-2 py-0.5 ${externalConfig.color} text-xs font-medium rounded-full`}>
+                      {externalConfig.icon} {externalConfig.label}
+                    </span>
+                  )}
+                  {isPreparedMeal && (
+                    <span className="px-2 py-0.5 bg-orange-100 text-orange-700 text-xs font-medium rounded-full">
+                      🥘 Prep
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              {/* External meal vendor */}
+              {isExternalMeal && plan.external_vendor && (
+                <p className="text-xs text-gray-600 mb-1">
+                  {plan.external_vendor}
+                </p>
+              )}
+
+              {/* Metadata Row */}
+              <div className="flex items-center gap-3 text-xs text-gray-500 mb-2">
+                <span className="capitalize font-medium">{slot.label}</span>
+                {isPreparedMeal && assignment && (
+                  <>
+                    <span>•</span>
+                    <span>{assignment.servings_used} serving{assignment.servings_used !== 1 ? 's' : ''}</span>
+                    {assignment.preparedMeal.remaining_servings > 0 && (
+                      <>
+                        <span>•</span>
+                        <span className="text-green-600">{assignment.preparedMeal.remaining_servings} left</span>
+                      </>
+                    )}
+                  </>
+                )}
+                {!isPreparedMeal && !isExternalMeal && (plan?.meal?.prep_time || plan?.recipe?.prep_time) && (
+                  <>
+                    <span>•</span>
+                    <div className="flex items-center gap-1">
+                      <Clock size={12} />
+                      <span>{(plan.meal?.prep_time || plan.recipe?.prep_time || 0) + ((plan.meal?.cook_time || plan.recipe?.cook_time) || 0)} min</span>
+                    </div>
+                  </>
+                )}
+              </div>
+
+              {/* Tags */}
+              {((plan.meal?.categories && plan.meal.categories.length > 0) || (plan.recipe?.categories && plan.recipe.categories.length > 0)) && (
+                <div className="flex flex-wrap gap-1">
+                  {((plan.meal?.categories || plan.recipe?.categories) || []).slice(0, 2).map(cat => (
+                    <span
+                      key={cat}
+                      className="text-xs px-2 py-0.5 bg-white/60 backdrop-blur-sm text-gray-600 rounded-full"
+                    >
+                      {cat}
+                    </span>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </button>
+      );
+    };
+
     // Fasting slot rendering
     if (isFasting) {
       return (
@@ -1097,136 +1407,85 @@ export function MealPlannerWidget({ householdId, viewMode, onViewModeChange, onF
       );
     }
 
-    // Regular meal slot rendering
+    // Course order for logical grouping
+    const COURSE_ORDER: MealCourseType[] = ['starter', 'main', 'side', 'shared', 'dessert', 'snack'];
+    const COURSE_LABELS: Record<MealCourseType, string> = {
+      starter: 'Starter',
+      main: 'Main',
+      side: 'Side',
+      shared: 'Shared',
+      dessert: 'Dessert',
+      snack: 'Snack',
+    };
+    const COURSE_ICONS: Record<MealCourseType, string> = {
+      starter: '🥟',
+      main: '🍲',
+      side: '🥗',
+      shared: '🍞',
+      dessert: '🍰',
+      snack: '🍪',
+    };
+
+    // Group plans by course_type
+    const plansByCourse = plans.reduce((acc, plan) => {
+      const course = (plan.course_type || 'main') as MealCourseType; // Defensive fallback
+      if (!acc[course]) {
+        acc[course] = [];
+      }
+      acc[course].push(plan);
+      return acc;
+    }, {} as Record<MealCourseType, MealPlan[]>);
+
+    // Regular meal slot rendering - supports multiple meals grouped by course
+    // Note: This is called from within a meal type section, so we don't need to show meal type header here
     return (
-      <div key={slot.id}>
-        {plan ? (
-          // Filled Meal Card
-          // CRITICAL: Use touch-action: pan-y to allow vertical scrolling while still allowing taps
-          // This ensures users can scroll when dragging on meal cards, but taps still work
-          <button
-            onClick={() => handleMealCardClick(plan)}
-            className={`w-full text-left ${styles.bg} ${styles.border} border-2 rounded-xl ${isFullscreen ? 'p-4' : 'p-3'} hover:shadow-md active:scale-[0.98] transition-all`}
-            style={{ touchAction: 'pan-y' }}
-          >
-            <div className="flex items-start gap-3">
-              {/* Meal Image or Icon */}
-              {isExternalMeal ? (
-                <div className={`${isFullscreen ? 'w-20 h-20' : 'w-16 h-16'} ${styles.bg} ${styles.border} border-2 rounded-lg flex items-center justify-center text-3xl flex-shrink-0`}>
-                  {externalConfig.icon}
-                </div>
-              ) : plan.meal?.image_url || plan.recipe?.image_url ? (
-                <img
-                  src={(plan.meal?.image_url || plan.recipe?.image_url) || undefined}
-                  alt={mealName || undefined}
-                  className={`${isFullscreen ? 'w-20 h-20' : 'w-16 h-16'} rounded-lg object-cover flex-shrink-0`}
-                  onError={(e) => {
-                    (e.target as HTMLImageElement).style.display = 'none';
-                  }}
-                />
-              ) : (
-                <div className={`${isFullscreen ? 'w-20 h-20' : 'w-16 h-16'} ${styles.bg} ${styles.border} border-2 rounded-lg flex items-center justify-center text-3xl flex-shrink-0`}>
-                  {styles.icon}
+      <div key={slot.id} className="space-y-3">
+        {/* Render meals grouped by course */}
+        {COURSE_ORDER.map(courseType => {
+          const coursePlans = plansByCourse[courseType] || [];
+          if (coursePlans.length === 0) return null;
+
+          return (
+            <div key={courseType} className="space-y-2">
+              {/* Course Label - only show if there are multiple courses or more than one dish in this course */}
+              {(Object.keys(plansByCourse).length > 1 || coursePlans.length > 1) && (
+                <div className="flex items-center gap-2 px-2">
+                  <span className="text-lg">{COURSE_ICONS[courseType]}</span>
+                  <span className="text-xs font-semibold text-gray-600 uppercase tracking-wide">
+                    {COURSE_LABELS[courseType]}
+                  </span>
+                  <div className="flex-1 h-px bg-gray-200"></div>
                 </div>
               )}
-
-              {/* Meal Info */}
-              <div className="flex-1 min-w-0">
-                <div className="flex items-start justify-between gap-2 mb-1">
-                  <h4 className={`font-semibold text-gray-900 ${isFullscreen ? 'text-base' : 'text-sm'} line-clamp-2`}>
-                    {mealName}
-                  </h4>
-                  <div className="flex items-center gap-1.5 flex-shrink-0">
-                    {isExternalMeal && (
-                      <span className={`px-2 py-0.5 ${externalConfig.color} text-xs font-medium rounded-full`}>
-                        {externalConfig.icon} {externalConfig.label}
-                      </span>
-                    )}
-                    {isPreparedMeal && (
-                      <span className="px-2 py-0.5 bg-orange-100 text-orange-700 text-xs font-medium rounded-full">
-                        🥘 Prep
-                      </span>
-                    )}
-                  </div>
-                </div>
-
-                {/* External meal vendor */}
-                {isExternalMeal && plan.external_vendor && (
-                  <p className="text-xs text-gray-600 mb-1">
-                    {plan.external_vendor}
-                  </p>
-                )}
-
-                {/* Metadata Row */}
-                <div className="flex items-center gap-3 text-xs text-gray-500 mb-2">
-                  <span className="capitalize font-medium">{slot.label}</span>
-                  {isPreparedMeal && assignment && (
-                    <>
-                      <span>•</span>
-                      <span>{assignment.servings_used} serving{assignment.servings_used !== 1 ? 's' : ''}</span>
-                      {assignment.preparedMeal.remaining_servings > 0 && (
-                        <>
-                          <span>•</span>
-                          <span className="text-green-600">{assignment.preparedMeal.remaining_servings} left</span>
-                        </>
-                      )}
-                    </>
-                  )}
-                  {!isPreparedMeal && !isExternalMeal && (plan?.meal?.prep_time || plan?.recipe?.prep_time) && (
-                    <>
-                      <span>•</span>
-                      <div className="flex items-center gap-1">
-                        <Clock size={12} />
-                        <span>{(plan.meal?.prep_time || plan.recipe?.prep_time || 0) + ((plan.meal?.cook_time || plan.recipe?.cook_time) || 0)} min</span>
-                      </div>
-                    </>
-                  )}
-                </div>
-
-                {/* Tags */}
-                {((plan.meal?.categories && plan.meal.categories.length > 0) || (plan.recipe?.categories && plan.recipe.categories.length > 0)) && (
-                  <div className="flex flex-wrap gap-1">
-                    {((plan.meal?.categories || plan.recipe?.categories) || []).slice(0, 2).map(cat => (
-                      <span
-                        key={cat}
-                        className="text-xs px-2 py-0.5 bg-white/60 backdrop-blur-sm text-gray-600 rounded-full"
-                      >
-                        {cat}
-                      </span>
-                    ))}
-                  </div>
-                )}
-              </div>
+              
+              {/* Render meals in this course */}
+              {coursePlans.map((plan, index) => renderMealCard(plan, index))}
             </div>
-          </button>
-        ) : (
-          // Empty Meal Card
-          // CRITICAL: Use touch-action: pan-y to allow vertical scrolling while still allowing taps
-          // This ensures users can scroll when dragging on empty meal slots, but taps still work
-          <button
-            onClick={() => {
-              if (!isFasting) {
-                handleAddMeal(dayIndex, mealType);
-              }
-            }}
-            disabled={isFasting}
-            className={`w-full text-left ${styles.bg} ${styles.border} border-2 border-dashed rounded-xl ${isFullscreen ? 'p-4' : 'p-3'} hover:shadow-md active:scale-[0.98] transition-all ${isFasting ? 'opacity-50 cursor-not-allowed' : ''}`}
-            style={{ touchAction: 'pan-y' }}
-          >
-            <div className="flex items-center gap-3">
-              <div className={`${isFullscreen ? 'w-16 h-16' : 'w-12 h-12'} ${styles.bg} ${styles.border} border-2 rounded-lg flex items-center justify-center text-2xl flex-shrink-0`}>
-                {styles.icon}
-              </div>
-              <div className="flex-1 min-w-0">
-                <h4 className={`font-semibold ${styles.text} ${isFullscreen ? 'text-base' : 'text-sm'}`}>
-                  {slot.label}
-                </h4>
-                <p className="text-xs text-gray-500 mt-0.5">Tap to add meal</p>
-              </div>
-              <Plus size={20} className={`${styles.text} flex-shrink-0`} />
+          );
+        })}
+        
+        {/* Add Dish Button - always visible, allows adding more dishes */}
+        <button
+          onClick={() => {
+            if (!isFasting) {
+              handleAddMeal(dayIndex, mealType);
+            }
+          }}
+          disabled={isFasting}
+          className={`w-full text-left ${styles.bg} ${styles.border} border-2 ${hasMeals ? 'border-solid' : 'border-dashed'} rounded-xl ${isFullscreen ? 'p-3' : 'p-2.5'} hover:shadow-md active:scale-[0.98] transition-all ${isFasting ? 'opacity-50 cursor-not-allowed' : ''}`}
+          style={{ touchAction: 'pan-y' }}
+        >
+          <div className="flex items-center gap-2">
+            <div className={`${isFullscreen ? 'w-10 h-10' : 'w-8 h-8'} ${styles.bg} ${styles.border} border-2 rounded-lg flex items-center justify-center flex-shrink-0`}>
+              <Plus size={isFullscreen ? 18 : 16} className={styles.text} />
             </div>
-          </button>
-        )}
+            <div className="flex-1 min-w-0">
+              <p className={`text-xs ${styles.text} font-medium`}>
+                {hasMeals ? 'Add another dish' : 'Tap to add dish'}
+              </p>
+            </div>
+          </div>
+        </button>
       </div>
     );
   };
@@ -1411,9 +1670,78 @@ export function MealPlannerWidget({ householdId, viewMode, onViewModeChange, onF
                             </h3>
                           </div>
 
-                          {/* Meal Cards - Vertical Stack (Schedule-Driven) */}
-                          <div className="p-3 sm:p-4 space-y-3">
-                            {getSlotsForDayIndex(dayIndex).map(slot => renderMealSlot(slot, dayIndex, true))}
+                          {/* Meal Cards - Grouped by Meal Type (Breakfast, Lunch, Dinner) */}
+                          <div className="p-3 sm:p-4 space-y-4">
+                            {/* Always show Breakfast, Lunch, Dinner sections */}
+                            {(['breakfast', 'lunch', 'dinner'] as const).map(mealType => {
+                              // Find or create the slot for this meal type
+                              const slots = getSlotsForDayIndex(dayIndex);
+                              let slot = slots.find(s => {
+                                const slotMealType = s.mealTypeMapping || s.id;
+                                return slotMealType === mealType;
+                              });
+
+                              // If no slot exists, create a default one
+                              if (!slot) {
+                                slot = {
+                                  id: mealType,
+                                  label: mealType.charAt(0).toUpperCase() + mealType.slice(1),
+                                  type: 'meal' as const,
+                                  default: true,
+                                  order: mealType === 'breakfast' ? 0 : mealType === 'lunch' ? 1 : 2,
+                                  mealTypeMapping: mealType as any,
+                                };
+                              }
+
+                              // Meal type styling
+                              const mealTypeStyles: Record<string, any> = {
+                                breakfast: {
+                                  bg: 'bg-gradient-to-br from-amber-50 to-orange-50',
+                                  border: 'border-amber-200',
+                                  icon: '🍳',
+                                  text: 'text-amber-700',
+                                  label: 'Breakfast',
+                                },
+                                lunch: {
+                                  bg: 'bg-gradient-to-br from-green-50 to-emerald-50',
+                                  border: 'border-green-200',
+                                  icon: '🥪',
+                                  text: 'text-green-700',
+                                  label: 'Lunch',
+                                },
+                                dinner: {
+                                  bg: 'bg-gradient-to-br from-purple-50 to-indigo-50',
+                                  border: 'border-purple-200',
+                                  icon: '🍲',
+                                  text: 'text-purple-700',
+                                  label: 'Dinner',
+                                },
+                              };
+
+                              const styles = mealTypeStyles[mealType] || {
+                                bg: 'bg-gray-50',
+                                border: 'border-gray-200',
+                                icon: '🍽️',
+                                text: 'text-gray-700',
+                                label: mealType.charAt(0).toUpperCase() + mealType.slice(1),
+                              };
+
+                              return (
+                                <div key={mealType} className="space-y-2">
+                                  {/* Meal Type Header - Always visible */}
+                                  <div className="flex items-center gap-2 px-2 pb-1">
+                                    <span className="text-lg">{styles.icon}</span>
+                                    <h4 className={`text-sm font-bold ${styles.text} uppercase tracking-wide`}>
+                                      {styles.label}
+                                    </h4>
+                                    <div className="flex-1 h-px bg-gray-200"></div>
+                                  </div>
+
+                                  {/* Render meals for this meal type */}
+                                  {renderMealSlot(slot, dayIndex, true)}
+                                </div>
+                              );
+                            })}
                           </div>
                         </div>
                       );
@@ -1508,7 +1836,7 @@ export function MealPlannerWidget({ householdId, viewMode, onViewModeChange, onF
                                     .maybeSingle();
                                   if (profile) {
                                     const todayDayInfo = displayDays[0];
-                                    await addMealToPlan(currentSpaceId, meal.id, null, meal.meal_type as any, todayDayInfo.dayOfWeek, todayDayInfo.weekStartDate, profile.id);
+                                    await addMealToPlan(currentSpaceId, meal.id, null, meal.meal_type as any, todayDayInfo.dayOfWeek, todayDayInfo.weekStartDate, profile.id, undefined, 1, 'main');
                                     await loadMealPlans();
                                     setActiveTab('week');
                                     showToast('success', 'Meal added to plan');
@@ -1845,7 +2173,7 @@ export function MealPlannerWidget({ householdId, viewMode, onViewModeChange, onF
                                     .maybeSingle();
                                   if (profile) {
                                     const todayDayInfo = displayDays[0];
-                                    await addMealToPlan(currentSpaceId, meal.id, null, meal.meal_type as any, todayDayInfo.dayOfWeek, todayDayInfo.weekStartDate, profile.id);
+                                    await addMealToPlan(currentSpaceId, meal.id, null, meal.meal_type as any, todayDayInfo.dayOfWeek, todayDayInfo.weekStartDate, profile.id, undefined, 1, 'main');
                                     await loadMealPlans();
                                     setActiveTab('week');
                                     showToast('success', 'Recipe added to plan');
@@ -1999,7 +2327,7 @@ export function MealPlannerWidget({ householdId, viewMode, onViewModeChange, onF
                               .eq('user_id', user.id)
                               .maybeSingle();
                             if (profile) {
-                              await addMealToPlan(currentSpaceId, null, selectedRecipe.title, selectedMealType, dayInfo.dayOfWeek, dayInfo.weekStartDate, profile.id);
+                              await addMealToPlan(currentSpaceId, null, selectedRecipe.title, selectedMealType, dayInfo.dayOfWeek, dayInfo.weekStartDate, profile.id, undefined, 1, 'main');
                               await loadMealPlans();
                               setSelectedRecipe(null);
                               setActiveTab('week');
@@ -2052,6 +2380,25 @@ export function MealPlannerWidget({ householdId, viewMode, onViewModeChange, onF
             spaceId={currentSpaceId}
             dayName={selectedSlot.day}
             mealType={selectedSlot.mealType}
+          />
+        )}
+
+        {/* Weekly Pantry Check Sheet */}
+        {showPantryCheck && weekStartDates.length > 0 && (
+          <WeeklyPantryCheckSheet
+            isOpen={showPantryCheck}
+            onClose={() => setShowPantryCheck(false)}
+            householdId={currentSpaceId}
+            weekStartDate={weekStartDates[0]} // Use first week start date (primary week)
+            onPantryUpdated={() => {
+              // Refresh pantry status after pantry update
+              if (weekStartDates.length > 0) {
+                checkPantryStatus(weekStartDates[0], currentSpaceId);
+              }
+            }}
+            onGroceryListUpdated={() => {
+              // Could refresh grocery list widget if needed
+            }}
           />
         )}
 
@@ -2135,6 +2482,34 @@ export function MealPlannerWidget({ householdId, viewMode, onViewModeChange, onF
             loadMealPlans();
           }}
         />
+
+        {/* Meal Planner Settings */}
+        {showSettings && (
+          <MealPlannerSettings
+            isOpen={showSettings}
+            onClose={() => setShowSettings(false)}
+            spaceId={currentSpaceId}
+          />
+        )}
+
+        {/* Weekly Pantry Check Sheet (for widget view) */}
+        {showPantryCheck && weekStartDates.length > 0 && (
+          <WeeklyPantryCheckSheet
+            isOpen={showPantryCheck}
+            onClose={() => setShowPantryCheck(false)}
+            householdId={currentSpaceId}
+            weekStartDate={weekStartDates[0]} // Use first week start date (primary week)
+            onPantryUpdated={() => {
+              // Refresh pantry status after pantry update
+              if (weekStartDates.length > 0) {
+                checkPantryStatus(weekStartDates[0], currentSpaceId);
+              }
+            }}
+            onGroceryListUpdated={() => {
+              // Could refresh grocery list widget if needed
+            }}
+          />
+        )}
       </>
     );
 
@@ -2263,6 +2638,21 @@ export function MealPlannerWidget({ householdId, viewMode, onViewModeChange, onF
                 <span className="hidden sm:inline">What can I make?</span>
               </button>
               <button
+                onClick={() => setShowPantryCheck(true)}
+                className="text-white hover:bg-white/20 active:bg-white/30 rounded-lg p-1.5 transition-colors touch-manipulation relative"
+                title="Check pantry for this week's meals"
+                aria-label="Weekly Pantry Check"
+              >
+                <Package size={16} />
+                {/* Badge indicator */}
+                {pantryCheckStatus === 'all-covered' && (
+                  <span className="absolute top-0 right-0 w-2 h-2 bg-green-500 rounded-full border-2 border-white"></span>
+                )}
+                {pantryCheckStatus === 'some-missing' && (
+                  <span className="absolute top-0 right-0 w-2 h-2 bg-orange-500 rounded-full border-2 border-white"></span>
+                )}
+              </button>
+              <button
                 onClick={() => setShowSettings(true)}
                 className="text-white hover:bg-white/20 active:bg-white/30 rounded-lg p-1.5 transition-colors touch-manipulation"
                 title="Settings"
@@ -2373,9 +2763,78 @@ export function MealPlannerWidget({ householdId, viewMode, onViewModeChange, onF
                     </h4>
                   </div>
 
-                  {/* Meal Cards - Vertical Stack (Schedule-Driven) */}
-                  <div className="p-2 space-y-2">
-                    {getSlotsForDayIndex(dayIndex).map(slot => renderMealSlot(slot, dayIndex, false))}
+                  {/* Meal Cards - Grouped by Meal Type (Breakfast, Lunch, Dinner) */}
+                  <div className="p-2 space-y-3">
+                    {/* Always show Breakfast, Lunch, Dinner sections */}
+                    {(['breakfast', 'lunch', 'dinner'] as const).map(mealType => {
+                      // Find or create the slot for this meal type
+                      const slots = getSlotsForDayIndex(dayIndex);
+                      let slot = slots.find(s => {
+                        const slotMealType = s.mealTypeMapping || s.id;
+                        return slotMealType === mealType;
+                      });
+
+                      // If no slot exists, create a default one
+                      if (!slot) {
+                        slot = {
+                          id: mealType,
+                          label: mealType.charAt(0).toUpperCase() + mealType.slice(1),
+                          type: 'meal' as const,
+                          default: true,
+                          order: mealType === 'breakfast' ? 0 : mealType === 'lunch' ? 1 : 2,
+                          mealTypeMapping: mealType as any,
+                        };
+                      }
+
+                      // Meal type styling
+                      const mealTypeStyles: Record<string, any> = {
+                        breakfast: {
+                          bg: 'bg-gradient-to-br from-amber-50 to-orange-50',
+                          border: 'border-amber-200',
+                          icon: '🍳',
+                          text: 'text-amber-700',
+                          label: 'Breakfast',
+                        },
+                        lunch: {
+                          bg: 'bg-gradient-to-br from-green-50 to-emerald-50',
+                          border: 'border-green-200',
+                          icon: '🥪',
+                          text: 'text-green-700',
+                          label: 'Lunch',
+                        },
+                        dinner: {
+                          bg: 'bg-gradient-to-br from-purple-50 to-indigo-50',
+                          border: 'border-purple-200',
+                          icon: '🍲',
+                          text: 'text-purple-700',
+                          label: 'Dinner',
+                        },
+                      };
+
+                      const styles = mealTypeStyles[mealType] || {
+                        bg: 'bg-gray-50',
+                        border: 'border-gray-200',
+                        icon: '🍽️',
+                        text: 'text-gray-700',
+                        label: mealType.charAt(0).toUpperCase() + mealType.slice(1),
+                      };
+
+                      return (
+                        <div key={mealType} className="space-y-1.5">
+                          {/* Meal Type Header - Always visible */}
+                          <div className="flex items-center gap-1.5 px-1.5 pb-0.5">
+                            <span className="text-base">{styles.icon}</span>
+                            <h4 className={`text-xs font-bold ${styles.text} uppercase tracking-wide`}>
+                              {styles.label}
+                            </h4>
+                            <div className="flex-1 h-px bg-gray-200"></div>
+                          </div>
+
+                          {/* Render meals for this meal type */}
+                          {renderMealSlot(slot, dayIndex, false)}
+                        </div>
+                      );
+                    })}
                   </div>
                 </div>
               );
@@ -2637,10 +3096,35 @@ export function MealPlannerWidget({ householdId, viewMode, onViewModeChange, onF
           onRemove={async () => {
             await handleRemoveMeal(selectedMealPlan.id);
           }}
-          onViewRecipe={() => {
+          onViewRecipe={(currentServings) => {
             // Navigate to recipe detail page if recipe_id exists
+            // Pass meal plan context via location state for preparation mode controls
+            // Use currentServings from bottom sheet (may have been updated) or fallback to meal plan servings
             if (selectedMealPlan.recipe_id) {
-              navigate(`/recipes/${selectedMealPlan.recipe_id}`);
+              navigate(`/recipes/${selectedMealPlan.recipe_id}`, {
+                state: { 
+                  planServings: currentServings ?? selectedMealPlan.servings,
+                  mealPlanId: selectedMealPlan.id,
+                  spaceId: currentSpaceId,
+                },
+              });
+            }
+          }}
+          onServingsUpdated={async () => {
+            // Reload meal plans to reflect updated servings
+            await loadMealPlans();
+            // Update selectedMealPlan with fresh data to reflect new servings
+            const { data: updated } = await supabase
+              .from('meal_plans')
+              .select(`
+                *,
+                meal:meal_id (*),
+                recipe:recipe_id (*)
+              `)
+              .eq('id', selectedMealPlan.id)
+              .single();
+            if (updated) {
+              setSelectedMealPlan(updated);
             }
           }}
         />
@@ -2809,6 +3293,25 @@ export function MealPlannerWidget({ householdId, viewMode, onViewModeChange, onF
           spaceId={currentSpaceId}
           isOpen={showSettings}
           onClose={() => setShowSettings(false)}
+        />
+      )}
+
+      {/* Weekly Pantry Check Sheet (for widget view) */}
+      {showPantryCheck && weekStartDates.length > 0 && (
+        <WeeklyPantryCheckSheet
+          isOpen={showPantryCheck}
+          onClose={() => setShowPantryCheck(false)}
+          householdId={currentSpaceId}
+          weekStartDate={weekStartDates[0]} // Use first week start date (primary week)
+          onPantryUpdated={() => {
+            // Refresh pantry status after pantry update
+            if (weekStartDates.length > 0) {
+              checkPantryStatus(weekStartDates[0], currentSpaceId);
+            }
+          }}
+          onGroceryListUpdated={() => {
+            // Could refresh grocery list widget if needed
+          }}
         />
       )}
 

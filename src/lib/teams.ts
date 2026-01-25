@@ -30,8 +30,7 @@ export async function getUserTeams(): Promise<Team[]> {
     .select('team_id, teams!inner(*)')
     .eq('user_id', profile.id)
     .eq('status', 'active')
-    .is('teams.archived_at', null)
-    .order('teams.created_at', { ascending: false });
+    .is('teams.archived_at', null);
 
   if (error) {
     console.error('Error loading teams:', error);
@@ -50,7 +49,13 @@ export async function getUserTeams(): Promise<Team[]> {
       created_at: m.teams.created_at,
       updated_at: m.teams.updated_at,
       is_archived: m.teams.archived_at !== null,
-    })) as Team[];
+    }))
+    .sort((a, b) => {
+      // Sort by created_at descending (newest first)
+      const aTime = new Date(a.created_at).getTime();
+      const bTime = new Date(b.created_at).getTime();
+      return bTime - aTime;
+    }) as Team[];
 }
 
 /**

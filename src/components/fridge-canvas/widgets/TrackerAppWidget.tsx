@@ -3,10 +3,13 @@
  * 
  * Full-featured tracker app view for Spaces. This provides a complete
  * tracker interface similar to Tracker Studio, but embedded in Spaces.
+ * 
+ * Note: Delete functionality removed - navigation handled by parent Layout.
  */
 
-import { useState, useEffect, useCallback } from 'react';
-import { Calendar, BarChart3, ChevronDown, ChevronUp, Loader2, AlertCircle } from 'lucide-react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useNavigate, useSearchParams, useLocation } from 'react-router-dom';
+import { BarChart3, Loader2, AlertCircle } from 'lucide-react';
 import { useTracker } from '../../../hooks/trackerStudio/useTracker';
 import { getEntryByDate } from '../../../lib/trackerStudio/trackerEntryService';
 import { resolveTrackerPermissions } from '../../../lib/trackerStudio/trackerPermissionResolver';
@@ -15,6 +18,9 @@ import { TrackerEntryForm } from '../../tracker-studio/TrackerEntryForm';
 import { TrackerEntryList } from '../../tracker-studio/TrackerEntryList';
 import { TrackerAnalyticsPanel } from '../../tracker-studio/analytics/TrackerAnalyticsPanel';
 import { getTrackerTheme } from '../../../lib/trackerStudio/trackerThemeUtils';
+import { isHabitTracker } from '../../../lib/trackerStudio/habitTrackerUtils';
+import { HabitTrackerCore } from '../../activities/habits/HabitTrackerCore';
+import { useAuth } from '../../../contexts/AuthContext';
 import type { TrackerContent } from '../../../lib/fridgeCanvasTypes';
 
 interface TrackerAppWidgetProps {
@@ -22,10 +28,27 @@ interface TrackerAppWidgetProps {
 }
 
 export function TrackerAppWidget({ content }: TrackerAppWidgetProps) {
+  const { user } = useAuth();
+  const navigate = useNavigate();
+  const location = useLocation();
+  const [searchParams] = useSearchParams();
   const { tracker, loading, error } = useTracker(content.tracker_id);
   const [selectedDate, setSelectedDate] = useState<string>(
     new Date().toISOString().split('T')[0]
   );
+  
+  // Read date and habit_id from URL params or location state (calendar navigation)
+  const calendarDate = useMemo(() => {
+    const paramDate = searchParams.get('date');
+    const stateDate = (location.state as any)?.date;
+    return paramDate || stateDate || null;
+  }, [searchParams, location.state]);
+  
+  const focusedHabitId = useMemo(() => {
+    const paramHabitId = searchParams.get('habit_id');
+    const stateHabitId = (location.state as any)?.habit_id;
+    return paramHabitId || stateHabitId || null;
+  }, [searchParams, location.state]);
   const [existingEntry, setExistingEntry] = useState<TrackerEntry | null>(null);
   const [loadingEntry, setLoadingEntry] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
@@ -102,27 +125,68 @@ export function TrackerAppWidget({ content }: TrackerAppWidgetProps) {
     );
   }
 
-  const theme = getTrackerTheme(tracker);
+  // Use canonical HabitTrackerCore for habit trackers - render identical to TrackerDetailPage
+  if (tracker && user && isHabitTracker(tracker)) {
+    return (
+      <div className="min-h-screen-safe bg-white safe-top safe-bottom">
+        {/* Minimal App Shell Header - Navigation only, no hero */}
+        <div className="sticky top-0 z-10 bg-white border-b border-gray-100 safe-top">
+          <div className="max-w-4xl mx-auto px-4 sm:px-6 py-3">
+            {tracker && (
+              <h1 className="text-base font-medium text-gray-900 truncate">
+                {tracker.name}
+              </h1>
+            )}
+          </div>
+        </div>
+
+        {/* Tracker Content - Direct render, no wrapper cards */}
+        <div className="max-w-4xl mx-auto">
+          <HabitTrackerCore
+            ownerUserId={user.id}
+            context={{
+              mode: 'planner',
+              scope: 'self',
+            }}
+            permissions={{
+              can_view: permissions?.canView ?? true,
+              can_edit: permissions?.canEdit ?? false,
+              can_manage: permissions?.isOwner ?? false,
+              detail_level: permissions?.canEdit ? 'detailed' : 'overview',
+              can_comment: false,
+              scope: 'this_only',
+            }}
+            layout="full"
+            activeDate={calendarDate}
+            focusedHabitId={focusedHabitId}
+          />
+        </div>
+
+      </div>
+    );
+  }
+
+  const theme = getTrackerTheme(tracker.name || '');
 
   return (
-    <div className="min-h-screen-safe bg-gray-50 safe-top safe-bottom">
-      {/* Header */}
-      <div className="sticky top-0 z-10 bg-white border-b border-gray-200 shadow-sm safe-top">
-        <div className="px-4 py-3">
-          <h1 className="text-lg font-bold text-gray-900 mb-1">{tracker.name}</h1>
-          {tracker.description && (
-            <p className="text-sm text-gray-600">{tracker.description}</p>
+    <div className="min-h-screen-safe bg-white safe-top safe-bottom">
+      {/* Minimal App Shell Header - Navigation only, no hero */}
+      <div className="sticky top-0 z-10 bg-white border-b border-gray-100 safe-top">
+        <div className="max-w-4xl mx-auto px-4 sm:px-6 py-3">
+          {tracker && (
+            <h1 className="text-base font-medium text-gray-900 truncate">
+              {tracker.name}
+            </h1>
           )}
         </div>
       </div>
 
-      {/* Content */}
-      <div className="p-4 space-y-4">
-        {/* Entry Form Section */}
-        <div className={`bg-white rounded-2xl shadow-lg border-2 ${theme?.borderColor || 'border-gray-200'} p-4 sm:p-6`}>
+      {/* Tracker Content - Direct render, no wrapper cards */}
+      <div className="max-w-4xl mx-auto">
+        {/* Entry Form Section - Owns its own UI */}
+        <div className="px-4 sm:px-6 py-6">
           <div className="flex items-center justify-between mb-4">
-            <h2 className="text-lg font-bold text-gray-900 flex items-center gap-2">
-              <Calendar size={20} className={theme?.iconColor || 'text-gray-600'} />
+            <h2 className="text-base font-medium text-gray-900">
               Add Entry
             </h2>
             <input
@@ -148,20 +212,15 @@ export function TrackerAppWidget({ content }: TrackerAppWidgetProps) {
           )}
         </div>
 
-        {/* Entry History Section */}
-        <div className={`bg-white rounded-2xl shadow-lg border-2 ${theme?.borderColor || 'border-gray-200'} p-4 sm:p-6`}>
+        {/* Entry History Section - Owns its own UI */}
+        <div className="px-4 sm:px-6 py-6 border-t border-gray-100">
           <div className="flex items-center justify-between mb-4">
-            <h2 className="text-lg font-bold text-gray-900 flex items-center gap-2">
-              <Calendar size={20} className={theme?.iconColor || 'text-gray-600'} />
+            <h2 className="text-base font-medium text-gray-900">
               Entry History
             </h2>
             <button
               onClick={() => setShowAnalytics(!showAnalytics)}
-              className={`flex items-center gap-2 px-3 py-1.5 rounded-xl text-sm font-medium transition-all ${
-                showAnalytics
-                  ? `${theme?.buttonBg || 'bg-blue-600'} text-white shadow-md`
-                  : `${theme?.accentBg || 'bg-gray-100'} ${theme?.accentText || 'text-gray-700'} hover:shadow-md`
-              }`}
+              className="flex items-center gap-2 px-3 py-1.5 text-sm text-gray-600 hover:text-gray-900 rounded-lg hover:bg-gray-50 transition-colors"
             >
               <BarChart3 size={16} />
               <span>{showAnalytics ? 'Hide' : 'Show'} Analytics</span>
@@ -170,17 +229,17 @@ export function TrackerAppWidget({ content }: TrackerAppWidgetProps) {
           <TrackerEntryList key={refreshKey} tracker={tracker} theme={theme} />
         </div>
 
-        {/* Analytics Section */}
+        {/* Analytics Section - Owns its own UI */}
         {showAnalytics && (
-          <div className={`bg-white rounded-2xl shadow-lg border-2 ${theme?.borderColor || 'border-gray-200'} p-4 sm:p-6 animate-in fade-in slide-in-from-top-4 duration-300`}>
-            <h2 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
-              <BarChart3 size={20} className={theme?.iconColor || 'text-gray-600'} />
+          <div className="px-4 sm:px-6 py-6 border-t border-gray-100 animate-in fade-in duration-200">
+            <h2 className="text-base font-medium text-gray-900 mb-4">
               Analytics
             </h2>
             <TrackerAnalyticsPanel tracker={tracker} />
           </div>
         )}
       </div>
+
     </div>
   );
 }

@@ -103,7 +103,7 @@ export function TrackerQuickLinkApp({ spaceId, onCreateTrackerApp }: TrackerQuic
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             {trackers.map((tracker) => {
-              const theme = getTrackerTheme(tracker);
+              const theme = getTrackerTheme(tracker.name || '');
               return (
                 <button
                   key={tracker.id}

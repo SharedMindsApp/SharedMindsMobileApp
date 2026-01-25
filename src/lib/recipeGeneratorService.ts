@@ -26,6 +26,7 @@ import type {
   UpdateRecipeInput,
   CreateRecipeSourceInput,
   RecipeFilters,
+  MealType,
 } from './recipeGeneratorTypes';
 import { validateRecipe, saveValidationStatus } from './recipeValidationService';
 
@@ -209,7 +210,15 @@ export async function createRecipe(
     throw new Error('Cannot create recipe: name is required and must be a non-empty string.');
   }
 
-  if (!input.meal_type) {
+  // Normalize meal_type to always be an array
+  // Handle both single values (backward compatibility) and arrays
+  let normalizedMealTypeArray: MealType[];
+  if (Array.isArray(input.meal_type)) {
+    normalizedMealTypeArray = input.meal_type;
+  } else if (input.meal_type) {
+    // Single value - convert to array for backward compatibility
+    normalizedMealTypeArray = [input.meal_type as MealType];
+  } else {
     console.error('[recipeGeneratorService] Recipe insert blocked: missing meal_type', {
       meal_type: input.meal_type,
       sourceType: input.source_type,
@@ -223,11 +232,13 @@ export async function createRecipe(
     throw new Error('Cannot create recipe: meal_type is required. Must be one of: breakfast, lunch, dinner, snack.');
   }
 
-  // Validate meal_type is a valid enum value
-  const validMealTypes: string[] = ['breakfast', 'lunch', 'dinner', 'snack'];
-  if (!validMealTypes.includes(input.meal_type)) {
-    console.error('[recipeGeneratorService] Recipe insert blocked: invalid meal_type', {
-      meal_type: input.meal_type,
+  // Validate all meal_type values are valid enum values
+  const validMealTypes: MealType[] = ['breakfast', 'lunch', 'dinner', 'snack'];
+  const invalidTypes = normalizedMealTypeArray.filter(mt => !validMealTypes.includes(mt));
+  if (invalidTypes.length > 0) {
+    console.error('[recipeGeneratorService] Recipe insert blocked: invalid meal_type values', {
+      meal_type: normalizedMealTypeArray,
+      invalidTypes,
       validMealTypes,
       sourceType: input.source_type,
       insertData: {
@@ -238,9 +249,18 @@ export async function createRecipe(
       },
     });
     throw new Error(
-      `Cannot create recipe: invalid meal_type "${input.meal_type}". ` +
+      `Cannot create recipe: invalid meal_type values: ${invalidTypes.join(', ')}. ` +
       `Must be one of: ${validMealTypes.join(', ')}.`
     );
+  }
+
+  // Ensure at least one meal type is provided
+  if (normalizedMealTypeArray.length === 0) {
+    console.error('[recipeGeneratorService] Recipe insert blocked: empty meal_type array', {
+      meal_type: normalizedMealTypeArray,
+      sourceType: input.source_type,
+    });
+    throw new Error('Cannot create recipe: meal_type array cannot be empty. Must include at least one meal type.');
   }
 
   // Log recipe creation details for debugging
@@ -253,9 +273,9 @@ export async function createRecipe(
     profileOwnershipValidated: validatedCreatedForProfileId !== null,
     requiredFields: {
       name: input.name,
-      meal_type: input.meal_type,
+      meal_type: normalizedMealTypeArray,
       nameValid: !!input.name && typeof input.name === 'string' && input.name.trim().length > 0,
-      mealTypeValid: validMealTypes.includes(input.meal_type),
+      mealTypeValid: normalizedMealTypeArray.every(mt => validMealTypes.includes(mt)),
     },
   });
 
@@ -264,7 +284,7 @@ export async function createRecipe(
   const insertData = {
     name: input.name.trim(), // Explicitly set required field
     description: input.description || null,
-    meal_type: input.meal_type, // Explicitly set required field
+    meal_type: normalizedMealTypeArray, // Always an array (normalized above)
     servings: input.servings ?? 4,
     ingredients: input.ingredients || [], // Ensure array, never null
     instructions: input.instructions || null,
@@ -305,8 +325,8 @@ export async function createRecipe(
       name: insertData.name,
       meal_type: insertData.meal_type,
       namePresent: !!insertData.name && insertData.name.length > 0,
-      mealTypePresent: !!insertData.meal_type,
-      mealTypeValid: validMealTypes.includes(insertData.meal_type),
+      mealTypePresent: Array.isArray(insertData.meal_type) && insertData.meal_type.length > 0,
+      mealTypeValid: Array.isArray(insertData.meal_type) && insertData.meal_type.every(mt => validMealTypes.includes(mt)),
     },
     sourceType: insertData.source_type,
     householdId: insertData.household_id,
@@ -529,8 +549,9 @@ export async function listRecipes(filters: RecipeFilters = {}): Promise<Recipe[]
     .is('deleted_at', null);
 
   // Apply filters
+  // meal_type is now an array, so we check if it contains the filter value
   if (filters.meal_type) {
-    query = query.eq('meal_type', filters.meal_type);
+    query = query.contains('meal_type', [filters.meal_type]);
   }
 
   if (filters.categories && filters.categories.length > 0) {
@@ -728,6 +749,28 @@ export async function updateRecipe(
   // Only update provided fields
   if (input.name !== undefined) updateData.name = input.name;
   if (input.description !== undefined) updateData.description = input.description;
+  if (input.meal_type !== undefined) {
+    // Normalize meal_type to always be an array
+    if (Array.isArray(input.meal_type)) {
+      // Validate all values are valid
+      const validMealTypes: MealType[] = ['breakfast', 'lunch', 'dinner', 'snack'];
+      const invalidTypes = input.meal_type.filter(mt => !validMealTypes.includes(mt));
+      if (invalidTypes.length > 0) {
+        throw new Error(`Invalid meal_type values: ${invalidTypes.join(', ')}. Must be one of: ${validMealTypes.join(', ')}.`);
+      }
+      if (input.meal_type.length === 0) {
+        throw new Error('meal_type array cannot be empty. Must include at least one meal type.');
+      }
+      updateData.meal_type = input.meal_type;
+    } else if (input.meal_type) {
+      // Single value - convert to array for backward compatibility
+      const validMealTypes: MealType[] = ['breakfast', 'lunch', 'dinner', 'snack'];
+      if (!validMealTypes.includes(input.meal_type as MealType)) {
+        throw new Error(`Invalid meal_type: ${input.meal_type}. Must be one of: ${validMealTypes.join(', ')}.`);
+      }
+      updateData.meal_type = [input.meal_type as MealType];
+    }
+  }
   if (input.servings !== undefined) updateData.servings = input.servings;
   if (input.ingredients !== undefined) updateData.ingredients = input.ingredients;
   if (input.instructions !== undefined) updateData.instructions = input.instructions;
@@ -942,7 +985,31 @@ export async function createRecipeVersion(
   // Apply updates to recipe
   Object.keys(input).forEach((key) => {
     if (input[key as keyof UpdateRecipeInput] !== undefined) {
-      updateData[key] = input[key as keyof UpdateRecipeInput];
+      // Special handling for meal_type to ensure it's always an array
+      if (key === 'meal_type') {
+        const mealTypeValue = input.meal_type;
+        if (Array.isArray(mealTypeValue)) {
+          // Validate all values are valid
+          const validMealTypes: MealType[] = ['breakfast', 'lunch', 'dinner', 'snack'];
+          const invalidTypes = mealTypeValue.filter(mt => !validMealTypes.includes(mt));
+          if (invalidTypes.length > 0) {
+            throw new Error(`Invalid meal_type values: ${invalidTypes.join(', ')}. Must be one of: ${validMealTypes.join(', ')}.`);
+          }
+          if (mealTypeValue.length === 0) {
+            throw new Error('meal_type array cannot be empty. Must include at least one meal type.');
+          }
+          updateData[key] = mealTypeValue;
+        } else if (mealTypeValue) {
+          // Single value - convert to array for backward compatibility
+          const validMealTypes: MealType[] = ['breakfast', 'lunch', 'dinner', 'snack'];
+          if (!validMealTypes.includes(mealTypeValue as MealType)) {
+            throw new Error(`Invalid meal_type: ${mealTypeValue}. Must be one of: ${validMealTypes.join(', ')}.`);
+          }
+          updateData[key] = [mealTypeValue as MealType];
+        }
+      } else {
+        updateData[key] = input[key as keyof UpdateRecipeInput];
+      }
     }
   });
 

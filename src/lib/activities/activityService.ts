@@ -28,16 +28,45 @@ export async function createActivity(
   userId: string,
   input: CreateActivityInput
 ): Promise<Activity> {
+  // Determine ownership based on input
+  const ownerType = input.owner_type || 'user';
+  
+  const insertData: Record<string, any> = {
+    type: input.type,
+    title: input.title,
+    description: input.description || null,
+    owner_type: ownerType,
+    status: input.status || 'active',
+    metadata: input.metadata || {},
+  };
+
+  // Set ownership fields based on owner_type
+  if (ownerType === 'user') {
+    insertData.owner_id = userId;
+    insertData.household_owner_id = null;
+    insertData.team_owner_id = null;
+    insertData.team_group_id = null;
+  } else if (ownerType === 'household') {
+    if (!input.household_owner_id) {
+      throw new Error('household_owner_id is required when owner_type is "household"');
+    }
+    insertData.owner_id = userId; // Keep for backward compatibility, but not used for ownership
+    insertData.household_owner_id = input.household_owner_id;
+    insertData.team_owner_id = null;
+    insertData.team_group_id = null;
+  } else if (ownerType === 'team') {
+    if (!input.team_owner_id) {
+      throw new Error('team_owner_id is required when owner_type is "team"');
+    }
+    insertData.owner_id = userId; // Keep for backward compatibility, but not used for ownership
+    insertData.household_owner_id = null;
+    insertData.team_owner_id = input.team_owner_id;
+    insertData.team_group_id = input.team_group_id || null;
+  }
+
   const { data, error } = await supabase
     .from('activities')
-    .insert({
-      type: input.type,
-      title: input.title,
-      description: input.description || null,
-      owner_id: userId,
-      status: input.status || 'active',
-      metadata: input.metadata || {},
-    })
+    .insert(insertData)
     .select()
     .single();
 
@@ -53,18 +82,40 @@ export async function createActivity(
  * Get activity by ID
  */
 export async function getActivity(activityId: string): Promise<Activity | null> {
-  const { data, error } = await supabase
-    .from('activities')
-    .select('*')
-    .eq('id', activityId)
-    .maybeSingle();
+  try {
+    const { data, error } = await supabase
+      .from('activities')
+      .select('*')
+      .eq('id', activityId)
+      .maybeSingle();
 
-  if (error) {
-    console.error('[activityService] Error fetching activity:', error);
-    throw error;
+    if (error) {
+      // Network errors (transient) - log at debug level, don't throw
+      if (error.message?.includes('Failed to fetch') || error.message?.includes('network') || error.message?.includes('QUIC')) {
+        if (process.env.NODE_ENV === 'development') {
+          console.debug('[activityService] Network error fetching activity (transient):', error.message);
+        }
+        return null; // Return null instead of throwing for transient network errors
+      }
+      
+      // Other errors (RLS, not found, etc.) - log and throw
+      console.error('[activityService] Error fetching activity:', error);
+      throw error;
+    }
+
+    return data;
+  } catch (err: any) {
+    // Catch network errors that might not be in the error object
+    if (err?.message?.includes('Failed to fetch') || err?.name === 'TypeError') {
+      if (process.env.NODE_ENV === 'development') {
+        console.debug('[activityService] Network error fetching activity (transient):', err.message);
+      }
+      return null; // Return null for transient network errors
+    }
+    
+    // Re-throw other errors
+    throw err;
   }
-
-  return data;
 }
 
 /**

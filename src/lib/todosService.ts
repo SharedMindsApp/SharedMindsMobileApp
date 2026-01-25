@@ -28,6 +28,9 @@ export interface PersonalTodo {
   breakdown_generated_at?: string;
   // Calendar sync field
   calendar_event_id?: string | null;
+  // Habit projection fields
+  habit_activity_id?: string | null; // Reference to habit activity (for habit-derived tasks)
+  is_habit_derived?: boolean; // Computed: habit_activity_id IS NOT NULL
 }
 
 export interface SharedSpace {
@@ -128,14 +131,14 @@ async function determineSpaceMode(householdId: string | null): Promise<'personal
     }
   }
 
-  // Fallback to old system
-  const { data: household } = await supabase
-    .from('households')
-    .select('type')
+  // Fallback to old system - check if it's a space with context_type
+  const { data: space } = await supabase
+    .from('spaces')
+    .select('context_type')
     .eq('id', householdId)
     .maybeSingle();
 
-  if (household && household.type === 'personal') {
+  if (space && space.context_type === 'personal') {
     return 'personal';
   }
 
@@ -173,8 +176,9 @@ export async function getTodos(householdId?: string): Promise<PersonalTodo[]> {
   const { data, error } = await query;
   if (error) throw error;
 
-  return (data || []).map(todo => ({
+  const regularTodos = (data || []).map(todo => ({
     ...todo,
+    is_habit_derived: !!todo.habit_activity_id,
     shared_spaces: (todo.todo_space_shares || []).map((share: any) => ({
       id: share.id,
       space_id: share.space_id,
@@ -182,6 +186,73 @@ export async function getTodos(householdId?: string): Promise<PersonalTodo[]> {
       shared_at: share.shared_at,
     })),
   }));
+
+  // Project habit occurrences as tasks for today and next 7 days
+  // This ensures users see habit tasks in their todo list
+  try {
+    const today = new Date();
+    const endDate = new Date(today);
+    endDate.setDate(endDate.getDate() + 7); // Next 7 days
+    
+    const { projectHabitOccurrencesAsTasks, ensureHabitTaskExists } = await import('./habits/habitTaskProjectionService');
+    
+    const habitProjections = await projectHabitOccurrencesAsTasks(
+      user.id,
+      today.toISOString().split('T')[0],
+      endDate.toISOString().split('T')[0]
+    );
+    
+    // Ensure habit tasks exist in database (lightweight persistence)
+    const habitTaskIds: string[] = [];
+    for (const projection of habitProjections) {
+      const taskId = await ensureHabitTaskExists(user.id, projection);
+      if (taskId) {
+        habitTaskIds.push(taskId);
+      }
+    }
+    
+    // Reload todos to include newly created habit tasks
+    // This ensures we get the actual database records with proper IDs
+    if (habitTaskIds.length > 0) {
+      const { data: habitTasks } = await supabase
+        .from('personal_todos')
+        .select(`
+          *,
+          todo_space_shares!left(
+            id,
+            space_id,
+            shared_at,
+            households!inner(name)
+          )
+        `)
+        .in('id', habitTaskIds);
+      
+      if (habitTasks) {
+        const habitTodos = habitTasks.map(todo => ({
+          ...todo,
+          is_habit_derived: true,
+          shared_spaces: (todo.todo_space_shares || []).map((share: any) => ({
+            id: share.id,
+            space_id: share.space_id,
+            space_name: share.households?.name,
+            shared_at: share.shared_at,
+          })),
+        }));
+        
+        // Merge: regular todos first, then habit-derived tasks
+        // Deduplicate by ID (in case a habit task was already in regularTodos)
+        const regularIds = new Set(regularTodos.map(t => t.id));
+        const uniqueHabitTodos = habitTodos.filter(t => !regularIds.has(t.id));
+        
+        return [...regularTodos, ...uniqueHabitTodos];
+      }
+    }
+  } catch (err) {
+    // Non-fatal: if habit projection fails, still return regular todos
+    console.error('[todosService] Error projecting habit tasks:', err);
+  }
+  
+  return regularTodos;
 }
 
 export async function getSharedTodosInSpace(spaceId: string): Promise<PersonalTodo[]> {
@@ -353,14 +424,31 @@ export async function updateTodo(todoId: string, params: UpdateTodoParams): Prom
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) throw new Error('Not authenticated');
 
-  // Get current todo to check if it has a calendar event
+  // Get current todo to check if it's habit-derived and for calendar sync
   const { data: currentTodo } = await supabase
     .from('personal_todos')
-    .select('*')
+    .select('habit_activity_id, due_date, calendar_event_id, *')
     .eq('id', todoId)
+    .eq('user_id', user.id)
     .single();
 
   if (!currentTodo) throw new Error('Todo not found');
+
+  // Sync task completion to habit check-in (if habit-derived)
+  if (currentTodo.habit_activity_id && params.completed !== undefined && currentTodo.due_date) {
+    try {
+      const { syncTaskCompletionToHabit } = await import('./habits/habitTaskProjectionService');
+      await syncTaskCompletionToHabit(
+        user.id,
+        currentTodo.habit_activity_id,
+        currentTodo.due_date,
+        params.completed
+      );
+    } catch (err) {
+      console.error('[todosService] Error syncing task completion to habit:', err);
+      // Non-fatal: continue with todo update even if sync fails
+    }
+  }
 
   const updates: any = {};
 
@@ -436,12 +524,26 @@ export async function deleteTodo(todoId: string): Promise<void> {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) throw new Error('Not authenticated');
 
-  // Get todo to check if it has a calendar event before deleting
+  // Get todo to check if it's habit-derived and has a calendar event
   const { data: todo } = await supabase
     .from('personal_todos')
-    .select('calendar_event_id')
+    .select('habit_activity_id, calendar_event_id')
     .eq('id', todoId)
-    .single();
+    .eq('user_id', user.id)
+    .maybeSingle();
+
+  if (!todo) throw new Error('Todo not found');
+
+  // TODO: Habit → Task Projection - Prevent deletion of habit-derived tasks
+  // Habit-derived tasks should not be manually deleted
+  // They are managed by the habit system (paused/archived habits remove tasks)
+  // For now, allow deletion but log a warning
+  // Future: prevent deletion and show user-friendly message, or mark as skipped
+  if (todo.habit_activity_id) {
+    console.warn('[todosService] Attempted to delete habit-derived task. Habit tasks are managed by the habit system.');
+    // Optionally: mark habit as skipped instead of deleting task
+    // For now, allow deletion - user might want to skip a specific occurrence
+  }
 
   // Delete the todo (cascade will handle calendar_event_id link)
   const { error } = await supabase

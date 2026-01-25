@@ -331,7 +331,7 @@ export function BottomSheet({
 
           {/* Scrollable Content - Desktop version */}
           <div 
-            className="flex-1 overflow-y-auto p-4"
+            className="flex-1 overflow-y-auto overflow-x-hidden p-4"
             style={{
               overscrollBehavior: 'contain', // Prevent scroll chaining
             }}
@@ -416,7 +416,7 @@ export function BottomSheet({
         {/* Scrollable Content - Single scroll authority for mobile */}
         <div
           ref={contentRef}
-          className="flex-1 overflow-y-auto px-4 py-3"
+          className="flex-1 overflow-y-auto overflow-x-hidden px-4 py-3"
           style={{
             // Ensure content area accounts for keyboard, header, and footer
             maxHeight: `calc(${maxHeight} - ${keyboardHeight}px - ${bottomNavHeight}px - ${title || header || showCloseButton ? '120px' : '60px'} - ${footer ? '80px' : '0px'})`,

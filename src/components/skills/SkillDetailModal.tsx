@@ -47,6 +47,10 @@ import { SkillScenarioView } from './SkillScenarioView';
 import { SharedUnderstandingManager } from './SharedUnderstandingManager';
 import { computeContextState, getStateBadgeClass, type ContextStateInfo } from '../../lib/skills/skillContextState';
 import { sharedUnderstandingService, type SharedUnderstandingAgreement } from '../../lib/skills/sharedUnderstandingService';
+import { SkillContextSection } from './SkillContextSection';
+import { WhyThisMattersSection } from '../shared/WhyThisMattersSection';
+import { getWhyThisMattersForSkill } from '../../lib/trackerContext/meaningHelpers';
+import { getSkillMomentum, getHabitsPracticingSkill, getRecentPracticeSummary } from '../../lib/skills/skillContextHelpers';
 
 interface SkillDetailModalProps {
   isOpen: boolean;
@@ -129,6 +133,12 @@ export function SkillDetailModal({
   const [isExternalViewer, setIsExternalViewer] = useState(false);
   const [externalAgreement, setExternalAgreement] = useState<SharedUnderstandingAgreement | null>(null);
   const [externalReflections, setExternalReflections] = useState<any[]>([]);
+  
+  // Skill context data (read-only)
+  const [skillMomentum, setSkillMomentum] = useState<any>(null);
+  const [habitsPracticing, setHabitsPracticing] = useState<any[]>([]);
+  const [practiceSummary, setPracticeSummary] = useState<any>(null);
+  const [whyThisMatters, setWhyThisMatters] = useState<any>(null);
 
   useEffect(() => {
     if (isOpen && user && skillId) {
@@ -236,6 +246,25 @@ export function SkillDetailModal({
           skillData.usage_count
         );
         setContextState(state);
+      }
+
+      // Load skill context (momentum, habits, practice summary) - read-only
+      if (isOwnerView) {
+        try {
+          const [momentum, habits, summary, meaning] = await Promise.all([
+            getSkillMomentum(ownerId, skillId),
+            getHabitsPracticingSkill(ownerId, skillId),
+            getRecentPracticeSummary(ownerId, skillId),
+            getWhyThisMattersForSkill(ownerId, skillId),
+          ]);
+          setSkillMomentum(momentum);
+          setHabitsPracticing(habits);
+          setPracticeSummary(summary);
+          setWhyThisMatters(meaning);
+        } catch (err) {
+          console.error('Failed to load skill context:', err);
+          // Non-fatal: continue without context
+        }
       }
     } catch (err) {
       console.error('Failed to load skill data:', err);
@@ -422,9 +451,9 @@ export function SkillDetailModal({
                   Compare Contexts
                 </button>
               </div>
-            </div>
-          )}
-        </div>
+              </div>
+            )}
+          </div>
 
         <div className="p-6 space-y-6">
           {/* Perspective Banner (External Viewers Only) */}
@@ -446,6 +475,24 @@ export function SkillDetailModal({
                   </p>
                 </div>
               </div>
+            </div>
+          )}
+
+          {/* Skill Context Section (Practice, Habits, Momentum) - After proficiency/confidence, before evidence */}
+          {isOwner && skillMomentum && practiceSummary && (
+            <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 space-y-3">
+              <SkillContextSection
+                habits={habitsPracticing}
+                practiceSummary={practiceSummary}
+                momentum={skillMomentum}
+                compact={false}
+              />
+              
+              {/* Why This Matters Section */}
+              <WhyThisMattersSection
+                context={whyThisMatters}
+                compact={false}
+              />
             </div>
           )}
 

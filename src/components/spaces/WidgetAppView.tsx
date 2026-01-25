@@ -34,6 +34,7 @@ import { TrackerQuickLinkApp } from '../fridge-canvas/widgets/TrackerQuickLinkAp
 import { JournalAppWidget } from '../fridge-canvas/widgets/JournalAppWidget';
 import { WorkspaceWidget } from '../fridge-canvas/widgets/WorkspaceWidget';
 import { useHouseholdPermissions } from '../../lib/useHouseholdPermissions';
+import { useUIPreferences } from '../../contexts/UIPreferencesContext';
 
 export function WidgetAppView() {
   const navigate = useNavigate();
@@ -44,6 +45,7 @@ export function WidgetAppView() {
   const [error, setError] = useState<string | null>(null);
 
   const { canEdit } = useHouseholdPermissions(spaceId || '');
+  const { getTrackerColor } = useUIPreferences();
 
   useEffect(() => {
     if (spaceId && widgetId) {
@@ -284,7 +286,35 @@ export function WidgetAppView() {
                   if (tracker) {
                     widgetTitle = tracker.name;
                     widgetIcon = tracker.icon || 'Activity';
-                    widgetColor = tracker.color || 'indigo';
+                    
+                    // Check for custom color preference first, then fall back to tracker's color
+                    const customColor = getTrackerColor(trackerId);
+                    if (customColor) {
+                      // Map WidgetColorToken to color string for createWidget
+                      const colorMap: Record<string, string> = {
+                        cyan: 'cyan',
+                        blue: 'blue',
+                        violet: 'violet',
+                        pink: 'pink',
+                        orange: 'orange',
+                        green: 'green',
+                        yellow: 'yellow',
+                        neutral: 'slate',
+                        red: 'red',
+                        teal: 'teal',
+                        emerald: 'emerald',
+                        amber: 'amber',
+                        indigo: 'indigo',
+                        rose: 'rose',
+                        sky: 'sky',
+                        lime: 'lime',
+                        fuchsia: 'fuchsia',
+                        slate: 'slate',
+                      };
+                      widgetColor = colorMap[customColor] || 'indigo';
+                    } else {
+                      widgetColor = tracker.color || 'indigo';
+                    }
                   }
                 } catch (err) {
                   console.error('Failed to fetch tracker:', err);

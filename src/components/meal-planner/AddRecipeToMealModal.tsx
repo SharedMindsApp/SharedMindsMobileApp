@@ -8,7 +8,7 @@
  */
 
 import { useState, useEffect } from 'react';
-import { X, Calendar, Clock, Users, Tag } from 'lucide-react';
+import { X, Calendar, Clock, Users, Tag, Minus, Plus } from 'lucide-react';
 import { getWeekStartDate, addRecipeToPlan, type MealPlan } from '../../lib/mealPlanner';
 import { useMealSchedule } from '../../hooks/useMealSchedule';
 import { getActiveUserProfile } from '../../lib/profiles/getActiveUserProfile';
@@ -51,12 +51,18 @@ export function AddRecipeToMealModal({
 }: AddRecipeToMealModalProps) {
   const { schedule, getMealSlotsForDay } = useMealSchedule(spaceId);
   const [selectedDay, setSelectedDay] = useState<number>(new Date().getDay());
-  const [selectedMealType, setSelectedMealType] = useState<'breakfast' | 'lunch' | 'dinner' | 'snack'>(recipe.meal_type || 'dinner');
+  // recipe.meal_type is now an array, use first value or default
+  const [selectedMealType, setSelectedMealType] = useState<'breakfast' | 'lunch' | 'dinner' | 'snack'>(
+    Array.isArray(recipe.meal_type) && recipe.meal_type.length > 0 
+      ? recipe.meal_type[0] 
+      : recipe.meal_type || 'dinner'
+  );
   const [selectedWeekOffset, setSelectedWeekOffset] = useState<number>(0); // 0 = current week, 1 = next week
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [tagPreferences, setTagPreferences] = useState<Map<string, UserTagPreference>>(new Map());
   const [preferredTags, setPreferredTags] = useState<Set<string>>(new Set());
   const [saving, setSaving] = useState(false);
+  const [servings, setServings] = useState<number>(recipe.servings || 4); // Default to recipe's servings
 
   // Get available meal slots for selected day
   const availableSlots = schedule ? getMealSlotsForDay(selectedDay) : [];
@@ -70,6 +76,13 @@ export function AddRecipeToMealModal({
       loadTagPreferences();
     }
   }, [spaceId]);
+
+  // Update servings when recipe changes
+  useEffect(() => {
+    if (recipe?.servings) {
+      setServings(recipe.servings);
+    }
+  }, [recipe?.servings]);
 
   const loadTagPreferences = async () => {
     try {
@@ -173,17 +186,24 @@ export function AddRecipeToMealModal({
         profileId: profile.id,
       });
 
-      await addRecipeToPlan(
+      const result = await addRecipeToPlan(
         spaceId,
         recipe.id,
         selectedMealType,
         selectedDay,
         weekStartDate,
-        profile.id
+        profile.id,
+        servings // Pass the adjusted servings
       );
 
       const dayLabel = DAYS_OF_WEEK.find(d => d.value === selectedDay)?.label || 'Unknown';
-      showToast('success', `Added ${recipe.name} to ${dayLabel} ${selectedMealType}`);
+      const wasReplaced = (result as any).wasReplaced;
+      
+      if (wasReplaced) {
+        showToast('success', `Meal replaced: ${recipe.name} on ${dayLabel} ${selectedMealType}`);
+      } else {
+        showToast('success', `Added ${recipe.name} to ${dayLabel} ${selectedMealType}`);
+      }
       
       if (onSuccess) {
         onSuccess();
@@ -192,7 +212,13 @@ export function AddRecipeToMealModal({
       onClose();
     } catch (error: any) {
       console.error('Failed to add recipe to meal plan:', error);
-      showToast('error', error.message || 'Failed to add recipe to meal plan');
+      // Only show error if it's not a duplicate key error (which should be handled by replacement)
+      if (error.code === '23505') {
+        // This shouldn't happen anymore, but if it does, show a friendly message
+        showToast('error', 'A meal already exists in this slot. Please try again.');
+      } else {
+        showToast('error', error.message || 'Failed to add recipe to meal plan');
+      }
     } finally {
       setSaving(false);
     }
@@ -226,17 +252,13 @@ export function AddRecipeToMealModal({
         {/* Content */}
         <div className="flex-1 overflow-y-auto p-6">
           <div className="space-y-6">
-            {/* Recipe Info with Servings */}
+            {/* Recipe Info with Adjustable Servings */}
             <div className="bg-gray-50 rounded-xl p-4 border-2 border-orange-200">
               <div className="flex items-center justify-between mb-2">
                 <h3 className="font-semibold text-gray-900">{recipe.name}</h3>
-                <div className="flex items-center gap-1 text-orange-600 font-semibold">
-                  <Users size={16} />
-                  <span>{recipe.servings} {recipe.servings === 1 ? 'serving' : 'servings'}</span>
-                </div>
               </div>
               {(recipe.prep_time || recipe.cook_time) && (
-                <div className="flex items-center gap-4 text-sm text-gray-600 mt-2">
+                <div className="flex items-center gap-4 text-sm text-gray-600 mb-4">
                   {recipe.prep_time && (
                     <div className="flex items-center gap-1">
                       <Clock size={12} />
@@ -251,6 +273,42 @@ export function AddRecipeToMealModal({
                   )}
                 </div>
               )}
+              
+              {/* Servings Selector */}
+              <div className="bg-gradient-to-br from-orange-50 to-amber-50 border-2 border-orange-200 rounded-lg p-3 mt-3">
+                <label className="block text-sm font-medium text-gray-900 mb-2">
+                  How many servings?
+                </label>
+                <div className="flex items-center gap-3">
+                  <button
+                    onClick={() => setServings(Math.max(1, servings - 1))}
+                    disabled={servings <= 1}
+                    className="w-10 h-10 bg-white border-2 border-orange-300 rounded-lg flex items-center justify-center hover:bg-orange-50 active:bg-orange-100 disabled:opacity-50 disabled:cursor-not-allowed transition-colors touch-manipulation"
+                    aria-label="Decrease servings"
+                  >
+                    <Minus size={18} className="text-orange-600" />
+                  </button>
+                  <div className="flex-1 text-center">
+                    <div className="text-2xl font-bold text-orange-700">{servings}</div>
+                    <div className="text-xs text-gray-600 mt-0.5">
+                      {servings === 1 ? 'serving' : 'servings'}
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => setServings(Math.min(12, servings + 1))}
+                    disabled={servings >= 12}
+                    className="w-10 h-10 bg-white border-2 border-orange-300 rounded-lg flex items-center justify-center hover:bg-orange-50 active:bg-orange-100 disabled:opacity-50 disabled:cursor-not-allowed transition-colors touch-manipulation"
+                    aria-label="Increase servings"
+                  >
+                    <Plus size={18} className="text-orange-600" />
+                  </button>
+                </div>
+                <p className="text-xs text-gray-600 mt-2 text-center">
+                  {servings === 1 
+                    ? "Making this just for yourself? Perfect! Ingredients will scale automatically."
+                    : `Cooking for ${servings}? Ingredients will scale automatically.`}
+                </p>
+              </div>
             </div>
 
             {/* Week Selection */}
@@ -451,7 +509,7 @@ export function AddRecipeToMealModal({
                 <span className="font-semibold">{DAYS_OF_WEEK.find(d => d.value === selectedDay)?.label || 'Unknown'} {selectedMealType}</span> ({weekLabel})
               </p>
               <p className="text-xs text-blue-700 mt-1">
-                Recipe makes {recipe.servings} {recipe.servings === 1 ? 'serving' : 'servings'}
+                Recipe will be added with {servings} {servings === 1 ? 'serving' : 'servings'} (ingredients will scale automatically)
               </p>
               {selectedTags.length > 0 && (
                 <p className="text-xs text-blue-700 mt-1">

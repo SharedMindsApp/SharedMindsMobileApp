@@ -173,6 +173,10 @@ export function TodoCanvasWidget({ householdId, viewMode }: TodoCanvasWidgetProp
   };
 
   const handleToggle = async (todo: PersonalTodo) => {
+    // TODO: Habit → Task Projection - Task completion sync
+    // If this is a habit-derived task, sync is handled automatically in updateTodo
+    // The syncTaskCompletionToHabit is called in todosService.updateTodo
+    // No additional action needed here - the sync is transparent to the user
     try {
       await todosService.updateTodo(todo.id, { completed: !todo.completed });
       await loadTodos();
@@ -1036,6 +1040,7 @@ export function TodoCanvasWidget({ householdId, viewMode }: TodoCanvasWidgetProp
                 <div className="flex items-start gap-2 p-2 hover:bg-slate-50 rounded-lg">
                   <button
                     onClick={() => handleToggle(todo)}
+                    title={todo.is_habit_derived ? 'Habit task - completing this checks in the habit' : undefined}
                     className={`flex-shrink-0 w-5 h-5 rounded border-2 transition-colors mt-0.5 flex items-center justify-center ${
                       todo.completed
                         ? 'bg-emerald-500 border-emerald-500 hover:border-emerald-600'
@@ -1060,6 +1065,9 @@ export function TodoCanvasWidget({ householdId, viewMode }: TodoCanvasWidgetProp
                   </button>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
+                      {todo.is_habit_derived && (
+                        <Repeat size={14} className="text-blue-500 flex-shrink-0" title="Habit task" />
+                      )}
                       <div className="flex-1 min-w-0">
                         <p
                           className={`text-sm break-words ${
@@ -1147,12 +1155,24 @@ export function TodoCanvasWidget({ householdId, viewMode }: TodoCanvasWidgetProp
                       </div>
                     )}
                   </div>
-                  <button
-                    onClick={() => handleDelete(todo.id)}
-                    className="flex-shrink-0 opacity-0 group-hover:opacity-100 p-1 text-slate-400 hover:text-red-600 rounded transition-all"
-                  >
-                    <Trash2 className="w-3.5 h-3.5" />
-                  </button>
+                  {/* Delete button - hidden for habit-derived tasks */}
+                  {!todo.is_habit_derived && (
+                    <button
+                      onClick={() => handleDelete(todo.id)}
+                      className="flex-shrink-0 opacity-0 group-hover:opacity-100 p-1 text-slate-400 hover:text-red-600 rounded transition-all"
+                      title="Delete task"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                  {todo.is_habit_derived && (
+                    <span 
+                      className="flex-shrink-0 p-1 text-blue-500" 
+                      title="Habit task - managed by habit system"
+                    >
+                      <Repeat className="w-3.5 h-3.5" />
+                    </span>
+                  )}
                 </div>
 
                 {/* Template prompt - shows below todo title when template matches and no steps exist */}

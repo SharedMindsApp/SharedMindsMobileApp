@@ -50,7 +50,17 @@ export type WidgetColorToken =
   | 'orange'
   | 'green'
   | 'yellow'
-  | 'neutral';
+  | 'neutral'
+  | 'red'
+  | 'teal'
+  | 'emerald'
+  | 'amber'
+  | 'indigo'
+  | 'rose'
+  | 'sky'
+  | 'lime'
+  | 'fuchsia'
+  | 'slate';
 
 export type WidgetTypeId =
   | 'note'
@@ -188,6 +198,16 @@ export const WIDGET_COLOR_TOKENS: Record<WidgetColorToken, { rgb: string; label:
   green: { rgb: '34, 197, 94', label: 'Green' },
   yellow: { rgb: '234, 179, 8', label: 'Yellow' },
   neutral: { rgb: '148, 163, 184', label: 'Neutral' },
+  red: { rgb: '239, 68, 68', label: 'Red' },
+  teal: { rgb: '20, 184, 166', label: 'Teal' },
+  emerald: { rgb: '16, 185, 129', label: 'Emerald' },
+  amber: { rgb: '245, 158, 11', label: 'Amber' },
+  indigo: { rgb: '99, 102, 241', label: 'Indigo' },
+  rose: { rgb: '244, 63, 94', label: 'Rose' },
+  sky: { rgb: '14, 165, 233', label: 'Sky' },
+  lime: { rgb: '132, 204, 22', label: 'Lime' },
+  fuchsia: { rgb: '217, 70, 239', label: 'Fuchsia' },
+  slate: { rgb: '100, 116, 139', label: 'Slate' },
 };
 
 export const DEFAULT_WIDGET_COLORS: WidgetColorPreferences = {

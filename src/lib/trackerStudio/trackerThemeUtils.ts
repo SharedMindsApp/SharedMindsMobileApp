@@ -25,6 +25,10 @@ export type TrackerTheme = {
 };
 
 export function getTrackerTheme(trackerName: string): TrackerTheme {
+  // Safety check: ensure trackerName is a string
+  if (!trackerName || typeof trackerName !== 'string') {
+    trackerName = '';
+  }
   const name = trackerName.toLowerCase();
   
   // Sleep & Rest

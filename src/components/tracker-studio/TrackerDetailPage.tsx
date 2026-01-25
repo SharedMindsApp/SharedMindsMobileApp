@@ -1,7 +1,7 @@
-import { useState, useEffect, useCallback, Suspense, lazy } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Calendar, Share2, Eye, Loader2, AlertCircle, Users, BarChart3, ChevronDown, ChevronUp, Clock, LayoutGrid, Trash2 } from 'lucide-react';
-import { getTracker, archiveTracker } from '../../lib/trackerStudio/trackerService';
+import { useState, useEffect, useCallback, Suspense, lazy, useMemo } from 'react';
+import { useParams, useNavigate, useSearchParams, useLocation } from 'react-router-dom';
+import { Calendar, Share2, Loader2, AlertCircle, Users, BarChart3, ChevronDown, ChevronUp, Clock, LayoutGrid } from 'lucide-react';
+import { getTracker } from '../../lib/trackerStudio/trackerService';
 import { getEntryByDate } from '../../lib/trackerStudio/trackerEntryService';
 import { resolveTrackerPermissions } from '../../lib/trackerStudio/trackerPermissionResolver';
 import type { Tracker, TrackerEntry } from '../../lib/trackerStudio/types';
@@ -26,18 +26,36 @@ import { isScreenTimeTracker } from '../../lib/trackerStudio/screenTimeUtils';
 import { ScreenTimeAppView } from './ScreenTimeAppView';
 import { ReminderSuggestionModal } from './ReminderSuggestionModal';
 import { getTrackerReminders } from '../../lib/trackerStudio/trackerReminderService';
-import { ConfirmDialog } from '../ConfirmDialog';
 import { isFitnessTrackerByName } from '../../lib/fitnessTracker/fitnessTrackerUtils';
+import { isHabitTracker } from '../../lib/trackerStudio/habitTrackerUtils';
+import { HabitTrackerCore } from '../activities/habits/HabitTrackerCore';
+import { useAuth } from '../../contexts/AuthContext';
 
 export function TrackerDetailPage() {
   const { trackerId } = useParams<{ trackerId: string }>();
   const navigate = useNavigate();
+  const location = useLocation();
+  const [searchParams] = useSearchParams();
+  const { user } = useAuth();
   const [tracker, setTracker] = useState<Tracker | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedDate, setSelectedDate] = useState<string>(
     new Date().toISOString().split('T')[0]
   );
+  
+  // Read date and habit_id from URL params or location state (calendar navigation)
+  const calendarDate = useMemo(() => {
+    const paramDate = searchParams.get('date');
+    const stateDate = (location.state as any)?.date;
+    return paramDate || stateDate || null;
+  }, [searchParams, location.state]);
+  
+  const focusedHabitId = useMemo(() => {
+    const paramHabitId = searchParams.get('habit_id');
+    const stateHabitId = (location.state as any)?.habit_id;
+    return paramHabitId || stateHabitId || null;
+  }, [searchParams, location.state]);
   const [existingEntry, setExistingEntry] = useState<TrackerEntry | null>(null);
   const [loadingEntry, setLoadingEntry] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
@@ -50,8 +68,6 @@ export function TrackerDetailPage() {
   const [showAddToSpaceModal, setShowAddToSpaceModal] = useState(false);
   const [showReminderSuggestion, setShowReminderSuggestion] = useState(false);
   const [hasCheckedReminders, setHasCheckedReminders] = useState(false);
-  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
-  const [isDeleting, setIsDeleting] = useState(false);
 
   const loadTracker = useCallback(async () => {
     if (!trackerId) return;
@@ -137,20 +153,6 @@ export function TrackerDetailPage() {
     setSelectedDate(newDate);
   };
 
-  const handleDeleteTracker = async () => {
-    if (!tracker) return;
-
-    try {
-      setIsDeleting(true);
-      await archiveTracker(tracker.id);
-      // Navigate back to trackers list after successful deletion
-      navigate('/tracker-studio/my-trackers');
-    } catch (err) {
-      console.error('Failed to delete tracker:', err);
-      alert(err instanceof Error ? err.message : 'Failed to delete tracker');
-      setIsDeleting(false);
-    }
-  };
 
   if (loading) {
     return (
@@ -193,129 +195,130 @@ export function TrackerDetailPage() {
   const useLowFriction = tracker ? shouldUseLowFrictionUX(tracker.name, tracker.field_schema_snapshot) : false;
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-gray-50 to-white">
-      {/* Themed Header */}
-      {tracker && theme && (
-        <div className={`bg-gradient-to-br ${theme.gradient} relative overflow-hidden`}>
-          <div className="absolute inset-0 bg-black/5"></div>
-          <div className="relative max-w-4xl mx-auto px-4 sm:px-6 md:px-8 pt-6 sm:pt-8 pb-12 sm:pb-16">
-            <button
-              onClick={() => navigate('/tracker-studio/my-trackers')}
-              className="flex items-center gap-2 text-white/90 hover:text-white transition-colors text-sm sm:text-base mb-6 backdrop-blur-sm bg-white/10 rounded-lg px-3 py-2 inline-flex"
-            >
-              <ArrowLeft size={18} />
-              <span>Back to Trackers</span>
-            </button>
-            
-            <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
-              <div className="flex items-start gap-4 flex-1">
-                <div className={`${theme.iconBg} ${theme.iconColor} rounded-2xl p-4 shadow-xl flex-shrink-0`}>
-                  <Icon size={32} className={theme.iconColor} />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <h1 className="text-3xl sm:text-4xl md:text-5xl font-bold text-white mb-2 drop-shadow-lg">
-                    {tracker.name}
-                  </h1>
-                  {tracker.description && (
-                    <p className="text-white/90 text-base sm:text-lg drop-shadow-md">
-                      {tracker.description}
-                    </p>
-                  )}
-                </div>
-              </div>
-              <div className="flex items-center gap-2 flex-shrink-0">
-                {permissions && !permissions.isOwner && (
-                  <span className={`inline-flex items-center gap-1.5 px-4 py-2 rounded-full text-sm font-medium backdrop-blur-sm ${
-                    permissions.role === 'viewer'
-                      ? 'bg-white/20 text-white'
-                      : 'bg-white/20 text-white'
-                  }`}>
-                    <Eye size={16} />
-                    {permissions.role === 'viewer' ? 'Read-only' : 'Editor'}
-                  </span>
-                )}
-                {permissions?.canView && (
-                  <button
-                    onClick={() => setShowAddToSpaceModal(true)}
-                    className="inline-flex items-center gap-1.5 px-4 py-2 rounded-full text-sm font-medium backdrop-blur-sm bg-white/20 text-white hover:bg-white/30 transition-colors"
-                    title="Add to Spaces"
-                  >
-                    <LayoutGrid size={16} />
-                    <span className="hidden sm:inline">Add to Spaces</span>
-                    <span className="sm:hidden">Add</span>
-                  </button>
-                )}
-                {permissions?.isOwner && (
-                  <button
-                    onClick={() => setShowDeleteConfirm(true)}
-                    className="inline-flex items-center gap-1.5 px-4 py-2 rounded-full text-sm font-medium backdrop-blur-sm bg-white/20 text-white hover:bg-red-500/50 transition-colors"
-                    title="Delete Tracker"
-                  >
-                    <Trash2 size={16} />
-                    <span className="hidden sm:inline">Delete</span>
-                  </button>
-                )}
-              </div>
-            </div>
+    <div className="min-h-screen bg-white">
+      {/* Minimal App Shell Header - Navigation only, no hero */}
+      <div className="sticky top-0 z-10 bg-white border-b border-gray-100">
+        <div className="max-w-4xl mx-auto px-4 sm:px-6 py-3 flex items-center justify-between gap-3">
+          <div className="flex items-center gap-3 flex-1 min-w-0">
+            {tracker && (
+              <h1 className="text-base font-medium text-gray-900 truncate">
+                {tracker.name}
+              </h1>
+            )}
+          </div>
+          <div className="flex items-center gap-2 flex-shrink-0">
+            {permissions?.canView && (
+              <button
+                onClick={() => setShowAddToSpaceModal(true)}
+                className="text-sm text-gray-500 hover:text-gray-800 transition-colors"
+                title="Add to Spaces"
+              >
+                <LayoutGrid size={16} />
+              </button>
+            )}
           </div>
         </div>
-      )}
+      </div>
 
-      <div className="max-w-4xl mx-auto px-4 sm:px-6 md:px-8 -mt-8 sm:-mt-12 relative z-10">
-        {/* Screen Time App View - Full screen app-like interface */}
-        {tracker && isScreenTimeTracker(tracker) ? (
+      {/* Tracker Content - Direct render, no wrapper cards */}
+      <div className="max-w-4xl mx-auto">
+        {/* Habit Tracker - Owns its own UI */}
+        {tracker && user && isHabitTracker(tracker) ? (
+          <HabitTrackerCore
+            ownerUserId={user.id}
+            context={{
+              mode: 'planner',
+              scope: 'self',
+            }}
+            permissions={{
+              can_view: permissions?.canView ?? true,
+              can_edit: permissions?.canEdit ?? false,
+              can_manage: permissions?.isOwner ?? false,
+              detail_level: permissions?.canEdit ? 'detailed' : 'overview',
+              can_comment: false,
+              scope: 'this_only',
+            }}
+            layout="full"
+            activeDate={calendarDate}
+            focusedHabitId={focusedHabitId}
+          />
+        ) : tracker && isScreenTimeTracker(tracker) ? (
+          /* Screen Time App View - Owns its own UI */
           <ScreenTimeAppView tracker={tracker} />
         ) : (
           <>
-            {/* Entry Form Section - Elevated Card */}
-            <div className={`bg-white rounded-2xl shadow-xl border-2 ${theme?.borderColor || 'border-gray-200'} p-6 sm:p-8 mb-6 transition-all hover:shadow-2xl`}>
-          {/* Date Picker - Hidden for mood trackers, collapsible for low-friction trackers */}
-          {!isMood && (
-            <div className="mb-6">
-              {useLowFriction ? (
-                // Collapsible date picker for low-friction trackers
-                <div>
-                  {!showDatePicker ? (
-                    <button
-                      type="button"
-                      onClick={() => setShowDatePicker(true)}
-                      className="flex items-center gap-2 text-sm text-gray-600 hover:text-gray-900 transition-colors"
-                    >
-                      <Clock size={16} />
-                      <span>
-                        {selectedDate === new Date().toISOString().split('T')[0] 
-                          ? 'Logging for today' 
-                          : `Logging for ${new Date(selectedDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`
-                        }
-                      </span>
-                      <ChevronDown size={16} />
-                    </button>
-                  ) : (
-                    <div className="space-y-3">
-                      <div className="flex items-center justify-between">
-                        <label htmlFor="entry-date" className="block text-sm font-semibold text-gray-700">
-                          <Calendar className="inline mr-2" size={18} />
-                          Entry Date
-                        </label>
+            {/* Generic Tracker Entry Form - Owns its own UI, no wrapper cards */}
+            <div className="px-4 sm:px-6 py-6">
+              {/* Date Picker - Hidden for mood trackers, collapsible for low-friction trackers */}
+              {!isMood && (
+                <div className="mb-6">
+                  {useLowFriction ? (
+                    // Collapsible date picker for low-friction trackers
+                    <div>
+                      {!showDatePicker ? (
                         <button
                           type="button"
-                          onClick={() => setShowDatePicker(false)}
-                          className="text-gray-400 hover:text-gray-600 transition-colors"
-                          aria-label="Hide date picker"
+                          onClick={() => setShowDatePicker(true)}
+                          className="flex items-center gap-2 text-sm text-gray-600 hover:text-gray-900 transition-colors"
                         >
-                          <ChevronUp size={16} />
+                          <Clock size={16} />
+                          <span>
+                            {selectedDate === new Date().toISOString().split('T')[0] 
+                              ? 'Logging for today' 
+                              : `Logging for ${new Date(selectedDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`
+                            }
+                          </span>
+                          <ChevronDown size={16} />
                         </button>
-                      </div>
+                      ) : (
+                        <div className="space-y-3">
+                          <div className="flex items-center justify-between">
+                            <label htmlFor="entry-date" className="block text-sm font-semibold text-gray-700">
+                              <Calendar className="inline mr-2" size={18} />
+                              Entry Date
+                            </label>
+                            <button
+                              type="button"
+                              onClick={() => setShowDatePicker(false)}
+                              className="text-gray-400 hover:text-gray-600 transition-colors"
+                              aria-label="Hide date picker"
+                            >
+                              <ChevronUp size={16} />
+                            </button>
+                          </div>
+                          <div className="flex items-center gap-3">
+                            <input
+                              id="entry-date"
+                              type="date"
+                              value={selectedDate}
+                              onChange={(e) => handleDateChange(e.target.value)}
+                              className="flex-1 px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all text-base"
+                            />
+                            {selectedDate === new Date().toISOString().split('T')[0] && (
+                              <span className="px-3 py-1.5 bg-blue-50 text-blue-700 rounded-lg text-sm">
+                                Today
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    // Always visible for other trackers
+                    <div>
+                      <label htmlFor="entry-date" className="block text-sm font-medium text-gray-700 mb-3">
+                        Entry Date
+                      </label>
                       <div className="flex items-center gap-3">
                         <input
                           id="entry-date"
                           type="date"
                           value={selectedDate}
                           onChange={(e) => handleDateChange(e.target.value)}
-                          className="flex-1 px-4 py-3 border-2 border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-offset-2 focus:border-blue-500 focus:ring-blue-500 transition-all text-base font-medium"
+                          className="flex-1 px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all text-base"
                         />
                         {selectedDate === new Date().toISOString().split('T')[0] && (
-                          <span className="px-3 py-1.5 bg-blue-100 text-blue-700 rounded-lg text-sm font-medium">
+                          <span className="px-3 py-1.5 bg-blue-50 text-blue-700 rounded-lg text-sm">
                             Today
                           </span>
                         )}
@@ -323,78 +326,48 @@ export function TrackerDetailPage() {
                     </div>
                   )}
                 </div>
-              ) : (
-                // Always visible for other trackers
-                <div>
-                  <label htmlFor="entry-date" className="block text-sm font-semibold text-gray-700 mb-3">
-                    <Calendar className="inline mr-2" size={18} />
-                    Entry Date
-                  </label>
-                  <div className="flex items-center gap-3">
-                    <input
-                      id="entry-date"
-                      type="date"
-                      value={selectedDate}
-                      onChange={(e) => handleDateChange(e.target.value)}
-                      className="flex-1 px-4 py-3 border-2 border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-offset-2 focus:border-blue-500 focus:ring-blue-500 transition-all text-base font-medium"
-                    />
-                    {selectedDate === new Date().toISOString().split('T')[0] && (
-                      <span className="px-3 py-1.5 bg-blue-100 text-blue-700 rounded-lg text-sm font-medium">
-                        Today
-                      </span>
-                    )}
-                  </div>
+              )}
+
+              {loadingEntry ? (
+                <div className="text-center py-12">
+                  <Loader2 className="h-8 w-8 animate-spin text-gray-400 mx-auto mb-3" />
+                  <p className="text-gray-500">Loading entry...</p>
                 </div>
+              ) : (
+                <TrackerEntryForm
+                  tracker={tracker!}
+                  entryDate={selectedDate}
+                  existingEntry={existingEntry}
+                  onEntrySaved={handleEntrySaved}
+                  readOnly={!permissions?.canEdit}
+                  theme={theme!}
+                />
               )}
             </div>
-          )}
 
-          {loadingEntry ? (
-            <div className="text-center py-12">
-              <Loader2 className="h-8 w-8 animate-spin text-blue-500 mx-auto mb-3" />
-              <p className="text-gray-600">Loading entry...</p>
+            {/* Entry History Section - Owns its own UI */}
+            <div className="px-4 sm:px-6 py-6 border-t border-gray-100">
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-lg font-medium text-gray-900">
+                  Entry History
+                </h2>
+                <button
+                  onClick={() => setShowAnalytics(!showAnalytics)}
+                  className="flex items-center gap-2 px-3 py-1.5 text-sm text-gray-600 hover:text-gray-900 rounded-lg hover:bg-gray-50 transition-colors"
+                >
+                  <BarChart3 size={16} />
+                  <span>{showAnalytics ? 'Hide' : 'Show'} Analytics</span>
+                </button>
+              </div>
+              <TrackerEntryList key={refreshKey} tracker={tracker!} theme={theme!} />
             </div>
-          ) : (
-            <TrackerEntryForm
-              tracker={tracker!}
-              entryDate={selectedDate}
-              existingEntry={existingEntry}
-              onEntrySaved={handleEntrySaved}
-              readOnly={!permissions?.canEdit}
-              theme={theme!}
-            />
-          )}
-        </div>
 
-            {/* Entry History Section */}
-            <div className={`bg-white rounded-2xl shadow-lg border-2 ${theme?.borderColor || 'border-gray-200'} p-6 sm:p-8 mb-6`}>
-          <div className="flex items-center justify-between mb-6">
-            <h2 className="text-xl sm:text-2xl font-bold text-gray-900 flex items-center gap-2">
-              <Calendar size={24} className={theme?.iconColor || 'text-gray-600'} />
-              Entry History
-            </h2>
-            <button
-              onClick={() => setShowAnalytics(!showAnalytics)}
-              className={`flex items-center gap-2 px-4 py-2 rounded-xl font-medium transition-all ${
-                showAnalytics
-                  ? `${theme?.buttonBg || 'bg-blue-600'} text-white shadow-md`
-                  : `${theme?.accentBg || 'bg-gray-100'} ${theme?.accentText || 'text-gray-700'} hover:shadow-md`
-              }`}
-            >
-              <BarChart3 size={18} />
-              <span className="hidden sm:inline">{showAnalytics ? 'Hide' : 'Show'} Analytics</span>
-            </button>
-          </div>
-          <TrackerEntryList key={refreshKey} tracker={tracker!} theme={theme!} />
-        </div>
-
-        {/* Analytics Section - Lazy Loaded */}
-        {showAnalytics && (
-          <div className={`bg-white rounded-2xl shadow-lg border-2 ${theme?.borderColor || 'border-gray-200'} p-6 sm:p-8 mb-6 animate-in fade-in slide-in-from-top-4 duration-300`}>
-            <h2 className="text-xl sm:text-2xl font-bold text-gray-900 mb-6 flex items-center gap-2">
-              <BarChart3 size={24} className={theme?.iconColor || 'text-gray-600'} />
-              Analytics
-            </h2>
+            {/* Analytics Section - Lazy Loaded, owns its own UI */}
+            {showAnalytics && (
+              <div className="px-4 sm:px-6 py-6 border-t border-gray-100 animate-in fade-in duration-200">
+                <h2 className="text-lg font-medium text-gray-900 mb-4">
+                  Analytics
+                </h2>
             <Suspense fallback={
               <div className="flex items-center justify-center py-12">
                 <Loader2 className="h-8 w-8 animate-spin text-blue-500" />
@@ -428,34 +401,33 @@ export function TrackerDetailPage() {
           />
         )}
 
-        {/* Share Buttons Section */}
-        {permissions?.canManage && (
-          <div className={`bg-white rounded-2xl shadow-lg border-2 ${theme?.borderColor || 'border-gray-200'} p-6 sm:p-8 mt-6`}>
-            <h2 className="text-xl sm:text-2xl font-bold text-gray-900 mb-6 flex items-center gap-2">
-              <Share2 size={24} className={theme?.iconColor || 'text-gray-600'} />
-              Sharing
-            </h2>
-            <div className="flex flex-col sm:flex-row gap-3">
-              <button
-                onClick={() => setShowShareToProjectModal(true)}
-                disabled={tracker.archived_at !== null}
-                className={`flex items-center justify-center gap-2 px-6 py-3 border-2 ${theme?.borderColor || 'border-gray-300'} ${theme?.accentText || 'text-gray-700'} rounded-xl hover:shadow-md active:scale-[0.98] transition-all font-semibold focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed min-h-[48px] text-base`}
-                aria-label="Share tracker to Guardrails projects"
-              >
-                <Users size={20} />
-                <span className="hidden sm:inline">Share to Project</span>
-                <span className="sm:hidden">To Project</span>
-              </button>
-              <button
-                onClick={() => setShowSharingDrawer(true)}
-                className={`flex items-center justify-center gap-2 px-6 py-3 ${theme?.buttonBg || 'bg-blue-600'} ${theme?.buttonHover || 'hover:bg-blue-700'} text-white rounded-xl hover:shadow-lg active:scale-[0.98] transition-all font-semibold focus:outline-none focus:ring-2 focus:ring-offset-2 min-h-[48px] text-base shadow-md`}
-              >
-                <Share2 size={20} />
-                <span className="hidden sm:inline">Share with Users</span>
-                <span className="sm:hidden">With Users</span>
-              </button>
+            {/* Share Buttons Section - Owns its own UI */}
+            {permissions?.canManage && (
+              <div className="px-4 sm:px-6 py-6 border-t border-gray-100">
+                <h2 className="text-lg font-medium text-gray-900 mb-4">
+                  Sharing
+                </h2>
+                <div className="flex flex-col sm:flex-row gap-3">
+                  <button
+                    onClick={() => setShowShareToProjectModal(true)}
+                    disabled={tracker.archived_at !== null}
+                    className="flex items-center justify-center gap-2 px-4 py-2.5 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 active:scale-[0.98] transition-all font-medium focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed min-h-[44px] text-sm"
+                    aria-label="Share tracker to Guardrails projects"
+                  >
+                    <Users size={16} />
+                    <span className="hidden sm:inline">Share to Project</span>
+                    <span className="sm:hidden">To Project</span>
+                  </button>
+                  <button
+                    onClick={() => setShowSharingDrawer(true)}
+                    className="flex items-center justify-center gap-2 px-4 py-2.5 bg-gray-900 hover:bg-gray-800 text-white rounded-lg active:scale-[0.98] transition-all font-medium focus:outline-none focus:ring-2 focus:ring-blue-500 min-h-[44px] text-sm"
+                  >
+                    <Share2 size={16} />
+                    <span className="hidden sm:inline">Share with Users</span>
+                    <span className="sm:hidden">With Users</span>
+                  </button>
+                </div>
               </div>
-            </div>
             )}
           </>
         )}
@@ -506,22 +478,6 @@ export function TrackerDetailPage() {
         />
       )}
 
-      {/* Delete Tracker Confirmation Dialog */}
-      {tracker && (
-        <ConfirmDialog
-          isOpen={showDeleteConfirm}
-          onClose={() => {
-            setShowDeleteConfirm(false);
-            setIsDeleting(false);
-          }}
-          onConfirm={handleDeleteTracker}
-          title="Delete Tracker"
-          message={`Are you sure you want to delete "${tracker.name}"? This will archive the tracker and hide it from your list. You can restore it later if needed.`}
-          confirmText="Delete"
-          cancelText="Cancel"
-          variant="danger"
-        />
-      )}
     </div>
   );
 }
